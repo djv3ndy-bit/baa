@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="BaristaMatch connects baristas and local coffee shops.">
+<title>BaristaMatch — Swipe. Match. Brew.</title>
+<style>
+:root{--brown:#321708;--caramel:#a95820;--cream:#fbf7f1;--green:#2f7c42;--muted:#746a61;--line:#e7ddd2}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--cream);color:#17110d;font-family:Arial,sans-serif}
+a{text-decoration:none;color:inherit}button,input,select{font:inherit}.wrap{width:min(1500px,calc(100% - 32px));margin:auto}
+header{position:sticky;top:0;z-index:20;background:#fbf7f1ed;backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav{min-height:72px;display:flex;align-items:center;gap:22px}.brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:800}.brand i{width:44px;height:44px;border-radius:14px;background:var(--brown);color:#fff;display:grid;place-items:center;font-style:normal}.brand b{color:var(--caramel)}
+.links{display:flex;gap:24px;margin-left:auto;font-size:14px;font-weight:700}.actions{display:flex;gap:10px}.btn{border-radius:11px;padding:11px 16px;border:1px solid #c9ad99;background:white;font-weight:700;cursor:pointer}.dark{background:var(--brown);color:white;border-color:var(--brown)}
+.hero{padding:26px 0}.mockup{background:white;border:1px solid var(--line);border-radius:24px;padding:8px;box-shadow:0 24px 65px #32170818}.mockup img{display:block;width:100%;border-radius:18px}
+.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}.control{background:white;border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center}.control h3{margin:7px 0}.control p{color:var(--muted);font-size:13px;line-height:1.5}.control button{width:100%;margin-top:8px}
+.section{padding:70px 0}.section h2{font-family:Georgia,serif;font-size:clamp(34px,4vw,52px);margin:8px 0 18px}.eyebrow{color:var(--caramel);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.15em}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:23px}.card p{color:var(--muted);line-height:1.6}
+.waitlist{background:linear-gradient(135deg,var(--brown),#603516);color:white;border-radius:26px;padding:44px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.waitlist p{color:#eadfd5}.form{display:grid;gap:12px}.form input,.form select{width:100%;margin-top:6px;padding:12px;border:1px solid #ffffff33;border-radius:10px;background:#ffffff14;color:white}.form option{color:#111}.form button{background:white;color:var(--brown);border:0;padding:13px;border-radius:10px;font-weight:800}.msg{min-height:18px}
+footer{padding:28px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
+dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 30px);box-shadow:0 24px 70px #0003}dialog::backdrop{background:#21120899}.modal{padding:27px;position:relative}.close{position:absolute;right:13px;top:10px;border:0;background:transparent;font-size:25px}.modal h2{font-family:Georgia,serif;font-size:32px}.modal label{display:block;margin:12px 0}.modal input,.modal select{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px}
+@media(max-width:900px){.links{display:none}.controls,.grid{grid-template-columns:repeat(2,1fr)}.waitlist{grid-template-columns:1fr}}
+@media(max-width:560px){.actions .btn:first-child{display:none}.controls,.grid{grid-template-columns:1fr}.waitlist{padding:30px 20px}footer{display:grid;gap:14px}}
+</style>
+</head>
+<body>
+<header>
+  <nav class="wrap">
+    <a class="brand" href="#home"><i>☕</i><span>Barista<b>Match</b></span></a>
+    <div class="links"><a href="#how">How It Works</a><a href="#baristas">For Baristas</a><a href="#cafes">For Cafés</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+    <div class="actions"><button class="btn" id="login">Log in</button><button class="btn dark" data-waitlist>Join Waitlist</button></div>
+  </nav>
+</header>
+
+<main id="home">
+  <section class="hero wrap">
+    <div class="mockup">
+      <img src="assets/baristamatch-blueprint.png" alt="BaristaMatch app and coffee shop hiring dashboard">
+    </div>
+    <div class="controls">
+      <article class="control"><div>👆</div><h3>Try the swipe</h3><p>Preview a barista showing interest in a Coffee Shop role.</p><button class="btn dark" id="swipe">Swipe Up</button></article>
+      <article class="control"><div>❤️</div><h3>Create a match</h3><p>See how mutual interest opens messaging.</p><button class="btn" id="match">Show Match</button></article>
+      <article class="control"><div>💬</div><h3>Send a message</h3><p>Preview the café and barista conversation.</p><button class="btn" id="message">Open Chat</button></article>
+      <article class="control"><div>☕</div><h3>Join early access</h3><p>Sign up as a barista or a local coffee shop.</p><button class="btn dark" data-waitlist>Join Waitlist</button></article>
+    </div>
+  </section>
+
+  <section class="section wrap" id="how">
+    <span class="eyebrow">How it works</span><h2>Swipe. Match. Chat. Get hired.</h2>
+    <div class="grid">
+      <article class="card"><h3>1. Create a profile</h3><p>Baristas add experience, availability, skills, and expected pay. Coffee shops add their open role, schedule, and culture.</p></article>
+      <article class="card"><h3>2. Show interest</h3><p>Each side reviews focused cards instead of searching through a crowded general job board.</p></article>
+      <article class="card"><h3>3. Match and interview</h3><p>Mutual interest opens chat and interview scheduling.</p></article>
+    </div>
+  </section>
+
+  <section class="section wrap" id="baristas">
+    <span class="eyebrow">For Baristas</span><h2>Find the right local coffee shop.</h2>
+    <div class="grid"><article class="card"><h3>Skills-first profile</h3><p>Show espresso, latte art, pour over, customer service, leadership, and machine experience.</p></article><article class="card"><h3>Clear pay and schedule</h3><p>See hourly pay, tips, shifts, distance, and availability before matching.</p></article><article class="card"><h3>No long application</h3><p>Use one profile and show interest with one tap.</p></article></div>
+  </section>
+
+  <section class="section wrap" id="cafes">
+    <span class="eyebrow">For Cafés</span><h2>Hire baristas without the job-board noise.</h2>
+    <div class="grid"><article class="card"><h3>Post quickly</h3><p>Add pay, tips, location, schedule, skills, and start date.</p></article><article class="card"><h3>Review local candidates</h3><p>Prioritize baristas whose experience and availability fit the job.</p></article><article class="card"><h3>Manage hiring</h3><p>Keep matches, messages, interviews, and job posts in one dashboard.</p></article></div>
+  </section>
+
+  <section class="section wrap" id="pricing">
+    <span class="eyebrow">Pricing</span><h2>Simple plans for local coffee shops.</h2>
+    <div class="grid"><article class="card"><h3>Starter — $0</h3><p>One active job and basic matching.</p></article><article class="card"><h3>Pro — $39/month</h3><p>Unlimited jobs, matching, scheduling, and candidate filters.</p></article><article class="card"><h3>Multi-location — $89/month</h3><p>Multiple shops, team accounts, analytics, and priority support.</p></article></div>
+  </section>
+
+  <section class="section wrap" id="faq">
+    <div class="waitlist">
+      <div><span class="eyebrow" style="color:#efc49e">Early access</span><h2>Help launch BaristaMatch in your city.</h2><p>Join the first group of baristas and local coffee shops testing the platform.</p></div>
+      <form class="form" id="inline-form">
+        <label>I am a<select name="role"><option value="">Choose one</option><option>Barista</option><option>Café owner or manager</option></select></label>
+        <label>Email<input name="email" type="email" placeholder="you@example.com"></label>
+        <label>City<input name="city" placeholder="Miami, FL"></label>
+        <button type="submit">Join Waitlist</button><p class="msg"></p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap"><div>☕ <strong>BaristaMatch</strong> · Swipe. Match. Brew.</div><div>Privacy · Terms · Support</div></footer>
+
+<dialog id="modal">
+  <div class="modal">
+    <button class="close" id="close">×</button>
+    <span class="eyebrow" id="modal-tag">BaristaMatch</span>
+    <h2 id="modal-title">Welcome</h2>
+    <p id="modal-copy"></p>
+    <form id="modal-form" style="display:none">
+      <label>I am a<select name="role"><option value="">Choose one</option><option>Barista</option><option>Café owner or manager</option></select></label>
+      <label>Email<input name="email" type="email" placeholder="you@example.com"></label>
+      <label>City<input name="city" placeholder="Miami, FL"></label>
+      <button class="btn dark" type="submit">Join Waitlist</button><p class="msg"></p>
+    </form>
+  </div>
+</dialog>
+
+<script>
+const modal=document.getElementById('modal'),title=document.getElementById('modal-title'),copy=document.getElementById('modal-copy'),form=document.getElementById('modal-form');
+function openModal(t,c,showForm=false){title.textContent=t;copy.textContent=c;form.style.display=showForm?'block':'none';modal.showModal()}
+document.getElementById('close').onclick=()=>modal.close();
+document.getElementById('login').onclick=()=>openModal('Log in','Login will become active when the production user database is connected.');
+document.getElementById('swipe').onclick=()=>openModal('Interested!','Your interest was sent to Coffee Shop. If the shop also likes your profile, it becomes a match.');
+document.getElementById('match').onclick=()=>openModal('It’s a Match!','You and Coffee Shop both showed interest. Messaging is now unlocked.');
+document.getElementById('message').onclick=()=>openModal('Coffee Shop Chat','Coffee Shop: Hi Sofia! We love your profile. Are you available Wednesday morning?');
+document.querySelectorAll('[data-waitlist]').forEach(b=>b.onclick=()=>openModal('Join the Waitlist','Be among the first baristas and coffee shops to test BaristaMatch.',true));
+function handleForm(f){f.addEventListener('submit',e=>{e.preventDefault();const r=f.role.value,em=f.email.value.trim(),c=f.city.value.trim(),m=f.querySelector('.msg');if(!r||!em||!c){m.textContent='Please complete all fields.';return}m.textContent='Thank you — you are on the BaristaMatch early-access list.';f.reset()})}
+handleForm(document.getElementById('inline-form'));handleForm(document.getElementById('modal-form'));
+</script>
+</body>
+</html>
