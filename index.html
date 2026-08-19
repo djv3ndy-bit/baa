@@ -108,8 +108,64 @@ document.getElementById('swipe').onclick=()=>openModal('Interested!','Your inter
 document.getElementById('match').onclick=()=>openModal('It’s a Match!','You and Coffee Shop both showed interest. Messaging is now unlocked.');
 document.getElementById('message').onclick=()=>openModal('Coffee Shop Chat','Coffee Shop: Hi Sofia! We love your profile. Are you available Wednesday morning?');
 document.querySelectorAll('[data-waitlist]').forEach(b=>b.onclick=()=>openModal('Join the Waitlist','Be among the first baristas and coffee shops to test BaristaMatch.',true));
-function handleForm(f){f.addEventListener('submit',e=>{e.preventDefault();const r=f.role.value,em=f.email.value.trim(),c=f.city.value.trim(),m=f.querySelector('.msg');if(!r||!em||!c){m.textContent='Please complete all fields.';return}m.textContent='Thank you — you are on the BaristaMatch early-access list.';f.reset()})}
-handleForm(document.getElementById('inline-form'));handleForm(document.getElementById('modal-form'));
+function handleForm(f) {
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const role = f.role.value;
+    const email = f.email.value.trim();
+    const city = f.city.value.trim();
+    const message = f.querySelector('.msg');
+    const button = f.querySelector('button[type="submit"]');
+
+    if (!role || !email || !city) {
+      message.textContent = 'Please complete all fields.';
+      return;
+    }
+
+    const originalButtonText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Joining...';
+    message.textContent = 'Sending...';
+
+    try {
+      const response = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          role,
+          email,
+          city
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to join the waitlist.');
+      }
+
+      message.textContent =
+        'Thank you — you are on the BaristaMatch early-access list!';
+
+      f.reset();
+
+    } catch (error) {
+      console.error(error);
+      message.textContent =
+        'Sorry, something went wrong. Please try again.';
+
+    } finally {
+      button.disabled = false;
+      button.textContent = originalButtonText;
+    }
+  });
+}
+
+handleForm(document.getElementById('inline-form'));
+handleForm(document.getElementById('modal-form'));
 </script>
 </body>
 </html>
