@@ -6,44 +6,111 @@ export default async function handler(req, res) {
   try {
     const { role, email, city } = req.body || {};
 
-    if (!role || !email || !city) {
+    const cleanRole = String(role || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanCity = String(city || "").trim();
+
+    if (!cleanRole || !cleanEmail || !cleanCity) {
       return res.status(400).json({
         error: "Please complete all fields."
       });
     }
 
-    const safeRole = escapeHtml(role);
-    const safeEmail = escapeHtml(email);
-    const safeCity = escapeHtml(city);
+    if (!cleanEmail.includes("@")) {
+      return res.status(400).json({
+        error: "Please enter a valid email address."
+      });
+    }
 
-    // 1. Send notification to BaristaMatch
+    // 1. Check whether this email is already on the waitlist
+    const existingResponse = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/waitlist_signups?email=eq.${encodeURIComponent(cleanEmail)}&select=id`,
+      {
+        method: "GET",
+        headers: {
+          apikey: process.env.SUPABASE_SECRET_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`
+        }
+      }
+    );
+
+    if (!existingResponse.ok) {
+      const errorText = await existingResponse.text();
+      console.error("Supabase lookup error:", errorText);
+
+      return res.status(500).json({
+        error: "We couldn't save your signup. Please try again."
+      });
+    }
+
+    const existingRows = await existingResponse.json();
+
+    if (existingRows.length > 0) {
+      return res.status(200).json({
+        success: true,
+        alreadyJoined: true,
+        message: "You're already on the BaristaMatch waitlist."
+      });
+    }
+
+    // 2. Save signup to Supabase
+    const databaseResponse = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/waitlist_signups`,
+      {
+        method: "POST",
+        headers: {
+          apikey: process.env.SUPABASE_SECRET_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal"
+        },
+        body: JSON.stringify({
+          email: cleanEmail,
+          role: cleanRole,
+          city: cleanCity,
+          status: "waitlisted"
+        })
+      }
+    );
+
+    if (!databaseResponse.ok) {
+      const errorText = await databaseResponse.text();
+      console.error("Supabase insert error:", errorText);
+
+      return res.status(500).json({
+        error: "We couldn't save your signup. Please try again."
+      });
+    }
+
+    const safeRole = escapeHtml(cleanRole);
+    const safeEmail = escapeHtml(cleanEmail);
+    const safeCity = escapeHtml(cleanCity);
+
+    // 3. Send BaristaMatch internal notification
     const internalEmail = await sendEmail({
       from: "BaristaMatch <updates@updates.baristajobmatch.com>",
       to: ["hello@baristajobmatch.com"],
-      reply_to: email,
-      subject: `New BaristaMatch Waitlist Signup — ${role}`,
+      reply_to: cleanEmail,
+      subject: `New BaristaMatch Waitlist Signup — ${cleanRole}`,
       html: `
         <div style="font-family:Arial,sans-serif;line-height:1.6;color:#2b1a10">
           <h2>New BaristaMatch Waitlist Signup</h2>
           <p><strong>Role:</strong> ${safeRole}</p>
           <p><strong>Email:</strong> ${safeEmail}</p>
           <p><strong>City:</strong> ${safeCity}</p>
+          <p><strong>Status:</strong> Waitlisted</p>
         </div>
       `
     });
 
     if (!internalEmail.ok) {
-      console.error("Internal email failed:", internalEmail.data);
-
-      return res.status(500).json({
-        error: "Signup notification could not be sent."
-      });
+      console.error("Internal notification failed:", internalEmail.data);
     }
 
-    // 2. Automatically email the person who signed up
+    // 4. Send confirmation email to applicant
     const confirmationEmail = await sendEmail({
       from: "BaristaMatch <updates@updates.baristajobmatch.com>",
-      to: [email],
+      to: [cleanEmail],
       reply_to: "hello@baristajobmatch.com",
       subject: "Welcome to the BaristaMatch waitlist ☕",
       html: `
@@ -57,34 +124,23 @@ export default async function handler(req, res) {
           color:#321708;
           line-height:1.6;
         ">
-
-          <div style="
-            font-size:30px;
-            font-weight:800;
-            margin-bottom:4px;
-          ">
+          <div style="font-size:30px;font-weight:800;">
             Barista<span style="color:#a95820;">Match</span>
           </div>
 
-          <div style="
-            color:#746a61;
-            font-size:14px;
-            margin-bottom:32px;
-          ">
+          <div style="color:#746a61;font-size:14px;margin:4px 0 32px;">
             Swipe. Match. Brew.
           </div>
 
-          <h2 style="font-size:26px;">
-            You're on the list! ☕
-          </h2>
+          <h2>You're on the list! ☕</h2>
 
           <p>
             Thanks for joining the BaristaMatch early-access waitlist.
           </p>
 
           <p>
-            We're building a simple way for talented baristas and
-            great local coffee shops to find each other faster.
+            We're building a faster and simpler way for talented baristas
+            and great local coffee shops to find each other.
           </p>
 
           <div style="
@@ -94,13 +150,8 @@ export default async function handler(req, res) {
             padding:18px;
             margin:24px 0;
           ">
-            <p style="margin:4px 0;">
-              <strong>Signed up as:</strong> ${safeRole}
-            </p>
-
-            <p style="margin:4px 0;">
-              <strong>City:</strong> ${safeCity}
-            </p>
+            <p><strong>Signed up as:</strong> ${safeRole}</p>
+            <p><strong>City:</strong> ${safeCity}</p>
           </div>
 
           <p>
@@ -133,14 +184,16 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
+      saved: true,
+      internalEmailSent: internalEmail.ok,
       confirmationSent: confirmationEmail.ok
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("Waitlist error:", error);
 
     return res.status(500).json({
-      error: "Something went wrong."
+      error: "Something went wrong. Please try again."
     });
   }
 }
