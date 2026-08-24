@@ -32,7 +32,7 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
     <a class="brand" href="#home"><i>☕</i><span>Barista<b>Match</b></span></a>
     <div class="links"><a href="#how">How It Works</a><a href="#baristas">For Baristas</a><a href="#cafes">For Cafés</a><a href="#pricing">Pricing</a><a href="#get-started">Get Started</a></div>
     <div class="actions" id="guest-actions"><button class="btn" id="login">Log in</button><button class="btn dark" id="signup">Create account</button></div>
-    <div class="actions" id="user-actions" hidden><span class="account-email" id="account-email"></span><button class="btn" id="logout">Log out</button></div>
+    <div class="actions" id="user-actions" hidden><span class="account-email" id="account-email"></span><a class="btn dark" href="/dashboard.html">Dashboard</a><button class="btn" id="logout">Log out</button></div>
   </nav>
 </header>
 
@@ -163,6 +163,7 @@ function showAuthView(view){
 }
 function setSubmitting(authForm,submitting,label){const button=authForm.querySelector('button[type="submit"]');if(!button.dataset.label)button.dataset.label=button.textContent;button.disabled=submitting;button.textContent=submitting?label:button.dataset.label}
 function updateHeader(session){const loggedIn=Boolean(session&&session.user);document.getElementById('guest-actions').hidden=loggedIn;document.getElementById('user-actions').hidden=!loggedIn;document.getElementById('account-email').textContent=loggedIn?session.user.email:''}
+function goToDashboard(session,event){if(!session||event==='PASSWORD_RECOVERY')return;if(location.pathname==='/'&&(event==='SIGNED_IN'||location.hash.includes('access_token')))location.replace('/dashboard.html')}
 
 document.getElementById('login').onclick=()=>showAuthView('login');
 document.getElementById('signup').onclick=()=>showAuthView('signup');
@@ -179,6 +180,7 @@ async function initializeAuth(){
     authClient=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
     authClient.auth.onAuthStateChange((event,session)=>{
       updateHeader(session);
+      goToDashboard(session,event);
       if(event==='PASSWORD_RECOVERY')showAuthView('reset');
       if(event==='SIGNED_IN'&&authModal.open&&!authForms.reset.hidden){return}
       if(event==='SIGNED_IN'&&authModal.open){authModal.close()}
