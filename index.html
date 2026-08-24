@@ -18,18 +18,18 @@ nav{min-height:72px;display:flex;align-items:center;gap:22px}.brand{display:flex
 .controls{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}.control{background:white;border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center}.control h3{margin:7px 0}.control p{color:var(--muted);font-size:13px;line-height:1.5}.control button{width:100%;margin-top:8px}
 .section{padding:70px 0}.section h2{font-family:Georgia,serif;font-size:clamp(34px,4vw,52px);margin:8px 0 18px}.eyebrow{color:var(--caramel);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.15em}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:23px}.card p{color:var(--muted);line-height:1.6}
-.waitlist{background:linear-gradient(135deg,var(--brown),#603516);color:white;border-radius:26px;padding:44px;display:grid;grid-template-columns:1fr 1fr;gap:40px}.waitlist p{color:#eadfd5}.form{display:grid;gap:12px}.form input,.form select{width:100%;margin-top:6px;padding:12px;border:1px solid #ffffff33;border-radius:10px;background:#ffffff14;color:white}.form option{color:#111}.form button{background:white;color:var(--brown);border:0;padding:13px;border-radius:10px;font-weight:800}.msg{min-height:18px}
+.register-cta{background:linear-gradient(135deg,var(--brown),#603516);color:white;border-radius:26px;padding:44px;display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}.register-cta p{color:#eadfd5;line-height:1.6}.register-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}.register-option{background:#ffffff12;border:1px solid #ffffff2e;border-radius:16px;padding:20px}.register-option h3{margin:0 0 8px}.register-option p{font-size:14px;min-height:44px}.register-option .btn{width:100%;background:white;color:var(--brown);border-color:white}
 footer{padding:28px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;color:var(--muted);font-size:13px}
 dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 30px);box-shadow:0 24px 70px #0003}dialog::backdrop{background:#21120899}.modal{padding:27px;position:relative}.close{position:absolute;right:13px;top:10px;border:0;background:transparent;font-size:25px}.modal h2{font-family:Georgia,serif;font-size:32px;margin-bottom:8px}.modal label{display:block;margin:12px 0}.modal input,.modal select{display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:10px}.auth-form{display:grid;gap:3px}.auth-form .btn{width:100%;margin-top:10px}.auth-switch{border:0;background:transparent;color:var(--caramel);font-weight:800;cursor:pointer;padding:8px}.auth-links{display:flex;justify-content:center;gap:8px;align-items:center;margin-top:12px;font-size:14px}.auth-msg{min-height:20px;margin:10px 0 0;color:var(--muted);line-height:1.4}.auth-msg.error{color:#a52a2a}.account-email{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:center;font-size:13px;font-weight:700;color:var(--muted)}
-@media(max-width:900px){.links{display:none}.controls,.grid{grid-template-columns:repeat(2,1fr)}.waitlist{grid-template-columns:1fr}}
-@media(max-width:560px){nav{gap:10px}.brand{font-size:19px}.brand i{width:38px;height:38px}.actions{gap:6px}.actions .btn{padding:9px 10px;font-size:13px}.account-email{display:none}.controls,.grid{grid-template-columns:1fr}.waitlist{padding:30px 20px}footer{display:grid;gap:14px}}
+@media(max-width:900px){.links{display:none}.controls,.grid{grid-template-columns:repeat(2,1fr)}.register-cta{grid-template-columns:1fr}}
+@media(max-width:560px){nav{gap:10px}.brand{font-size:19px}.brand i{width:38px;height:38px}.actions{gap:6px}.actions .btn{padding:9px 10px;font-size:13px}.account-email{display:none}.controls,.grid,.register-options{grid-template-columns:1fr}.register-cta{padding:30px 20px}footer{display:grid;gap:14px}}
 </style>
 </head>
 <body>
 <header>
   <nav class="wrap">
     <a class="brand" href="#home"><i>☕</i><span>Barista<b>Match</b></span></a>
-    <div class="links"><a href="#how">How It Works</a><a href="#baristas">For Baristas</a><a href="#cafes">For Cafés</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a></div>
+    <div class="links"><a href="#how">How It Works</a><a href="#baristas">For Baristas</a><a href="#cafes">For Cafés</a><a href="#pricing">Pricing</a><a href="#get-started">Get Started</a></div>
     <div class="actions" id="guest-actions"><button class="btn" id="login">Log in</button><button class="btn dark" id="signup">Create account</button></div>
     <div class="actions" id="user-actions" hidden><span class="account-email" id="account-email"></span><button class="btn" id="logout">Log out</button></div>
   </nav>
@@ -44,7 +44,7 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
       <article class="control"><div>👆</div><h3>Try the swipe</h3><p>Preview a barista showing interest in a Coffee Shop role.</p><button class="btn dark" id="swipe">Swipe Up</button></article>
       <article class="control"><div>❤️</div><h3>Create a match</h3><p>See how mutual interest opens messaging.</p><button class="btn" id="match">Show Match</button></article>
       <article class="control"><div>💬</div><h3>Send a message</h3><p>Preview the café and barista conversation.</p><button class="btn" id="message">Open Chat</button></article>
-      <article class="control"><div>☕</div><h3>Join early access</h3><p>Sign up as a barista or a local coffee shop.</p><button class="btn dark" data-waitlist>Join Waitlist</button></article>
+      <article class="control"><div>☕</div><h3>Create your account</h3><p>Register as a barista or a local coffee shop.</p><button class="btn dark" data-auth-view="signup">Sign up</button></article>
     </div>
   </section>
 
@@ -72,15 +72,13 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
     <div class="grid"><article class="card"><h3>Starter — $0</h3><p>One active job and basic matching.</p></article><article class="card"><h3>Pro — $39/month</h3><p>Unlimited jobs, matching, scheduling, and candidate filters.</p></article><article class="card"><h3>Multi-location — $89/month</h3><p>Multiple shops, team accounts, analytics, and priority support.</p></article></div>
   </section>
 
-  <section class="section wrap" id="faq">
-    <div class="waitlist">
-      <div><span class="eyebrow" style="color:#efc49e">Early access</span><h2>Help launch BaristaMatch in your city.</h2><p>Join the first group of baristas and local coffee shops testing the platform.</p></div>
-      <form class="form" id="inline-form">
-        <label>I am a<select name="role"><option value="">Choose one</option><option>Barista</option><option>Café owner or manager</option></select></label>
-        <label>Email<input name="email" type="email" placeholder="you@example.com"></label>
-        <label>City<input name="city" placeholder="Miami, FL"></label>
-        <button type="submit">Join Waitlist</button><p class="msg"></p>
-      </form>
+  <section class="section wrap" id="get-started">
+    <div class="register-cta">
+      <div><span class="eyebrow" style="color:#efc49e">Get started</span><h2>Your next coffee connection starts here.</h2><p>Create a free account, choose your side of the marketplace, and start building your BaristaMatch profile.</p></div>
+      <div class="register-options">
+        <article class="register-option"><h3>For Baristas</h3><p>Find local café opportunities that fit your skills and schedule.</p><button class="btn" data-signup-role="barista">Register as a Barista</button></article>
+        <article class="register-option"><h3>For Cafés</h3><p>Connect with local baristas who are ready to work.</p><button class="btn" data-signup-role="cafe_owner_manager">Register your Café</button></article>
+      </div>
     </div>
   </section>
 </main>
@@ -93,12 +91,6 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
     <span class="eyebrow" id="modal-tag">BaristaMatch</span>
     <h2 id="modal-title">Welcome</h2>
     <p id="modal-copy"></p>
-    <form id="modal-form" style="display:none">
-      <label>I am a<select name="role"><option value="">Choose one</option><option>Barista</option><option>Café owner or manager</option></select></label>
-      <label>Email<input name="email" type="email" placeholder="you@example.com"></label>
-      <label>City<input name="city" placeholder="Miami, FL"></label>
-      <button class="btn dark" type="submit">Join Waitlist</button><p class="msg"></p>
-    </form>
   </div>
 </dialog>
 
@@ -142,71 +134,12 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <script>
-const modal=document.getElementById('modal'),title=document.getElementById('modal-title'),copy=document.getElementById('modal-copy'),form=document.getElementById('modal-form');
-function openModal(t,c,showForm=false){title.textContent=t;copy.textContent=c;form.style.display=showForm?'block':'none';modal.showModal()}
+const modal=document.getElementById('modal'),title=document.getElementById('modal-title'),copy=document.getElementById('modal-copy');
+function openModal(t,c){title.textContent=t;copy.textContent=c;modal.showModal()}
 document.getElementById('close').onclick=()=>modal.close();
 document.getElementById('swipe').onclick=()=>openModal('Interested!','Your interest was sent to Coffee Shop. If the shop also likes your profile, it becomes a match.');
 document.getElementById('match').onclick=()=>openModal('It’s a Match!','You and Coffee Shop both showed interest. Messaging is now unlocked.');
 document.getElementById('message').onclick=()=>openModal('Coffee Shop Chat','Coffee Shop: Hi Sofia! We love your profile. Are you available Wednesday morning?');
-document.querySelectorAll('[data-waitlist]').forEach(b=>b.onclick=()=>openModal('Join the Waitlist','Be among the first baristas and coffee shops to test BaristaMatch.',true));
-function handleForm(f) {
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const role = f.role.value;
-    const email = f.email.value.trim();
-    const city = f.city.value.trim();
-    const message = f.querySelector('.msg');
-    const button = f.querySelector('button[type="submit"]');
-
-    if (!role || !email || !city) {
-      message.textContent = 'Please complete all fields.';
-      return;
-    }
-
-    const originalButtonText = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Joining...';
-    message.textContent = 'Sending...';
-
-    try {
-      const response = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          role,
-          email,
-          city
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Unable to join the waitlist.');
-      }
-
-      message.textContent =
-        'Thank you — you are on the BaristaMatch early-access list!';
-
-      f.reset();
-
-    } catch (error) {
-      console.error(error);
-      message.textContent =
-        'Sorry, something went wrong. Please try again.';
-
-    } finally {
-      button.disabled = false;
-      button.textContent = originalButtonText;
-    }
-  });
-}
-
-handleForm(document.getElementById('inline-form'));
-handleForm(document.getElementById('modal-form'));
 
 const authModal=document.getElementById('auth-modal');
 const authTitle=document.getElementById('auth-title');
@@ -234,6 +167,7 @@ document.getElementById('login').onclick=()=>showAuthView('login');
 document.getElementById('signup').onclick=()=>showAuthView('signup');
 document.getElementById('auth-close').onclick=()=>authModal.close();
 document.querySelectorAll('[data-auth-view]').forEach(button=>button.onclick=()=>showAuthView(button.dataset.authView));
+document.querySelectorAll('[data-signup-role]').forEach(button=>button.onclick=()=>{showAuthView('signup');authForms.signup.role.value=button.dataset.signupRole});
 
 async function initializeAuth(){
   try{
