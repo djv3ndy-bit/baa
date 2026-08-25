@@ -1,0 +1,65 @@
+name: Clean mobile Messages layout
+on:
+  push:
+    paths:
+      - '.github/workflows/clean-mobile-messages.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove duplicate headings and mobile conversation repetition
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('dashboard.html')
+          s=p.read_text()
+
+          # Remove inner Messages heading because the dashboard top bar already says Messages.
+          old="return `<div class=\"section-head\"><div><h2>Messages</h2><p>Private conversations with your matched ${currentRole==='barista'?'cafés':'baristas'}.</p></div></div><section class=\"messages-workspace\">"
+          new="return `<div class=\"messages-intro\"><p>Private conversations with your matched ${currentRole==='barista'?'cafés':'baristas'}.</p></div><section class=\"messages-workspace\">"
+          if old not in s: raise SystemExit('messages heading marker not found')
+          s=s.replace(old,new,1)
+
+          # Add clean intro styling and a mobile-only back button.
+          marker='.messages-workspace{display:grid;'
+          insert='.messages-intro{margin:0 0 16px}.messages-intro p{margin:0;color:var(--muted);font-size:15px}.chat-back{display:none;border:0;background:transparent;color:var(--brown);font-size:25px;line-height:1;padding:6px 8px 6px 0}\n'
+          if insert.strip() not in s:
+              if marker not in s: raise SystemExit('messages css marker missing')
+              s=s.replace(marker,insert+marker,1)
+
+          # On phones show either conversation list OR chat, like iMessage/WhatsApp.
+          mobile='.messages-workspace{grid-template-columns:1fr;min-height:0}.conversation-sidebar{border-right:0;border-bottom:1px solid var(--line)}'
+          mobile_new='.messages-workspace{grid-template-columns:1fr;min-height:0}.conversation-sidebar{border-right:0;border-bottom:1px solid var(--line)}.messages-workspace.chat-open .conversation-sidebar{display:none}.messages-workspace:not(.chat-open) .chat-panel{display:none}.messages-workspace.chat-open .chat-panel{display:flex}.chat-back{display:inline-grid;place-items:center}.chat-header{gap:8px}'
+          if mobile not in s: raise SystemExit('mobile messages css marker missing')
+          s=s.replace(mobile,mobile_new,1)
+
+          # Add back control to chat header.
+          old_header="panel.innerHTML=`<div class=\"chat-header\"><span class=\"conversation-avatar\">${currentRole==='barista'?'☕':'👤'}</span>"
+          new_header="panel.closest('.messages-workspace')?.classList.add('chat-open');panel.innerHTML=`<div class=\"chat-header\"><button class=\"chat-back\" type=\"button\" aria-label=\"Back to conversations\">‹</button><span class=\"conversation-avatar\">${currentRole==='barista'?'☕':'👤'}</span>"
+          if old_header not in s: raise SystemExit('chat header marker missing')
+          s=s.replace(old_header,new_header,1)
+
+          # Wire back button after the chat markup is inserted.
+          old_form="const form=document.getElementById('chat-compose');form.onsubmit=sendInboxMessage;"
+          new_form="panel.querySelector('.chat-back')?.addEventListener('click',()=>{panel.closest('.messages-workspace')?.classList.remove('chat-open');activeMessageApplicationId=null;if(messageRealtimeChannel){activeClient.removeChannel(messageRealtimeChannel);messageRealtimeChannel=null}});const form=document.getElementById('chat-compose');form.onsubmit=sendInboxMessage;"
+          if old_form not in s: raise SystemExit('chat form marker missing')
+          s=s.replace(old_form,new_form,1)
+
+          p.write_text(s)
+          PY
+      - name: Verify cleanup
+        run: |
+          grep -q 'messages-intro' dashboard.html
+          grep -q 'chat-open .conversation-sidebar' dashboard.html
+          grep -q 'chat-back' dashboard.html
+          ! grep -q '<h2>Messages</h2><p>Private conversations' dashboard.html
+      - name: Commit cleanup
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Clean mobile Messages layout"
+          git push
