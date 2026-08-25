@@ -1,1 +1,1 @@
-{"cleanUrls":true,"trailingSlash":false}
+{"cleanUrls":true,"trailingSlash":false,"rewrites":[{"source":"/favicon.ico","destination":"/assets/favicon-32-v2.png"}]}
