@@ -159,6 +159,12 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
   .account-actions-card{align-items:flex-start;flex-direction:column}.account-logout-button{width:100%}
 }
 
+
+/* Remove repeated content titles when the page header already names the section */
+.content > .section-head h2{display:none!important}
+.content > .section-head h2 + p{margin-top:0}
+.content > .section-head:has(h2){margin-top:0}
+
 </style>
 </head>
 <body>
