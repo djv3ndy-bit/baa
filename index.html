@@ -255,14 +255,15 @@ authForms.login.addEventListener('submit',async(event)=>{
 
 authForms.forgot.addEventListener('submit',async(event)=>{
   event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}
-  const data=new FormData(event.currentTarget);setSubmitting(event.currentTarget,true,'Sending...');
+  const form=event.currentTarget;
+  const data=new FormData(form);setSubmitting(form,true,'Sending...');
   const email=String(data.get('email')).trim();
   try{
     const {error}=await withTimeout(authClient.auth.resetPasswordForEmail(email,{redirectTo:'https://www.baristajobmatch.com/reset-password.html'}));
     if(error)throw error;
-    event.currentTarget.reset();document.getElementById('forgot-sent-copy').innerHTML='<strong>Your reset email has been sent.</strong><br>Check your inbox and spam folder, then open the secure link to choose a new password.';showAuthView('forgotSent');
+    form.reset();document.getElementById('forgot-sent-copy').innerHTML='<strong>Your reset email has been sent.</strong><br>Check your inbox and spam folder, then open the secure link to choose a new password.';showAuthView('forgotSent');
   }catch(error){setAuthMessage(error.message||'We could not send the reset email. Please try again.',true)}
-  finally{setSubmitting(event.currentTarget,false)}
+  finally{setSubmitting(form,false)}
 });
 
 authForms.reset.addEventListener('submit',async(event)=>{
