@@ -1,4 +1,5 @@
 const jsonHeaders = { "Cache-Control": "no-store", "Content-Type": "application/json" };
+const DELETE_COOLDOWN_DAYS = 7;
 
 export default async function handler(req, res) {
   Object.entries(jsonHeaders).forEach(([name, value]) => res.setHeader(name, value));
@@ -30,6 +31,19 @@ export default async function handler(req, res) {
 
     const user = await userResponse.json();
     if (!user?.id) return res.status(401).json({ error: "Your session expired. Please log in again." });
+
+    const createdAt = user.created_at ? new Date(user.created_at).getTime() : NaN;
+    if (Number.isFinite(createdAt)) {
+      const ageMs = Date.now() - createdAt;
+      const cooldownMs = DELETE_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+      if (ageMs < cooldownMs) {
+        const remainingDays = Math.max(1, Math.ceil((cooldownMs - ageMs) / (24 * 60 * 60 * 1000)));
+        return res.status(409).json({
+          error: `For account security, deletion becomes available ${DELETE_COOLDOWN_DAYS} days after signup. Please try again in about ${remainingDays} ${remainingDays === 1 ? "day" : "days"}.`
+        });
+      }
+    }
+
     const adminHeaders = { apikey: secretKey };
     if (!secretKey.startsWith("sb_secret_")) adminHeaders.Authorization = `Bearer ${secretKey}`;
 
