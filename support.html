@@ -24,7 +24,7 @@ header{position:sticky;top:0;z-index:20;background:#fbf7f1ed;backdrop-filter:blu
 <p>Tell us what happened. For bugs, include what you clicked and what you expected to happen.</p>
 <form class="form" id="support-form">
 <div class="row"><label>Name (optional)<input name="name" autocomplete="name" placeholder="Your name"></label><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div>
-<label>What do you need help with?<select name="issue_type" required><option value="">Choose one</option><option value="bug">Website or app bug</option><option value="account">Account or login</option><option value="barista">Barista profile or jobs</option><option value="cafe">Café profile or hiring</option><option value="billing">Billing or subscription</option><option value="feedback">Product feedback</option><option value="other">Other</option></select></label>
+<label>What do you need help with?<select name="issue_type" required><option value="">Choose one</option><option value="bug">Website or app bug</option><option value="account">Account or login</option><option value="barista">Barista profile or jobs</option><option value="cafe">Café profile or hiring</option><option value="billing">Billing or subscription</option><option value="feedback">Product feedback</option><option value="question">General question</option><option value="other">Other</option></select></label>
 <label>Subject<input name="subject" maxlength="180" required placeholder="Example: Dashboard won't open"></label>
 <label>Describe the issue<textarea name="description" maxlength="5000" required minlength="10" placeholder="What happened? What page were you on? What were you trying to do?"></textarea></label>
 <label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
@@ -49,6 +49,11 @@ const successBox=document.getElementById('ticket-success');
 const ticketCopy=document.getElementById('ticket-copy');
 supportForm.page_url.value=document.referrer||location.href;
 supportForm.browser_info.value=navigator.userAgent;
+const supportParams=new URLSearchParams(location.search);
+const requestedType=supportParams.get('type');
+if(requestedType&&supportForm.issue_type.querySelector(`option[value="${CSS.escape(requestedType)}"]`)){supportForm.issue_type.value=requestedType}
+if(requestedType==='question'){supportForm.subject.placeholder='Example: How does matching work?';supportForm.description.placeholder='What would you like help with?'}
+
 
 supportForm.addEventListener('submit',async(event)=>{
   event.preventDefault();
