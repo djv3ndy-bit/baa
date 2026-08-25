@@ -190,12 +190,13 @@ function setSubmitting(authForm,submitting,label){const button=authForm.querySel
 function updateHeader(session){const loggedIn=Boolean(session&&session.user);document.getElementById('guest-actions').hidden=loggedIn;document.getElementById('user-actions').hidden=!loggedIn;document.getElementById('account-email').textContent=loggedIn?session.user.email:''}
 function goToDashboard(session,event){if(!session||event==='PASSWORD_RECOVERY')return;if(location.pathname==='/'&&(event==='SIGNED_IN'||location.hash.includes('access_token')))location.replace('/dashboard.html')}
 
-document.getElementById('login').onclick=()=>showAuthView('login');
+document.getElementById('login').onclick=()=>location.href='/login.html';
 document.getElementById('signup').onclick=()=>location.href='/signup.html';
 document.getElementById('auth-close').onclick=()=>authModal.close();
 document.querySelectorAll('[data-auth-view]').forEach(button=>button.onclick=()=>button.dataset.authView==='signup'?location.assign('/signup.html'):showAuthView(button.dataset.authView));
 document.querySelectorAll('[data-signup-role]').forEach(button=>button.onclick=()=>location.href='/signup.html?role='+encodeURIComponent(button.dataset.signupRole));
-if(new URLSearchParams(location.search).get('login')==='required'){showAuthView('login');setAuthMessage('Welcome back. Log in to open your dashboard.')}
+if(new URLSearchParams(location.search).get('login')==='required')location.replace('/login.html');
+if(new URLSearchParams(location.search).get('forgot')==='1')showAuthView('forgot');
 
 async function initializeAuth(){
   try{
