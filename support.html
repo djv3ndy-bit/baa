@@ -66,7 +66,7 @@ supportForm.addEventListener('submit',async(event)=>{
     const data=await response.json();
     if(!response.ok)throw new Error(data.error||'Unable to send your request.');
     if(!data.ticket_id){throw new Error('Unable to create a ticket. Please try again.');}
-    successBox.style.display='block';ticketCopy.textContent=`Your ticket is ${data.ticket_id}. We also sent a confirmation email to you.`;formMessage.textContent='Support request sent successfully.';formMessage.className='message success';
+    successBox.style.display='block';ticketCopy.textContent=data.confirmation_sent?`Your ticket is ${data.ticket_id}. A confirmation email has been sent to you.`:`Your ticket is ${data.ticket_id}. Your request was saved, but the confirmation email could not be delivered right now. Please keep this ticket number.`;formMessage.textContent=data.confirmation_sent?'Support request sent successfully.':'Support request saved. Please keep your ticket number.';formMessage.className=data.confirmation_sent?'message success':'message';
     supportForm.reset();supportForm.page_url.value=document.referrer||location.href;supportForm.browser_info.value=navigator.userAgent;
   }catch(error){formMessage.textContent=error.message;formMessage.className='message error'}finally{button.disabled=false;button.textContent=original}
 });

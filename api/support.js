@@ -12,6 +12,16 @@ async function resend(payload) {
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
   let data={}; try{data=await response.json()}catch{} return {ok:response.ok,data};
 }
+
+async function resendWithRetry(payload, attempts = 3) {
+  let result={ok:false,data:{}};
+  for(let i=0;i<attempts;i++){
+    result=await resend(payload);
+    if(result.ok)return result;
+    if(i<attempts-1)await new Promise(resolve=>setTimeout(resolve,350*(i+1)));
+  }
+  return result;
+}
 function supportEmailHtml({name,ticket,subject}) {
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
 <body style="margin:0;padding:0;background:#f4f0eb;-webkit-text-size-adjust:100%;text-size-adjust:100%;">
@@ -49,12 +59,12 @@ export default async function handler(req,res){
     const body=req.body||{};if(clean(body.website,200))return res.status(200).json({success:true});
     const name=clean(body.name,120),email=clean(body.email,320).toLowerCase(),issueType=clean(body.issue_type,60),subject=clean(body.subject,180),description=clean(body.description,5000),pageUrl=clean(body.page_url,1000),browserInfo=clean(body.browser_info,1000);
     if(!email||!email.includes('@')||!issueType||!subject||description.length<10)return res.status(400).json({error:'Please complete all required fields.'});
-    if(!new Set(['bug','account','barista','cafe','billing','feedback','other']).has(issueType))return res.status(400).json({error:'Please choose a valid issue type.'});
+    if(!new Set(['bug','account','barista','cafe','billing','feedback','question','other']).has(issueType))return res.status(400).json({error:'Please choose a valid issue type.'});
     const ticketId=makeTicketId();
     const dbResponse=await fetch(`${supabaseUrl}/rest/v1/support_tickets`,{method:'POST',headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({ticket_id:ticketId,email,name:name||null,issue_type:issueType,subject,description,page_url:pageUrl||null,browser_info:browserInfo||null,status:'new'})});
     if(!dbResponse.ok){console.error('Support insert error:',await dbResponse.text());return res.status(500).json({error:'We could not create your support ticket. Please try again.'})}
     const safeName=escapeHtml(name||'there'),safeTicket=escapeHtml(ticketId),safeSubject=escapeHtml(subject),safeDescription=escapeHtml(description).replaceAll('\n','<br>'),safeType=escapeHtml(issueType),safePage=escapeHtml(pageUrl||'Not provided');
-    const userEmail=await resend({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:[email],reply_to:'hello@baristajobmatch.com',subject:`We received your support request — ${ticketId}`,html:supportEmailHtml({name:safeName,ticket:safeTicket,subject:safeSubject})});
+    const userEmail=await resendWithRetry({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:[email],reply_to:'hello@baristajobmatch.com',subject:`We received your support request — ${ticketId}`,html:supportEmailHtml({name:safeName,ticket:safeTicket,subject:safeSubject})},3);
     const internalEmail=await resend({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:['hello@baristajobmatch.com'],reply_to:email,subject:`${issueType==='bug'?'🐞 New Bug':'New Support Ticket'} — ${ticketId}`,html:`<div style="max-width:600px;margin:0 auto;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#2b1a10"><h2 style="font-size:24px;line-height:30px">New BaristaMatch Support Ticket</h2><p><strong>Ticket:</strong> ${safeTicket}</p><p><strong>Type:</strong> ${safeType}</p><p><strong>From:</strong> ${escapeHtml(email)}</p><p><strong>Subject:</strong> ${safeSubject}</p><p><strong>Description:</strong><br>${safeDescription}</p><p><strong>Page:</strong> ${safePage}</p><p><strong>Status:</strong> New</p></div>`});
     if(!userEmail.ok)console.error('Support confirmation email failed:',userEmail.data);if(!internalEmail.ok)console.error('Support internal email failed:',internalEmail.data);
     return res.status(200).json({success:true,ticket_id:ticketId,confirmation_sent:userEmail.ok});
