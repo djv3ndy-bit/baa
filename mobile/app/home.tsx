@@ -30,14 +30,14 @@ export default function HomeScreen() {
       const [{ count: jobs }, { count: matches }, { count: unread }] = await Promise.all([
         supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('status', 'active'),
         supabase.from('applications').select('*', { count: 'exact', head: true }).eq('barista_id', auth.user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', auth.user.id).is('read_at', null),
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', auth.user.id).is('read_at', null),
       ]);
       setCounts({ jobs: jobs || 0, matches: matches || 0, messages: unread || 0 });
     } else {
       const [{ count: jobs }, { count: matches }, { count: unread }] = await Promise.all([
         supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('owner_id', auth.user.id).eq('status', 'active'),
         supabase.from('applications').select('*,jobs!inner(owner_id)', { count: 'exact', head: true }).eq('jobs.owner_id', auth.user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', auth.user.id).is('read_at', null),
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', auth.user.id).is('read_at', null),
       ]);
       setCounts({ jobs: jobs || 0, matches: matches || 0, messages: unread || 0 });
     }
