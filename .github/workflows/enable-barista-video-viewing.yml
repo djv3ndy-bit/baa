@@ -1,0 +1,43 @@
+name: Enable barista video viewing
+on:
+  push:
+    paths:
+      - '.github/workflows/enable-barista-video-viewing.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable café playback of barista videos
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('dashboard.html')
+          s=p.read_text()
+
+          s=s.replace("Your private coffee video is saved. Signed playback is available while you are logged in.","Your coffee showcase video is saved and can be viewed by cafés on BaristaMatch.",1)
+          s=s.replace("This barista added a private coffee-making video.","Watch this barista’s coffee showcase video.",1)
+
+          old="async function openCandidate(id){const profile=candidateProfiles.find(item=>item.id===id);if(!profile)return;const {error}=await activeClient.from('profile_views').insert({viewer_id:currentUser.id,viewed_profile_id:id});if(error)console.error('Could not record profile view:',error);document.querySelector('.top h1').textContent=profile.display_name||'Barista Profile';document.getElementById('content').innerHTML=`<div class=\"section-head\"><div><h2>${escapeHtml(profile.display_name||'Barista')}</h2><p>${escapeHtml(profile.location||'Location not added')}</p></div><button class=\"secondary\" data-go=\"Candidates\">← Back to candidates</button></div><div class=\"grid\"><article class=\"card\"><h3>About</h3><p class=\"empty\">${escapeHtml(profile.bio||'This barista is still writing their introduction.')}</p><h3>Skills</h3><p class=\"empty\">${escapeHtml((profile.skills||[]).join(' · ')||'Skills coming soon')}</p><h3>Experience</h3><p class=\"empty\">${escapeHtml(profile.experience||'Experience details coming soon')}</p></article><article class=\"card\"><h3>Availability</h3><p class=\"empty\">${escapeHtml(profile.availability||'Not added')}</p><h3>Desired pay</h3><p class=\"empty\">${escapeHtml(profile.pay_expectation||'Open to discussion')}</p><div class=\"item\"><div class=\"avatar\">${profile.video_path?'🎬':'☕'}</div><div class=\"itemtext\"><b>${profile.video_path?'Coffee video available':'Coffee showcase'}</b><small>${profile.video_path?'Watch this barista’s coffee showcase video.':'No video added yet.'}</small></div></div></article></div>`;bindContentActions();window.scrollTo(0,0)}"
+          new="async function openCandidate(id){const profile=candidateProfiles.find(item=>item.id===id);if(!profile)return;const {error}=await activeClient.from('profile_views').insert({viewer_id:currentUser.id,viewed_profile_id:id});if(error)console.error('Could not record profile view:',error);let videoHtml='<div class=\"item\"><div class=\"avatar\">☕</div><div class=\"itemtext\"><b>Coffee showcase</b><small>No video added yet.</small></div></div>';if(profile.video_path){const {data:videoData,error:videoError}=await activeClient.storage.from('coffee-videos').createSignedUrl(profile.video_path,3600);if(videoError)console.error('Could not load barista video:',videoError);if(videoData?.signedUrl)videoHtml=`<div class=\"barista-video-showcase\"><h3>☕ Coffee showcase</h3><video class=\"video-preview\" controls playsinline preload=\"metadata\" src=\"${escapeHtml(videoData.signedUrl)}\"></video><p class=\"empty\">See this barista’s technique, presentation, and coffee skills.</p></div>`;else videoHtml='<div class=\"item\"><div class=\"avatar\">🎬</div><div class=\"itemtext\"><b>Coffee video</b><small>Video playback is temporarily unavailable.</small></div></div>'}document.querySelector('.top h1').textContent=profile.display_name||'Barista Profile';document.getElementById('content').innerHTML=`<div class=\"section-head\"><div><h2>${escapeHtml(profile.display_name||'Barista')}</h2><p>${escapeHtml(profile.location||'Location not added')}</p></div><button class=\"secondary\" data-go=\"Candidates\">← Back to candidates</button></div><div class=\"grid\"><article class=\"card\"><h3>About</h3><p class=\"empty\">${escapeHtml(profile.bio||'This barista is still writing their introduction.')}</p><h3>Skills</h3><p class=\"empty\">${escapeHtml((profile.skills||[]).join(' · ')||'Skills coming soon')}</p><h3>Experience</h3><p class=\"empty\">${escapeHtml(profile.experience||'Experience details coming soon')}</p></article><article class=\"card\"><h3>Availability</h3><p class=\"empty\">${escapeHtml(profile.availability||'Not added')}</p><h3>Desired pay</h3><p class=\"empty\">${escapeHtml(profile.pay_expectation||'Open to discussion')}</p>${videoHtml}</article></div>`;bindContentActions();window.scrollTo(0,0)}"
+          if old not in s:
+              raise SystemExit('openCandidate marker not found')
+          s=s.replace(old,new,1)
+
+          p.write_text(s)
+          PY
+      - name: Verify video upgrade
+        run: |
+          grep -q "createSignedUrl(profile.video_path,3600)" dashboard.html
+          grep -q "can be viewed by cafés on BaristaMatch" dashboard.html
+          grep -q "See this barista’s technique" dashboard.html
+          ! grep -q "private coffee-making video" dashboard.html
+      - name: Commit video upgrade
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Enable café playback of barista videos"
+          git push
