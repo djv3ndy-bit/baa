@@ -1,0 +1,57 @@
+name: Patch safer account deletion UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-account-deletion.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update dashboard deletion experience
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('dashboard.html')
+          text = path.read_text()
+
+          old_dialog = '''<dialog class="profile-dialog" id="delete-dialog"><form class="profile-form" id="delete-form"><h2>Delete your account?</h2><p>This permanently removes your profile and BaristaMatch activity. This action cannot be undone.</p><label class="delete-confirm">Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label><p class="form-status" id="delete-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="delete-cancel">Keep my account</button><button class="danger-button" type="submit">Permanently delete account</button></div></form></dialog>'''
+          new_dialog = '''<dialog class="profile-dialog" id="delete-dialog"><form class="profile-form" id="delete-form"><h2>Close your BaristaMatch account?</h2><p>This permanently removes your profile and BaristaMatch activity. This action cannot be undone.</p><label>Confirm your account email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label><label class="delete-confirm">Type DELETE MY ACCOUNT to confirm<input name="confirmation" autocomplete="off" required placeholder="DELETE MY ACCOUNT"></label><p class="form-status" id="delete-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="delete-cancel">Keep my account</button><button class="danger-button" type="submit">Permanently delete account</button></div></form></dialog>'''
+          if old_dialog not in text:
+              raise SystemExit('Delete dialog marker not found')
+          text = text.replace(old_dialog, new_dialog, 1)
+
+          account_pattern = re.compile(r"function accountSettingsHtml\(\)\{.*?\}\nObject\.defineProperty\(sectionPages\.barista,'Account Settings'", re.S)
+          account_replacement = r'''function accountSettingsHtml(){const hasEmailLogin=(currentUser.identities||[]).some(identity=>identity.provider==='email');const passwordSection=hasEmailLogin?`<form id="password-form"><label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label><label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="10" required></label><label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password" minlength="10" required></label><p class="empty">Use at least 10 characters with uppercase, lowercase, a number, and a symbol.</p><button class="primary" type="submit">Change password</button><p class="form-status" id="password-status" role="status"></p></form>`:`<p>Your account signs in with Google. Your password is managed securely by Google, so password changes should be made in your Google Account.</p><a class="secondary" href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer">Open Google security settings</a>`;const createdAt=Date.parse(currentUser?.created_at||'');const canDelete=Number.isFinite(createdAt)&&(Date.now()-createdAt)>=7*24*60*60*1000;const advancedSettings=canDelete?`<details class="card settings-card" style="padding:0;overflow:hidden"><summary style="padding:20px;cursor:pointer;font-weight:800;color:var(--muted);list-style-position:inside">Advanced settings</summary><div style="padding:0 20px 20px;border-top:1px solid var(--line)"><h3 style="margin-top:20px;color:#8c251d">Close account</h3><p>This option permanently removes your account. For security, account deletion is only available after your account has been active for at least 7 days.</p><button class="danger-button" type="button" data-delete-account>Continue to account deletion</button></div></details>`:'';return `<div class="section-head"><div><h2>Account Settings</h2><p>Manage your login and account safely.</p></div></div><div class="settings-stack"><article class="card settings-card"><h3>Login details</h3><p class="account-email">${escapeHtml(currentUser.email||'')}</p>${passwordSection}</article>${advancedSettings}</div>`}
+Object.defineProperty(sectionPages.barista,'Account Settings' '''
+          text, count = account_pattern.subn(account_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Account settings replacement count was {count}')
+
+          handler_pattern = re.compile(r"document\.getElementById\('delete-form'\)\.onsubmit=async event=>\{.*?\};\ndocument\.getElementById\('job-form'\)", re.S)
+          handler_replacement = r'''document.getElementById('delete-form').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget,status=document.getElementById('delete-status'),button=form.querySelector('[type="submit"]'),confirmation=String(form.confirmation.value||'').trim(),email=String(form.email.value||'').trim().toLowerCase();if(confirmation!=='DELETE MY ACCOUNT'){status.textContent='Type DELETE MY ACCOUNT exactly to continue.';return}if(email!==String(currentUser.email||'').trim().toLowerCase()){status.textContent='Enter the email address for this account exactly.';return}button.disabled=true;button.textContent='Deleting…';status.textContent='';try{const {data:{session},error:sessionError}=await activeClient.auth.getSession();if(sessionError||!session?.access_token)throw new Error('Your session expired. Please log in again.');const response=await fetch('/api/delete-account',{method:'POST',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({confirmation:'DELETE MY ACCOUNT',email})});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||'We could not delete your account.');await activeClient.auth.signOut({scope:'local'}).catch(()=>{});location.replace('/login?account=deleted')}catch(error){status.textContent=error.message||'We could not delete your account. Please try again.';button.disabled=false;button.textContent='Permanently delete account'}};
+document.getElementById('job-form')'''
+          text, count = handler_pattern.subn(handler_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Delete handler replacement count was {count}')
+
+          if 'DELETE MY ACCOUNT' not in text or 'Advanced settings' not in text:
+              raise SystemExit('Safety checks failed')
+
+          path.write_text(text)
+          Path('.github/workflows/patch-account-deletion.yml').unlink()
+          PY
+
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html .github/workflows/patch-account-deletion.yml
+          git commit -m "Hide and harden account deletion UI"
+          git push
