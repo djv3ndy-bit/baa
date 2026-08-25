@@ -1,0 +1,72 @@
+name: Add Help and Support to Account Settings
+on:
+  push:
+    paths:
+      - '.github/workflows/add-help-support-settings.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add support entry points
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('dashboard.html')
+          s=p.read_text()
+
+          # Add Help & Support card to Account Settings.
+          marker="const accountActionsSection=`<article class=\"card settings-card account-actions-card\""
+          if marker not in s:
+              raise SystemExit('account actions marker missing')
+          help_section="const helpSupportSection=`<article class=\"card settings-card help-support-card\"><div class=\"help-support-copy\"><span class=\"help-support-icon\" aria-hidden=\"true\">?</span><div><h3>Help & Support</h3><p>Need help, have a question, or found something that is not working? Contact BaristaMatch Support.</p></div></div><div class=\"help-support-actions\"><a class=\"secondary\" href=\"/support.html?type=question\">Ask a question</a><a class=\"primary\" href=\"/support.html?type=bug\">Report a problem</a></div></article>`;"
+          if 'const helpSupportSection=' not in s:
+              s=s.replace(marker,help_section+marker,1)
+
+          old='${passwordSection}</article>${notificationSection}${accountActionsSection}${advancedSettings}</div>`'
+          new='${passwordSection}</article>${notificationSection}${helpSupportSection}${accountActionsSection}${advancedSettings}</div>`'
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('settings render marker missing')
+
+          css='''.help-support-card{display:grid;gap:18px}.help-support-copy{display:flex;align-items:flex-start;gap:14px}.help-support-icon{width:42px;height:42px;border-radius:13px;background:#f3e6dc;color:var(--brown);display:grid;place-items:center;font-size:22px;font-weight:900;flex:0 0 auto}.help-support-card h3{margin:0 0 7px}.help-support-card p{margin:0;color:var(--muted);line-height:1.55}.help-support-actions{display:flex;gap:10px;flex-wrap:wrap}.help-support-actions a{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}@media(max-width:560px){.help-support-actions{display:grid;grid-template-columns:1fr}.help-support-actions a{width:100%}}'''
+          if '.help-support-card{' not in s:
+              s=s.replace('</style>',css+'\n</style>',1)
+          p.write_text(s)
+
+          # Add General question and URL-based preselection to support center.
+          sp=Path('support.html')
+          q=sp.read_text()
+          old_option='<option value="feedback">Product feedback</option><option value="other">Other</option>'
+          new_option='<option value="feedback">Product feedback</option><option value="question">General question</option><option value="other">Other</option>'
+          if old_option in q:
+              q=q.replace(old_option,new_option,1)
+          elif 'value="question">General question</option>' not in q:
+              raise SystemExit('support option marker missing')
+
+          prefill="""\nconst supportParams=new URLSearchParams(location.search);\nconst requestedType=supportParams.get('type');\nif(requestedType&&supportForm.issue_type.querySelector(`option[value=\"${CSS.escape(requestedType)}\"]`)){supportForm.issue_type.value=requestedType}\nif(requestedType==='question'){supportForm.subject.placeholder='Example: How does matching work?';supportForm.description.placeholder='What would you like help with?'}\n"""
+          js_marker="supportForm.browser_info.value=navigator.userAgent;"
+          if 'const supportParams=new URLSearchParams' not in q:
+              if js_marker not in q: raise SystemExit('support JS marker missing')
+              q=q.replace(js_marker,js_marker+prefill,1)
+          sp.write_text(q)
+          PY
+      - name: Verify support integration
+        run: |
+          grep -q 'Help & Support' dashboard.html
+          grep -q '/support.html?type=question' dashboard.html
+          grep -q '/support.html?type=bug' dashboard.html
+          grep -q 'General question' support.html
+          grep -q 'supportParams' support.html
+      - name: Commit changes
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html support.html
+          git commit -m "Add Help and Support to account settings"
+          git push
