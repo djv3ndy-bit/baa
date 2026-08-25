@@ -1,0 +1,27 @@
+name: Run messaging upgrade
+on:
+  push:
+    paths:
+      - '.github/workflows/run-messaging-upgrade.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply messaging upgrade
+        run: python3 .github/scripts/upgrade_messaging.py
+      - name: Verify upgrade
+        run: |
+          grep -q "Messages','Profile Views" dashboard.html
+          grep -q "messages-workspace" dashboard.html
+          grep -q "function messagesInboxHtml" dashboard.html
+          grep -q "postgres_changes" dashboard.html
+      - name: Commit dashboard
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Upgrade messaging inbox and realtime chat"
+          git push
