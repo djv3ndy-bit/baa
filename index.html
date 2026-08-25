@@ -104,9 +104,9 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
     <p id="auth-copy">Welcome back. Log in to continue.</p>
 
     <form class="auth-form" id="login-form">
-      <button class="auth-choice" type="button" data-auth-view="magic" aria-label="Continue with Gmail or another email provider">
-        <span class="auth-choice-icons" aria-hidden="true"><span class="auth-choice-icon gmail-icon">G</span><span class="auth-choice-icon mail-icon">✉</span></span>
-        <span class="auth-choice-text"><strong>Continue with Gmail or email</strong><small>Get a secure link — no password needed</small></span>
+      <button class="auth-choice" type="button" id="google-login" aria-label="Continue with Google">
+        <span class="auth-choice-icons" aria-hidden="true"><span class="auth-choice-icon gmail-icon">G</span></span>
+        <span class="auth-choice-text"><strong>Continue with Google</strong><small>Fast, secure sign in</small></span>
       </button>
       <div class="auth-divider"><span>or</span></div>
       <p class="auth-section-label">Use email and password</p>
@@ -190,12 +190,12 @@ function setSubmitting(authForm,submitting,label){const button=authForm.querySel
 function updateHeader(session){const loggedIn=Boolean(session&&session.user);document.getElementById('guest-actions').hidden=loggedIn;document.getElementById('user-actions').hidden=!loggedIn;document.getElementById('account-email').textContent=loggedIn?session.user.email:''}
 function goToDashboard(session,event){if(!session||event==='PASSWORD_RECOVERY')return;if(location.pathname==='/'&&(event==='SIGNED_IN'||location.hash.includes('access_token')))location.replace('/dashboard.html')}
 
-document.getElementById('login').onclick=()=>showAuthView('magic');
-document.getElementById('signup').onclick=()=>showAuthView('magic');
+document.getElementById('login').onclick=()=>showAuthView('login');
+document.getElementById('signup').onclick=()=>location.href='/signup.html';
 document.getElementById('auth-close').onclick=()=>authModal.close();
-document.querySelectorAll('[data-auth-view]').forEach(button=>button.onclick=()=>showAuthView(button.dataset.authView));
-document.querySelectorAll('[data-signup-role]').forEach(button=>button.onclick=()=>{showAuthView('magic');authForms.magic.role.value=button.dataset.signupRole});
-if(new URLSearchParams(location.search).get('login')==='required'){showAuthView('magic');setAuthMessage('Please log in to open your dashboard.')}
+document.querySelectorAll('[data-auth-view]').forEach(button=>button.onclick=()=>button.dataset.authView==='signup'?location.assign('/signup.html'):showAuthView(button.dataset.authView));
+document.querySelectorAll('[data-signup-role]').forEach(button=>button.onclick=()=>location.href='/signup.html?role='+encodeURIComponent(button.dataset.signupRole));
+if(new URLSearchParams(location.search).get('login')==='required'){showAuthView('login');setAuthMessage('Welcome back. Log in to open your dashboard.')}
 
 async function initializeAuth(){
   try{
@@ -218,6 +218,8 @@ async function initializeAuth(){
 }
 
 document.querySelectorAll('[data-oauth-provider]').forEach(button=>button.addEventListener('click',async()=>{if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}const role=authForms.magic.role.value;if(!role){setAuthMessage('Choose Barista or Café owner first.',true);authForms.magic.role.focus();return}localStorage.setItem('baristamatch_pending_role',role);setAuthMessage();button.disabled=true;const {error}=await authClient.auth.signInWithOAuth({provider:button.dataset.oauthProvider,options:{redirectTo:'https://www.baristajobmatch.com'}});button.disabled=false;if(error){localStorage.removeItem('baristamatch_pending_role');setAuthMessage('Google sign-in needs to be enabled. You can continue with email now.',true)}}));
+
+document.getElementById('google-login').addEventListener('click',async event=>{if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}setAuthMessage();event.currentTarget.disabled=true;const {error}=await authClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:'https://www.baristajobmatch.com/dashboard.html'}});event.currentTarget.disabled=false;if(error)setAuthMessage('Google login could not start. Please try email and password.',true)});
 
 authForms.magic.addEventListener('submit',async(event)=>{event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}const data=new FormData(event.currentTarget);setSubmitting(event.currentTarget,true,'Sending link...');const {error}=await authClient.auth.signInWithOtp({email:String(data.get('email')).trim(),options:{emailRedirectTo:'https://www.baristajobmatch.com',data:{role:data.get('role')}}});setSubmitting(event.currentTarget,false);if(error){setAuthMessage(error.message,true);return}event.currentTarget.reset();setAuthMessage('Check your email for a secure BaristaMatch login link.');});
 
