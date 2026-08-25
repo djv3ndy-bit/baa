@@ -33,20 +33,37 @@ export default async function handler(req, res) {
     const adminHeaders = { apikey: secretKey };
     if (!secretKey.startsWith("sb_secret_")) adminHeaders.Authorization = `Bearer ${secretKey}`;
 
-    const profileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=video_path`, {
+    const profileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=video_path,avatar_url`, {
       headers: adminHeaders,
       signal: AbortSignal.timeout(10000)
     });
     if (profileResponse.ok) {
       const profiles = await profileResponse.json();
       const videoPath = profiles?.[0]?.video_path;
-      if (videoPath) {
-        const encodedPath = String(videoPath).split("/").map(encodeURIComponent).join("/");
-        await fetch(`${supabaseUrl}/storage/v1/object/coffee-videos/${encodedPath}`, {
+      const avatarUrl = profiles?.[0]?.avatar_url;
+      const storedObjects = [];
+      if (videoPath) storedObjects.push(["coffee-videos", String(videoPath)]);
+      if (avatarUrl) {
+        try {
+          const marker = "/storage/v1/object/public/cafe-images/";
+          const pathname = new URL(avatarUrl).pathname;
+          const markerIndex = pathname.indexOf(marker);
+          if (markerIndex !== -1) storedObjects.push(["cafe-images", decodeURIComponent(pathname.slice(markerIndex + marker.length))]);
+        } catch {
+          console.warn("Could not parse the stored cafe image URL for account deletion.");
+        }
+      }
+      for (const [bucket, objectPath] of storedObjects) {
+        const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
+        const storageResponse = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${encodedPath}`, {
           method: "DELETE",
           headers: adminHeaders,
           signal: AbortSignal.timeout(10000)
         });
+        if (!storageResponse.ok && storageResponse.status !== 404) {
+          console.error("Account storage cleanup failed with status", storageResponse.status);
+          return res.status(502).json({ error: "We could not safely remove your account files. Please try again." });
+        }
       }
     }
 
