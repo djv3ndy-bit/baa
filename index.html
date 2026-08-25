@@ -107,7 +107,13 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
       <label>Email<input name="email" type="email" autocomplete="email" required></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
       <button class="btn dark" type="submit">Log in</button>
-      <div class="auth-links"><button class="auth-switch" type="button" data-auth-view="forgot">Forgot password?</button><span>·</span><button class="auth-switch" type="button" data-auth-view="signup">Create account</button></div>
+      <div class="auth-links"><button class="auth-switch" type="button" data-auth-view="magic">Email me a login link</button></div><div class="auth-links"><button class="auth-switch" type="button" data-auth-view="forgot">Forgot password?</button><span>·</span><button class="auth-switch" type="button" data-auth-view="signup">Create account</button></div>
+    </form>
+    <form class="auth-form" id="magic-form" hidden>
+      <label>Email provider<input name="email" type="email" autocomplete="email" placeholder="you@gmail.com" required></label>
+      <label>Account type (for new accounts)<select name="role" required><option value="">Choose one</option><option value="barista">Barista</option><option value="cafe_owner_manager">Café owner or manager</option></select></label>
+      <button class="btn dark" type="submit">Send secure login link</button>
+      <div class="auth-links"><button class="auth-switch" type="button" data-auth-view="login">Use password instead</button></div>
     </form>
 
     <form class="auth-form" id="signup-form" hidden>
@@ -147,7 +153,7 @@ const authModal=document.getElementById('auth-modal');
 const authTitle=document.getElementById('auth-title');
 const authCopy=document.getElementById('auth-copy');
 const authMessage=document.getElementById('auth-msg');
-const authForms={login:document.getElementById('login-form'),signup:document.getElementById('signup-form'),forgot:document.getElementById('forgot-form'),reset:document.getElementById('reset-form')};
+const authForms={login:document.getElementById('login-form'),magic:document.getElementById('magic-form'),signup:document.getElementById('signup-form'),forgot:document.getElementById('forgot-form'),reset:document.getElementById('reset-form')};
 let authClient=null;
 
 function setAuthMessage(message='',isError=false){authMessage.textContent=message;authMessage.classList.toggle('error',isError)}
@@ -155,6 +161,7 @@ function showAuthView(view){
   Object.entries(authForms).forEach(([name,authForm])=>authForm.hidden=name!==view);
   const content={
     login:['Log in','Welcome back. Log in to continue.'],
+    magic:['Continue with your email','Works with Gmail, Outlook, Yahoo, iCloud, and other email providers. No password required.'],
     signup:['Create account','Choose your role and verify your email to get started.'],
     forgot:['Reset password','We’ll email you a secure password-reset link.'],
     reset:['Choose a new password','Enter a new password for your BaristaMatch account.']
@@ -190,6 +197,8 @@ async function initializeAuth(){
     const {data:{session}}=await authClient.auth.getSession();updateHeader(session);
   }catch(error){console.error(error);setAuthMessage(error.message,true)}
 }
+
+authForms.magic.addEventListener('submit',async(event)=>{event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}const data=new FormData(event.currentTarget);setSubmitting(event.currentTarget,true,'Sending link...');const {error}=await authClient.auth.signInWithOtp({email:String(data.get('email')).trim(),options:{emailRedirectTo:'https://www.baristajobmatch.com',data:{role:data.get('role')}}});setSubmitting(event.currentTarget,false);if(error){setAuthMessage(error.message,true);return}event.currentTarget.reset();setAuthMessage('Check your email for a secure BaristaMatch login link.');});
 
 authForms.signup.addEventListener('submit',async(event)=>{
   event.preventDefault();setAuthMessage();
