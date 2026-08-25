@@ -150,7 +150,7 @@ dialog{border:0;border-radius:20px;padding:0;max-width:460px;width:calc(100% - 3
 
     <section class="auth-form" id="forgot-sent" hidden>
       <div style="width:70px;height:70px;border-radius:50%;display:grid;place-items:center;margin:0 auto 10px;background:#e8f3e9;color:#287443;font-size:32px;font-weight:900">✓</div>
-      <p id="forgot-sent-copy" style="text-align:center;color:var(--muted);line-height:1.6">We sent password-reset instructions. Open the secure link in the email to choose a new password.</p>
+      <p id="forgot-sent-copy" style="text-align:center;color:var(--muted);line-height:1.6"><strong>Your reset email has been sent.</strong><br>Check your inbox and spam folder, then open the secure link to choose a new password.</p>
       <button class="btn dark auth-switch" type="button" data-auth-view="login">Return to log in</button>
       <button class="auth-switch" type="button" data-auth-view="forgot">Try another email</button>
     </section>
@@ -181,6 +181,7 @@ const authForms={login:document.getElementById('login-form'),magic:document.getE
 let authClient=null;
 
 function setAuthMessage(message='',isError=false){authMessage.textContent=message;authMessage.classList.toggle('error',isError)}
+function withTimeout(promise,milliseconds=15000){return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('The request took too long. Please check your connection and try again.')),milliseconds))])}
 function showAuthView(view){
   Object.entries(authForms).forEach(([name,authForm])=>authForm.hidden=name!==view);
   const content={
@@ -256,10 +257,12 @@ authForms.forgot.addEventListener('submit',async(event)=>{
   event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}
   const data=new FormData(event.currentTarget);setSubmitting(event.currentTarget,true,'Sending...');
   const email=String(data.get('email')).trim();
-  const {error}=await authClient.auth.resetPasswordForEmail(email,{redirectTo:'https://www.baristajobmatch.com/reset-password.html'});
-  setSubmitting(event.currentTarget,false);
-  if(error){setAuthMessage(error.message,true);return}
-  event.currentTarget.reset();document.getElementById('forgot-sent-copy').textContent=`If an account exists for ${email}, a secure reset link is on the way. Check your inbox and spam folder.`;showAuthView('forgotSent');
+  try{
+    const {error}=await withTimeout(authClient.auth.resetPasswordForEmail(email,{redirectTo:'https://www.baristajobmatch.com/reset-password.html'}));
+    if(error)throw error;
+    event.currentTarget.reset();document.getElementById('forgot-sent-copy').innerHTML='<strong>Your reset email has been sent.</strong><br>Check your inbox and spam folder, then open the secure link to choose a new password.';showAuthView('forgotSent');
+  }catch(error){setAuthMessage(error.message||'We could not send the reset email. Please try again.',true)}
+  finally{setSubmitting(event.currentTarget,false)}
 });
 
 authForms.reset.addEventListener('submit',async(event)=>{
