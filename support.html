@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="BaristaMatch support center for account help, bug reports, and product questions.">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-v2.png">
+<title>Support — BaristaMatch</title>
+<style>
+:root{--brown:#321708;--caramel:#a95820;--cream:#fbf7f1;--muted:#746a61;--line:#e7ddd2;--green:#2f7c42;--white:#fff;--red:#a52a2a}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#fbf7f1,#fffaf5);color:#17110d;font-family:Arial,sans-serif}a{text-decoration:none;color:inherit}.wrap{width:min(1080px,calc(100% - 32px));margin:auto}button,input,select,textarea{font:inherit}
+header{position:sticky;top:0;z-index:20;background:#fbf7f1ed;backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}nav{min-height:72px;display:flex;align-items:center;gap:18px}.brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:800}.brand img{width:42px;height:42px;object-fit:contain}.brand b{color:var(--caramel)}.navlinks{margin-left:auto;display:flex;gap:18px;align-items:center;font-size:14px;font-weight:700}.btn{border-radius:11px;padding:11px 16px;border:1px solid #c9ad99;background:#fff;font-weight:800;cursor:pointer}.dark{background:var(--brown);border-color:var(--brown);color:#fff}
+.hero{text-align:center;padding:66px 0 34px}.eyebrow{color:var(--caramel);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.15em}.hero h1{font-family:Georgia,serif;color:var(--brown);font-size:clamp(42px,7vw,66px);line-height:1.05;margin:12px 0 15px}.hero p{max-width:720px;margin:auto;color:var(--muted);font-size:18px;line-height:1.6}.support-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:20px;padding-bottom:70px}.card{background:#fff;border:1px solid var(--line);border-radius:22px;padding:26px;box-shadow:0 14px 40px #3217080c}.card h2,.card h3{font-family:Georgia,serif;color:var(--brown);margin-top:0}.card p{color:var(--muted);line-height:1.6}.form{display:grid;gap:14px}.form label{font-size:13px;font-weight:800;color:var(--brown)}.form input,.form select,.form textarea{display:block;width:100%;margin-top:7px;padding:13px;border:1px solid var(--line);border-radius:11px;background:#fff;color:#17110d}.form textarea{min-height:150px;resize:vertical}.form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.form button{width:100%}.message{min-height:22px;margin:0;font-size:14px;font-weight:700}.message.error{color:var(--red)}.message.success{color:var(--green)}.ticket-success{display:none;background:#edf7ef;border:1px solid #cfe7d4;border-radius:14px;padding:17px;color:#215f37}.ticket-success strong{font-size:18px}.steps{display:grid;gap:12px}.step{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-top:1px solid #eee4da}.step:first-child{border-top:0}.step-icon{width:34px;height:34px;border-radius:10px;background:#f5e7db;display:grid;place-items:center;flex:0 0 auto}.step b{display:block;margin-bottom:3px}.step span{color:var(--muted);font-size:13px;line-height:1.5}.lookup{margin-top:20px}.lookup form{display:grid;gap:11px}.lookup-result{display:none;margin-top:14px;padding:15px;border:1px solid var(--line);border-radius:12px;background:#fffaf5}.status{display:inline-block;padding:6px 9px;border-radius:999px;background:#f2e6da;color:#7e3f18;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.fine{font-size:12px!important}.honeypot{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important}.footer{border-top:1px solid var(--line);padding:26px 0;color:var(--muted);font-size:13px;display:flex;justify-content:space-between}
+@media(max-width:820px){.support-grid{grid-template-columns:1fr}.navlinks a:not(.btn){display:none}}@media(max-width:560px){.hero{padding-top:46px}.form .row{grid-template-columns:1fr}.card{padding:21px}.footer{display:grid;gap:10px}.brand span{font-size:19px}}
+</style>
+</head>
+<body>
+<header><nav class="wrap"><a class="brand" href="/"><img src="/assets/favicon-transparent-v2.png" alt="BaristaMatch logo"><span>Barista<b>Match</b></span></a><div class="navlinks"><a href="/">Home</a><a href="/#how">How It Works</a><a class="btn dark" href="/">Back to BaristaMatch</a></div></nav></header>
+<main class="wrap">
+<section class="hero"><span class="eyebrow">BaristaMatch Support</span><h1>How can we help?</h1><p>Report a bug, get help with your account, or send us feedback. Every request receives a ticket number and confirmation email.</p></section>
+<section class="support-grid">
+<article class="card">
+<h2>Contact support</h2>
+<p>Tell us what happened. For bugs, include what you clicked and what you expected to happen.</p>
+<form class="form" id="support-form">
+<div class="row"><label>Name (optional)<input name="name" autocomplete="name" placeholder="Your name"></label><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div>
+<label>What do you need help with?<select name="issue_type" required><option value="">Choose one</option><option value="bug">Website or app bug</option><option value="account">Account or login</option><option value="barista">Barista profile or jobs</option><option value="cafe">Café profile or hiring</option><option value="billing">Billing or subscription</option><option value="feedback">Product feedback</option><option value="other">Other</option></select></label>
+<label>Subject<input name="subject" maxlength="180" required placeholder="Example: Dashboard won't open"></label>
+<label>Describe the issue<textarea name="description" maxlength="5000" required minlength="10" placeholder="What happened? What page were you on? What were you trying to do?"></textarea></label>
+<label class="honeypot" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+<input type="hidden" name="page_url">
+<input type="hidden" name="browser_info">
+<button class="btn dark" type="submit">Send support request</button>
+<p class="message" id="form-message" role="status" aria-live="polite"></p>
+<div class="ticket-success" id="ticket-success"><strong>Request received ✓</strong><p id="ticket-copy"></p></div>
+</form>
+</article>
+<aside>
+<article class="card"><h3>What happens next?</h3><div class="steps"><div class="step"><div class="step-icon">1</div><div><b>We create your ticket</b><span>Your request is saved with a unique BaristaMatch ticket number.</span></div></div><div class="step"><div class="step-icon">✉</div><div><b>You get confirmation</b><span>We email you immediately so you know the request was received.</span></div></div><div class="step"><div class="step-icon">🔎</div><div><b>We investigate</b><span>Technical issues can be routed into our development workflow for review and testing.</span></div></div><div class="step"><div class="step-icon">✓</div><div><b>We resolve it</b><span>Once a fix is verified, your ticket can be marked fixed and you can be notified.</span></div></div></div></article>
+<article class="card lookup"><h3>Check a ticket</h3><p class="fine">Enter the ticket number from your confirmation email.</p><form id="lookup-form"><input name="ticket" required placeholder="BM-20260825-ABC123"><input name="email" type="email" required placeholder="Email used for the ticket"><button class="btn" type="submit">Check status</button><p class="message" id="lookup-message"></p></form><div class="lookup-result" id="lookup-result"></div></article>
+</aside>
+</section>
+</main>
+<footer class="wrap footer"><div>© BaristaMatch · Support Center</div><div>hello@baristajobmatch.com</div></footer>
+<script>
+const supportForm=document.getElementById('support-form');
+const formMessage=document.getElementById('form-message');
+const successBox=document.getElementById('ticket-success');
+const ticketCopy=document.getElementById('ticket-copy');
+supportForm.page_url.value=document.referrer||location.href;
+supportForm.browser_info.value=navigator.userAgent;
+
+supportForm.addEventListener('submit',async(event)=>{
+  event.preventDefault();
+  const button=supportForm.querySelector('button[type="submit"]');
+  const original=button.textContent;
+  formMessage.textContent='';formMessage.className='message';successBox.style.display='none';button.disabled=true;button.textContent='Sending...';
+  try{
+    const payload=Object.fromEntries(new FormData(supportForm).entries());
+    const response=await fetch('/api/support',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.error||'Unable to send your request.');
+    if(!data.ticket_id){throw new Error('Unable to create a ticket. Please try again.');}
+    successBox.style.display='block';ticketCopy.textContent=`Your ticket is ${data.ticket_id}. We also sent a confirmation email to you.`;formMessage.textContent='Support request sent successfully.';formMessage.className='message success';
+    supportForm.reset();supportForm.page_url.value=document.referrer||location.href;supportForm.browser_info.value=navigator.userAgent;
+  }catch(error){formMessage.textContent=error.message;formMessage.className='message error'}finally{button.disabled=false;button.textContent=original}
+});
+
+const lookupForm=document.getElementById('lookup-form');
+const lookupMessage=document.getElementById('lookup-message');
+const lookupResult=document.getElementById('lookup-result');
+lookupForm.addEventListener('submit',async(event)=>{
+  event.preventDefault();lookupMessage.textContent='Checking...';lookupMessage.className='message';lookupResult.style.display='none';
+  const data=new FormData(lookupForm);const ticket=data.get('ticket').trim();const email=data.get('email').trim();
+  try{
+    const response=await fetch(`/api/support?ticket=${encodeURIComponent(ticket)}&email=${encodeURIComponent(email)}`,{cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to check ticket.');
+    const labels={new:'New',investigating:'Investigating',fixed:'Fixed',closed:'Closed'};lookupResult.innerHTML=`<span class="status">${labels[result.status]||result.status}</span><h3>${escapeHtml(result.subject)}</h3><p>Ticket <strong>${escapeHtml(result.ticket_id)}</strong></p>${result.resolution_note?`<p><strong>Update:</strong> ${escapeHtml(result.resolution_note)}</p>`:''}`;lookupResult.style.display='block';lookupMessage.textContent='';
+  }catch(error){lookupMessage.textContent=error.message;lookupMessage.className='message error'}
+});
+function escapeHtml(value){return String(value||'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]))}
+</script>
+</body>
+</html>
