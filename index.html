@@ -231,18 +231,19 @@ document.querySelectorAll('[data-oauth-provider]').forEach(button=>button.addEve
 
 document.getElementById('google-login').addEventListener('click',async event=>{if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}setAuthMessage();event.currentTarget.disabled=true;const {error}=await authClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:'https://www.baristajobmatch.com/dashboard.html'}});event.currentTarget.disabled=false;if(error)setAuthMessage('Google login could not start. Please try email and password.',true)});
 
-authForms.magic.addEventListener('submit',async(event)=>{event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}const data=new FormData(event.currentTarget);setSubmitting(event.currentTarget,true,'Sending link...');const {error}=await authClient.auth.signInWithOtp({email:String(data.get('email')).trim(),options:{emailRedirectTo:'https://www.baristajobmatch.com',data:{role:data.get('role')}}});setSubmitting(event.currentTarget,false);if(error){setAuthMessage(error.message,true);return}event.currentTarget.reset();setAuthMessage('Check your email for a secure BaristaMatch login link.');});
+authForms.magic.addEventListener('submit',async(event)=>{event.preventDefault();setAuthMessage();if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}const form=event.currentTarget;const data=new FormData(form);setSubmitting(form,true,'Sending link...');const {error}=await authClient.auth.signInWithOtp({email:String(data.get('email')).trim(),options:{emailRedirectTo:'https://www.baristajobmatch.com',data:{role:data.get('role')}}});setSubmitting(form,false);if(error){setAuthMessage(error.message,true);return}form.reset();setAuthMessage('Check your email for a secure BaristaMatch login link.');});
 
 authForms.signup.addEventListener('submit',async(event)=>{
   event.preventDefault();setAuthMessage();
-  const data=new FormData(event.currentTarget),password=data.get('password'),confirmPassword=data.get('confirmPassword');
+  const form=event.currentTarget;
+  const data=new FormData(form),password=data.get('password'),confirmPassword=data.get('confirmPassword');
   if(password!==confirmPassword){setAuthMessage('Passwords do not match.',true);return}
   if(!authClient){setAuthMessage('Account service is still loading. Please try again.',true);return}
-  setSubmitting(event.currentTarget,true,'Creating...');
+  setSubmitting(form,true,'Creating...');
   const {data:result,error}=await authClient.auth.signUp({email:data.get('email').trim(),password,options:{emailRedirectTo:'https://www.baristajobmatch.com',data:{role:data.get('role')}}});
-  setSubmitting(event.currentTarget,false);
+  setSubmitting(form,false);
   if(error){setAuthMessage(error.message,true);return}
-  event.currentTarget.reset();
+  form.reset();
   setAuthMessage(result.session?'Your account is ready.':'Check your email to verify your account, then log in.');
 });
 
@@ -267,10 +268,10 @@ authForms.forgot.addEventListener('submit',async(event)=>{
 });
 
 authForms.reset.addEventListener('submit',async(event)=>{
-  event.preventDefault();setAuthMessage();const data=new FormData(event.currentTarget),password=data.get('password');
+  event.preventDefault();setAuthMessage();const form=event.currentTarget;const data=new FormData(form),password=data.get('password');
   if(password!==data.get('confirmPassword')){setAuthMessage('Passwords do not match.',true);return}
-  setSubmitting(event.currentTarget,true,'Updating...');const {error}=await authClient.auth.updateUser({password});setSubmitting(event.currentTarget,false);
-  if(error){setAuthMessage(error.message,true);return}event.currentTarget.reset();setAuthMessage('Password updated. You are now logged in.');setTimeout(()=>authModal.close(),1200);
+  setSubmitting(form,true,'Updating...');const {error}=await authClient.auth.updateUser({password});setSubmitting(form,false);
+  if(error){setAuthMessage(error.message,true);return}form.reset();setAuthMessage('Password updated. You are now logged in.');setTimeout(()=>authModal.close(),1200);
 });
 
 document.getElementById('logout').onclick=async()=>{if(authClient)await authClient.auth.signOut()};
