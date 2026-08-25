@@ -1,0 +1,31 @@
+name: Launch readiness check
+on:
+  push:
+    paths:
+      - 'dashboard.html'
+      - 'index.html'
+      - 'signup.html'
+      - 'login.html'
+      - 'reset-password.html'
+      - 'support.html'
+      - 'support-admin.html'
+      - 'terms.html'
+      - 'privacy.html'
+      - 'api/**'
+      - 'launch-check.js'
+      - '.github/workflows/launch-readiness-check.yml'
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node launch-check.js
+      - run: |
+          node --check api/send-message.js
+          node --check api/apply-job.js
+          node --check api/match-application.js
+          node --check api/report-error.js
+          node --check api/support.js
+          node --check api/support-admin.js
+          node --check api/delete-account.js
