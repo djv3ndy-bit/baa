@@ -170,6 +170,7 @@ document.getElementById('signup').onclick=()=>showAuthView('signup');
 document.getElementById('auth-close').onclick=()=>authModal.close();
 document.querySelectorAll('[data-auth-view]').forEach(button=>button.onclick=()=>showAuthView(button.dataset.authView));
 document.querySelectorAll('[data-signup-role]').forEach(button=>button.onclick=()=>{showAuthView('signup');authForms.signup.role.value=button.dataset.signupRole});
+if(new URLSearchParams(location.search).get('login')==='required'){showAuthView('login');setAuthMessage('Please log in to open your dashboard.')}
 
 async function initializeAuth(){
   try{
