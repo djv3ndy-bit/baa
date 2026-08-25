@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "BaristaMatch",
+    "slug": "baristamatch",
+    "scheme": "baristamatch",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.baristajobmatch.app"
+    },
+    "android": {
+      "package": "com.baristajobmatch.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
