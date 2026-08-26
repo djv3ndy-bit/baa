@@ -232,6 +232,15 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
   .welcome h2,.wow-welcome h2{font-size:25px;max-width:70%}
   .mobile-nav{left:6px!important;right:6px!important}.mobile-nav button{font-size:9px!important}
 }
+
+/* Mobile stat-card spacing hardening */
+@media (max-width:760px){
+  .wow-stat{overflow:hidden!important;}
+  .wow-stat .wow-bars{position:static!important;margin-top:24px!important;padding-top:0!important;}
+  .wow-stat .wow-bars i{display:block;}
+  .wow-stat strong{margin-bottom:10px!important;}
+  .wow-stat [class*="trend"],.wow-stat [class*="status"]{display:block!important;line-height:1.3!important;margin-top:4px!important;margin-bottom:0!important;}
+}
 </style>
 </head>
 <body>
