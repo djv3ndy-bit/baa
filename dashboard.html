@@ -276,6 +276,14 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
   .cafe-wow-head{padding-bottom:24px!important}
   .cafe-wow-head:after,.cafe-wow-head:before{display:none!important}
 }
+
+/* Professional mobile menu placement — top right */
+@media(max-width:760px){
+  .mobile-menu-toggle{left:auto!important;right:14px!important;top:calc(11px + env(safe-area-inset-top))!important}
+  .top{padding:12px 72px 12px 16px!important}
+  body.mobile-menu-open .mobile-menu-toggle{left:auto!important;right:14px!important}
+  .cafe-wow-head{padding-top:14px!important}
+}
 </style>
 </head>
 <body>
