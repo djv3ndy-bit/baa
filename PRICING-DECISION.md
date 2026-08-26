@@ -3,20 +3,16 @@
 ## Launch decision
 
 ### Baristas
-**Free forever.**
+**Free.**
 
 ### Cafés
-**60-day free trial, then $39/month per café location.**
+**30-day free trial, then $24.99/month per café location.**
 
-No credit card required to start the trial.
+No credit card required to start the trial. Cancel anytime after subscribing.
 
-Recommended annual option once billing is enabled: **$390/year** (2 months free).
+## Launch strategy
 
-## Why $39/month
-
-BaristaMatch should be clearly more affordable than broad hiring platforms without positioning itself as a bargain product. Current public benchmarks checked August 2026 include Poached at $59 for one 30-day permanent job post and Indeed sponsored-job budgets starting at $5/day or $150/month. BaristaMatch at $39/month gives cafés an ongoing specialized hiring workspace, candidate matching and messaging rather than charging for each individual job post.
-
-$29/month is likely too low for the value and leaves less room for support, acquisition and future features. $49/month is defensible later, but $39/month is a stronger launch price while the marketplace is being seeded.
+The launch goal is low-friction conversion: give a café enough time to post jobs, receive interest, match, and message, then make the continuation price easy to accept. Keep one café plan at launch instead of multiple tiers.
 
 ## Included in Café plan
 - Café profile
@@ -27,15 +23,15 @@ $29/month is likely too low for the value and leaves less room for support, acqu
 - Matches
 - Realtime messaging
 - Hiring notifications
-- Support
+- Help & Support
 
 ## Trial behavior
 - Trial begins when a café account is created.
-- Trial lasts 60 days.
+- Trial lasts 30 days.
 - No card required during trial.
 - Show remaining trial days in Account Settings and Subscription Management.
-- After trial expiration, keep the account/profile accessible but require an active plan for new hiring actions.
+- After trial expiration, keep the account/profile and existing data accessible but require an active subscription for new hiring actions.
 - Never delete café data because a trial expires.
 
 ## Future pricing
-Do not add multiple launch tiers. Validate $39/month first. Possible future additions: multi-location plan, featured/boosted jobs, enterprise groups, and optional annual billing.
+Do not add multiple launch tiers yet. Validate conversion and retention at $24.99/month first. Possible future additions include annual billing, multi-location plans, featured jobs, and enterprise groups. Existing early customers may be grandfathered if pricing changes later.
