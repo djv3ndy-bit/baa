@@ -1,0 +1,21 @@
+name: Precise location matching
+on:
+  push:
+    paths: ['.github/workflows/location-matching-v1.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/location-matching-v1.py
+      - run: |
+          grep -q 'Street address' dashboard.html
+          grep -q 'Preferred work city' dashboard.html
+          grep -q 'jobMatchesBaristaLocation' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Add precise cafe job and barista location matching"
+          git push
