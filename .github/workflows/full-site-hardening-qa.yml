@@ -1,0 +1,24 @@
+name: Full site hardening QA
+on:
+  push:
+    paths: ['.github/workflows/full-site-hardening-qa.yml']
+permissions:
+  contents: write
+jobs:
+  update-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/full-site-hardening-qa.py
+      - run: node launch-check.js
+      - run: |
+          grep -q 'Profile photo' dashboard.html
+          grep -q 'Street address' dashboard.html
+          grep -q 'Preferred work city' dashboard.html
+          grep -q 'jobMatchesBaristaLocation' dashboard.html
+          grep -q 'href="/support.html">Support</a>' index.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html index.html launch-check.js
+          git commit -m "Harden marketplace trust location and responsive flows"
+          git push
