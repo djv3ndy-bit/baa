@@ -1,0 +1,24 @@
+name: Run account settings refinement
+on:
+  push:
+    paths:
+      - '.github/workflows/run-refine-account-settings.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/refine-account-settings.py
+      - run: |
+          grep -q 'Subscription management' dashboard.html
+          grep -q 'password-settings' dashboard.html
+          grep -q 'passwordForm.onsubmit=changePassword' dashboard.html
+          ! grep -q 'name="current_password"' dashboard.html
+      - run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Simplify account settings and add subscription management"
+          git push
