@@ -1,0 +1,19 @@
+name: Matches light red
+on:
+  push:
+    paths: ['.github/workflows/matches-light-red.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/matches-light-red.py
+      - run: |
+          grep -q '#ef7777' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Use light red for Matches chart bars"
+          git push
