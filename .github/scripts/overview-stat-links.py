@@ -1,0 +1,5 @@
+from pathlib import Path
+p=Path('dashboard.html');s=p.read_text()
+s=s.replace('<article class="wow-stat"><span class="wow-stat-label">Active Jobs</span><strong>${activeJobs}</strong><span class="wow-stat-trend">Live now</span>${chart([24,38,22,55,42,66,48,82])}</article>','<article class="wow-stat wow-stat-link" data-go="Job Posts" role="button" tabindex="0" aria-label="View active job posts"><span class="wow-stat-label">Active Jobs</span><strong>${activeJobs}</strong><span class="wow-stat-trend">View jobs →</span>${chart([24,38,22,55,42,66,48,82])}</article>',1)
+s=s.replace('<article class="wow-stat"><span class="wow-stat-label">Matches</span><strong>${matches}</strong><span class="wow-stat-trend">Connections</span>${chart([22,35,18,58,55,49,79,28])}</article>','<article class="wow-stat wow-stat-link" data-go="Matches" role="button" tabindex="0" aria-label="View matches"><span class="wow-stat-label">Matches</span><strong>${matches}</strong><span class="wow-stat-trend">View matches →</span>${chart([22,35,18,58,55,49,79,28])}</article>',1)
+p.write_text(s)
