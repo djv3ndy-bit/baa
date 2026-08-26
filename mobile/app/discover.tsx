@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Dimensions, PanResponder, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { AppBottomNav } from '@/components/AppBottomNav';
 
 type Job = {
   id: string;
@@ -165,12 +166,7 @@ export default function DiscoverScreen() {
         <Pressable disabled={busy} style={[styles.action,styles.heart]} onPress={() => finishSwipe('interested')}><Text style={styles.actionHeart}>♥</Text></Pressable>
       </View>
 
-      <View style={styles.bottomNav}>
-        <Nav icon="☕" label="Discover" active onPress={()=>{}} />
-        <Nav icon="♡" label="Matches" onPress={()=>router.push('/home')} />
-        <Nav icon="✉" label="Messages" onPress={()=>router.push('/home')} />
-        <Nav icon="◯" label="Profile" onPress={()=>router.push('/home')} />
-      </View>
+      <AppBottomNav active="discover" role="barista"/>
     </SafeAreaView>
   );
 }

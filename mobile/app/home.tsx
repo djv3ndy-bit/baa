@@ -77,16 +77,16 @@ export default function HomeScreen() {
         {!isCafe ? (
           <>
             <Action icon="☕" title="Discover" copy="Swipe through café opportunities." onPress={() => router.push('/discover')} />
-            <Action icon="🤝" title="Matches" copy="See cafés that matched with you." />
-            <Action icon="💬" title="Messages" copy="Continue conversations with matched cafés." />
-            <Action icon="👤" title="My profile" copy="Keep your profile and coffee showcase updated." />
+            <Action icon="🤝" title="Matches" copy="See cafés that matched with you." onPress={()=>router.push('/matches')} />
+            <Action icon="💬" title="Messages" copy="Continue conversations with matched cafés." onPress={()=>router.push('/messages')} />
+            <Action icon="👤" title="My profile" copy="Keep your profile and coffee showcase updated." onPress={()=>router.push('/profile')} />
           </>
         ) : (
           <>
             <Action icon="＋" title="Post a job" copy="Create a new café opportunity." />
-            <Action icon="☕" title="Candidates" copy="Review interested baristas." />
-            <Action icon="🤝" title="Matches" copy="See your active hiring connections." />
-            <Action icon="💬" title="Messages" copy="Chat with matched baristas." />
+            <Action icon="☕" title="Candidates" copy="Review interested baristas." onPress={()=>router.push('/candidates')} />
+            <Action icon="🤝" title="Matches" copy="See your active hiring connections." onPress={()=>router.push('/matches')} />
+            <Action icon="💬" title="Messages" copy="Chat with matched baristas." onPress={()=>router.push('/messages')} />
           </>
         )}
       </ScrollView>
