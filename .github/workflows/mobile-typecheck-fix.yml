@@ -1,0 +1,26 @@
+name: Mobile MVP typecheck fix
+on:
+  push:
+    paths:
+      - '.github/workflows/mobile-typecheck-fix.yml'
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/mobile-fix-typecheck.py
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: mobile
+        run: npm run typecheck
+      - name: Commit mobile MVP integration
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add mobile/app mobile/components mobile/lib mobile/package-lock.json
+          git commit -m "Complete mobile MVP matching and messaging flow"
+          git push
