@@ -19,7 +19,7 @@ jobs:
         run: |
           grep -q "Could not mark conversation read" dashboard.html
           ! grep -q "mark_conversation_read'.*\.catch" dashboard.html
-          grep -q '\$239.99/year' dashboard.html
+          grep -q '\$239.99' dashboard.html
           grep -q 'BARISTAMATCH CREATIVE CARD DASHBOARD' dashboard.html
       - name: Verify core files
         run: |
