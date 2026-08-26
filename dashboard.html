@@ -241,6 +241,24 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
   .wow-stat strong{margin-bottom:10px!important;}
   .wow-stat [class*="trend"],.wow-stat [class*="status"]{display:block!important;line-height:1.3!important;margin-top:4px!important;margin-bottom:0!important;}
 }
+
+/* Mobile full navigation drawer */
+.mobile-menu-toggle,.mobile-menu-backdrop{display:none}
+@media (max-width:760px){
+  .mobile-menu-toggle{display:grid;place-items:center;position:fixed;top:calc(10px + env(safe-area-inset-top));left:12px;z-index:1100;width:46px;height:46px;border:1px solid #e7ddd2;border-radius:15px;background:rgba(255,255,255,.96);color:#321708;font-size:24px;font-weight:900;box-shadow:0 8px 24px #32170824;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+  .mobile-menu-backdrop{display:block;position:fixed;inset:0;z-index:1040;background:rgba(25,11,5,.42);opacity:0;pointer-events:none;transition:opacity .2s ease}
+  .side{display:flex!important;position:fixed!important;left:0!important;top:0!important;bottom:0!important;width:min(84vw,330px)!important;height:100dvh!important;z-index:1050!important;transform:translateX(-105%)!important;transition:transform .24s ease!important;overflow-y:auto!important;padding-top:calc(22px + env(safe-area-inset-top))!important;box-shadow:18px 0 50px #160a0566!important}
+  body.mobile-menu-open{overflow:hidden}
+  body.mobile-menu-open .side{transform:translateX(0)!important}
+  body.mobile-menu-open .mobile-menu-backdrop{opacity:1;pointer-events:auto}
+  body.mobile-menu-open .mobile-menu-toggle{left:min(calc(84vw - 58px),272px);background:#fff;color:#321708}
+  .side .menu{display:grid!important;gap:7px!important}
+  .side .menu button{display:flex!important;align-items:center!important;width:100%!important;min-height:48px!important;padding:12px 14px!important;border-radius:13px!important;font-size:15px!important}
+  .side .brand{margin-bottom:24px!important}
+  .sidefoot{display:block!important;padding-bottom:calc(20px + env(safe-area-inset-bottom))!important}
+  .top{padding-left:70px!important}
+}
+
 </style>
 </head>
 <body>
@@ -424,6 +442,23 @@ window.addEventListener('error',event=>reportClientError(event.message,event.err
 window.addEventListener('unhandledrejection',event=>reportClientError(event.reason?.message||String(event.reason||'Unhandled promise rejection'),event.reason?.stack||'',{kind:'unhandledrejection'}));
 async function start(){try{if(!window.supabase?.createClient)throw new Error('The account service did not load. Check your connection and try again.');const config=await fetchConfig();const client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);const result=await withTimeout(client.auth.getSession(),10000,'Checking your login took too long.');if(result.error)throw result.error;const session=result.data.session;if(!session){location.replace('/?login=required');return}const role=session.user.user_metadata?.role==='cafe_owner_manager'?'cafe_owner_manager':'barista';document.getElementById('app').classList.add('role-'+role);const view=views[role];activeClient=client;currentUser=session.user;currentRole=role;currentView=view;await withTimeout(loadProfile(),10000,'Loading your profile took too long.');await withTimeout(loadMarketplaceData(),10000,'Loading marketplace activity took too long.');await withTimeout(refreshNotifications(false),10000,'Loading notifications took too long.');subscribeNotifications();document.getElementById('email').textContent=session.user.email||'';document.getElementById('role-badge').textContent=view.label;document.getElementById('menu').innerHTML=view.menu.map((x,i)=>`<button class="${i?'':'active'}" data-section="${x}"><span class="nav-icon" aria-hidden="true"></span><span class="nav-label">${x}</span></button>`).join('');updateUnreadBadges();document.getElementById('menu').onclick=event=>{const button=event.target.closest('button[data-section]');if(button)openSection(button.dataset.section,view,role)};openSection('Overview',view,role);document.getElementById('app').hidden=false;document.getElementById('loading').hidden=true;window.scrollTo(0,0);document.getElementById('logout').onclick=async()=>{await client.auth.signOut();location.replace('/')};client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT')location.replace('/')})}catch(error){console.error('Dashboard startup failed:',error);showStartupError(error.name==='AbortError'?'The account service took too long to respond. Please try again.':error.message||'We could not open your dashboard. Please try again.')}}
 start();
+</script>
+
+<button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">☰</button>
+<div class="mobile-menu-backdrop" id="mobile-menu-backdrop" aria-hidden="true"></div>
+
+<script>
+(function(){
+  const toggle=document.getElementById('mobile-menu-toggle');
+  const backdrop=document.getElementById('mobile-menu-backdrop');
+  if(!toggle||!backdrop)return;
+  const close=()=>{document.body.classList.remove('mobile-menu-open');toggle.setAttribute('aria-expanded','false');toggle.textContent='☰';};
+  const open=()=>{document.body.classList.add('mobile-menu-open');toggle.setAttribute('aria-expanded','true');toggle.textContent='×';};
+  toggle.addEventListener('click',()=>document.body.classList.contains('mobile-menu-open')?close():open());
+  backdrop.addEventListener('click',close);
+  document.addEventListener('click',e=>{if(e.target.closest('#menu button[data-section]'))close();});
+  window.addEventListener('resize',()=>{if(innerWidth>760)close();});
+})();
 </script>
 </body>
 </html>
