@@ -1,0 +1,21 @@
+name: Profile completion consistency
+on:
+  push:
+    paths: ['.github/workflows/profile-completion-consistency.yml']
+permissions:
+  contents: write
+jobs:
+  update-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/profile-completion-consistency.py
+      - run: node launch-check.js
+      - run: |
+          grep -q 'Add your profile photo' dashboard.html
+          grep -q "pay_expectation].every(Boolean)" dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Align profile completion with marketplace visibility"
+          git push
