@@ -1,0 +1,21 @@
+name: Profile trust gate
+on:
+  push:
+    paths: ['.github/workflows/profile-trust-gate.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/profile-trust-gate.py
+      - run: |
+          grep -q 'Complete your profile to become visible' dashboard.html
+          grep -q 'is_discoverable' dashboard.html
+          grep -q 'verification_status' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Require complete profiles for discovery and matching trust"
+          git push
