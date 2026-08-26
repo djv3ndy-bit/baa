@@ -1,0 +1,39 @@
+name: Apply dashboard wow redesign
+on:
+  push:
+    paths: ['.github/workflows/apply-dashboard-wow.yml']
+permissions:
+  contents: write
+jobs:
+  redesign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/apply-dashboard-wow.py
+      - name: Verify dashboard structure
+        run: |
+          grep -q 'BARISTAMATCH CREATIVE CARD DASHBOARD' dashboard.html
+          grep -q 'Post a job in minutes' dashboard.html
+          grep -q 'Recent activity' dashboard.html
+          grep -q 'role-cafe_owner_manager' dashboard.html
+          grep -q 'bm-error' dashboard.html
+          grep -q 'data-go="Job Posts"' dashboard.html
+          grep -q 'data-go="Candidates"' dashboard.html
+      - name: Basic JS/HTML sanity checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('dashboard.html').read_text()
+          assert s.count('<script') == s.count('</script>')
+          assert s.count('<style>') == s.count('</style>')
+          assert 'function overviewHtml(view)' in s
+          assert 'function bindContentActions()' in s
+          assert 'async function start()' in s
+          print('sanity checks passed')
+          PY
+      - run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Redesign cafe dashboard with creative card layout"
+          git push
