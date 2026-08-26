@@ -1,0 +1,20 @@
+name: Profile strength progress card
+on:
+  push:
+    paths: ['.github/workflows/profile-strength-progress-card.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/profile-strength-progress-card.py
+      - run: |
+          grep -q 'profile-progress-ring' dashboard.html
+          grep -q 'Continue profile' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Upgrade barista profile strength to progress card"
+          git push
