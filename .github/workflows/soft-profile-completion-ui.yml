@@ -1,0 +1,20 @@
+name: Soft profile completion UI
+on:
+  push:
+    paths: ['.github/workflows/soft-profile-completion-ui.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/soft-profile-completion-ui.py
+      - run: |
+          ! grep -q "innerHTML=(name==='Account Settings'?'':trustBanner())+html" dashboard.html
+          grep -q 'Complete your profile for better matches' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Use subtle professional profile completion guidance"
+          git push
