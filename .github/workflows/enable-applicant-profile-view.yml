@@ -1,0 +1,20 @@
+name: Enable applicant profile view
+on:
+  push:
+    paths: ['.github/workflows/enable-applicant-profile-view.yml']
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/enable-applicant-profile-view.py
+      - run: |
+          grep -q "applications.find(app=>app.barista_id===id)?.barista" dashboard.html
+          grep -q 'View profile' dashboard.html
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          git commit -m "Enable cafe owners to view applicant barista profiles"
+          git push
