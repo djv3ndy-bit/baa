@@ -1,0 +1,40 @@
+name: Final production sanity
+on:
+  push:
+    paths: ['.github/workflows/final-production-sanity.yml']
+permissions:
+  contents: write
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/final-production-sanity.py
+      - name: Verify auth pages
+        run: |
+          head -n 1 login.html | grep -qi '<!doctype html>'
+          head -n 1 signup.html | grep -qi '<!doctype html>'
+          ! grep -R "Already up to date\." --include='*.html' .
+      - name: Verify dashboard safety and pricing
+        run: |
+          grep -q "Could not mark conversation read" dashboard.html
+          ! grep -q "mark_conversation_read'.*\.catch" dashboard.html
+          grep -q '\$239.99/year' dashboard.html
+          grep -q 'BARISTAMATCH CREATIVE CARD DASHBOARD' dashboard.html
+      - name: Verify core files
+        run: |
+          test -f api/config.js
+          test -f api/apply-job.js
+          test -f api/match-application.js
+          test -f api/send-message.js
+          test -f api/support.js
+          test -f reset-password.html
+          test -f pricing.html
+      - run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add login.html signup.html dashboard.html
+          if ! git diff --cached --quiet; then
+            git commit -m "Fix auth markup and dashboard production issues"
+            git push
+          fi
