@@ -20,8 +20,8 @@ Sign in with the BaristaMatch Expo account when prompted. `eas init` will create
 Use the project URL and **publishable** key only. Never put the Supabase secret/service-role key in the mobile app.
 
 ```bash
-npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value "YOUR_SUPABASE_URL" --visibility plaintext
-npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value "YOUR_PUBLISHABLE_KEY" --visibility sensitive
+npx eas-cli@latest env:set --environment preview --name EXPO_PUBLIC_SUPABASE_URL --value "YOUR_SUPABASE_URL" --visibility plaintext
+npx eas-cli@latest env:set --environment preview --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value "YOUR_PUBLISHABLE_KEY" --visibility sensitive
 ```
 
 Repeat for `production` before App Store submission.
