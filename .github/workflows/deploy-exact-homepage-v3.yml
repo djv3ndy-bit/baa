@@ -1,0 +1,48 @@
+name: Deploy exact blueprint homepage v3
+on:
+  push:
+    paths:
+      - '.github/workflows/deploy-exact-homepage-v3.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode exact homepage
+        run: |
+          cat .github/homepage_exact_payload/part-* | base64 -d > index.html
+          wc -c index.html
+          sha256sum index.html
+      - name: Validate exact payload and required behavior
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('index.html')
+          data=p.read_bytes()
+          expected='0f8407ccbb703e178329c248b28938b94d793310be8625c2ac0172c34c6a516e'
+          actual=hashlib.sha256(data).hexdigest()
+          assert len(data)==29106, (len(data), 'unexpected homepage size')
+          assert actual==expected, (actual, 'payload checksum mismatch')
+          text=data.decode('utf-8')
+          required=['Great cafés','Simple steps. Better matches.','Why cafés and baristas love BaristaMatch','Barista dashboard','Café dashboard','Messages','/signup.html?role=barista','/signup.html?role=cafe_owner_manager','/login.html','/api/config','role-dialog']
+          missing=[item for item in required if item not in text]
+          assert not missing, ('missing', missing)
+          forbidden=['>Pricing<','$24.99','$239.99']
+          found=[item for item in forbidden if item.lower() in text.lower()]
+          assert not found, ('forbidden public pricing',found)
+          print('Exact homepage validation passed')
+          PY
+      - name: Commit exact homepage
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "Homepage already matches exact payload"
+            exit 0
+          fi
+          git commit -m "Implement exact BaristaMatch blueprint homepage"
+          git push
