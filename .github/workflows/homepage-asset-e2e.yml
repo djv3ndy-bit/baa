@@ -1,0 +1,61 @@
+name: Homepage asset E2E
+on:
+  push:
+    paths:
+      - '.github/workflows/homepage-asset-e2e.yml'
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Verify every homepage image and visual region
+        run: |
+          cat >/tmp/assets-e2e.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+          const browser=await chromium.launch({headless:true});
+          for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
+            const page=await browser.newPage({viewport,isMobile:viewport.width<500});
+            const failed=[];
+            page.on('requestfailed',request=>failed.push(`${request.url()} :: ${request.failure()?.errorText}`));
+            await page.goto(`https://www.baristajobmatch.com/?assets=${Date.now()}-${viewport.width}`,{waitUntil:'domcontentloaded'});
+            await page.locator('h1').waitFor();
+            await page.waitForTimeout(9000);
+            const images=await page.locator('img').evaluateAll(nodes=>nodes.map((img,index)=>({index,src:img.currentSrc||img.src,alt:img.alt,complete:img.complete,width:img.naturalWidth,height:img.naturalHeight,visible:!!(img.offsetWidth||img.offsetHeight||img.getClientRects().length)})));
+            const broken=images.filter(img=>img.visible&&(!img.complete||img.width<24||img.height<24));
+            assert.deepEqual(broken,[],`broken visible images at ${viewport.width}px: ${JSON.stringify(broken)}`);
+            const missingAlt=images.filter(img=>img.visible&&!img.alt.trim()&&!img.src.includes('favicon-transparent'));
+            assert.deepEqual(missingAlt,[],`visible images missing alt text: ${JSON.stringify(missingAlt)}`);
+            const criticalFailures=failed.filter(x=>/images\.unsplash\.com|baristajobmatch\.com\/assets/.test(x));
+            assert.deepEqual(criticalFailures,[],`critical image requests failed: ${criticalFailures.join(' | ')}`);
+            const sections=await page.locator('main section').count();
+            assert.ok(sections>=6,`only ${sections} main sections rendered`);
+            await page.close();
+          }
+          await browser.close();
+          console.log('All visible homepage assets and sections passed.');
+          JS
+          node /tmp/assets-e2e.mjs
+      - name: Record asset verification
+        run: |
+          mkdir -p .qa
+          cat > .qa/homepage-assets-e2e-passed.txt <<EOF
+          BaristaMatch homepage asset E2E: PASSED
+          Run: ${GITHUB_RUN_ID}
+          Verified: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Covered: every visible image at desktop/mobile widths, request failures, alt text, and major section rendering.
+          EOF
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin main
+          git add .qa/homepage-assets-e2e-passed.txt
+          git commit -m "Record homepage asset verification"
+          git push
