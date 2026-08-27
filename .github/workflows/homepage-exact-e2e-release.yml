@@ -1,0 +1,216 @@
+name: Exact homepage release and E2E verification
+on:
+  push:
+    paths:
+      - '.github/workflows/homepage-exact-e2e-release.yml'
+permissions:
+  contents: write
+jobs:
+  release-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild exact blueprint homepage
+        run: |
+          cat \
+            .github/homepage_exact_payload/part-00 \
+            .github/homepage_exact_payload/part-01 \
+            .github/homepage_exact_payload/part-02 \
+            .github/homepage_exact_payload/part-03 \
+            | base64 -d > index.html
+
+      - name: Validate exact homepage payload
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          data = Path('index.html').read_bytes()
+          text = data.decode('utf-8')
+          assert len(data) == 29106, f'unexpected byte length: {len(data)}'
+          assert hashlib.sha256(data).hexdigest() == '0f8407ccbb703e178329c248b28938b94d793310be8625c2ac0172c34c6a516e'
+
+          required = [
+              'Great cafés', 'Simple steps. Better matches.',
+              'Why cafés and baristas love BaristaMatch',
+              'Barista dashboard', 'Café dashboard', 'Messages',
+              '/signup.html?role=barista',
+              '/signup.html?role=cafe_owner_manager',
+              '/login.html', '/dashboard.html', '/support.html',
+              '/privacy.html', '/terms.html', '/api/config', 'role-dialog'
+          ]
+          missing = [value for value in required if value not in text]
+          assert not missing, f'missing homepage requirements: {missing}'
+
+          forbidden = ['>Pricing<', '$24.99', '$239.99', 'Trusted by coffee people']
+          found = [value for value in forbidden if value.lower() in text.lower()]
+          assert not found, f'forbidden public homepage content: {found}'
+          print('Exact blueprint source validation passed.')
+          PY
+
+      - name: Commit exact homepage before browser tests
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          if ! git diff --cached --quiet; then
+            git commit -m "Implement exact BaristaMatch blueprint homepage"
+            git push
+          fi
+
+      - name: Install browser test runtime
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run local responsive interaction tests
+        run: |
+          python3 -m http.server 4173 >/tmp/baristamatch-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          sleep 2
+          cat > /tmp/homepage-e2e.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+
+          const browser = await chromium.launch({headless:true});
+
+          async function desktop() {
+            const page = await browser.newPage({viewport:{width:1440,height:1000}});
+            await page.goto('http://127.0.0.1:4173/', {waitUntil:'domcontentloaded'});
+            await page.locator('h1').waitFor();
+            assert.match(await page.locator('h1').innerText(), /Great cafés[\s\S]*great baristas[\s\S]*belong together/i);
+            assert.equal(await page.getByText('$24.99', {exact:false}).count(), 0);
+            assert.equal(await page.getByText('$239.99', {exact:false}).count(), 0);
+            assert.equal(await page.getByText('Trusted by coffee people', {exact:false}).count(), 0);
+            assert.ok(await page.getByText('Simple steps. Better matches.', {exact:true}).isVisible());
+            assert.ok(await page.getByText('Why cafés and baristas love BaristaMatch', {exact:true}).isVisible());
+            assert.ok(await page.getByText('Barista dashboard', {exact:true}).isVisible());
+            assert.ok(await page.getByText('Café dashboard', {exact:true}).isVisible());
+
+            const resources = page.locator('.resource-button');
+            await resources.click();
+            assert.ok(await page.getByText('Help Center', {exact:true}).isVisible());
+
+            const roleButton = page.locator('[data-open-role]').first();
+            await roleButton.click();
+            assert.ok(await page.locator('#role-dialog').evaluate(el => el.open));
+            await page.locator('#dialog-close').click();
+
+            const baristaHref = await page.getByText('Create my free profile', {exact:true}).getAttribute('href');
+            const cafeHref = await page.getByText('Start hiring', {exact:true}).last().getAttribute('href');
+            assert.equal(baristaHref, '/signup.html?role=barista');
+            assert.equal(cafeHref, '/signup.html?role=cafe_owner_manager');
+
+            const heroImage = page.locator('.hero-photo');
+            await heroImage.waitFor({state:'visible'});
+            await page.waitForTimeout(3000);
+            assert.ok(await heroImage.evaluate(img => img.complete && img.naturalWidth > 400), 'hero image failed to load');
+
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+            assert.ok(overflow <= 1, `desktop horizontal overflow: ${overflow}px`);
+            await page.screenshot({path:'/tmp/homepage-desktop.png', fullPage:true});
+            await page.close();
+          }
+
+          async function mobile() {
+            const page = await browser.newPage({viewport:{width:390,height:844}, isMobile:true});
+            await page.goto('http://127.0.0.1:4173/', {waitUntil:'domcontentloaded'});
+            await page.locator('h1').waitFor();
+            const menu = page.locator('#mobile-menu');
+            assert.ok(await menu.isVisible());
+            await menu.click();
+            assert.ok(await page.locator('#nav-links').isVisible());
+            await page.locator('#nav-links a[href="#how"]').click();
+            assert.ok(await page.getByText('Simple steps. Better matches.', {exact:true}).isVisible());
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+            assert.ok(overflow <= 1, `mobile horizontal overflow: ${overflow}px`);
+            assert.ok(await page.getByText('I’m a Barista', {exact:true}).first().isVisible());
+            assert.ok(await page.getByText('I’m Hiring', {exact:true}).first().isVisible());
+            await page.screenshot({path:'/tmp/homepage-mobile.png', fullPage:true});
+            await page.close();
+          }
+
+          await desktop();
+          await mobile();
+          await browser.close();
+          console.log('Local desktop and mobile browser tests passed.');
+          JS
+          node /tmp/homepage-e2e.mjs
+
+      - name: Wait for Vercel production release
+        run: |
+          expected='Great cafés and'
+          for attempt in $(seq 1 60); do
+            page=$(curl -fsSL --max-time 20 "https://www.baristajobmatch.com/?release=${GITHUB_SHA}-${attempt}" || true)
+            if printf '%s' "$page" | grep -q "$expected"; then
+              printf '%s' "$page" > /tmp/production-index.html
+              echo "Production homepage is live on attempt $attempt."
+              exit 0
+            fi
+            echo "Waiting for production deployment ($attempt/60)…"
+            sleep 10
+          done
+          echo "Production did not expose the exact homepage within 10 minutes."
+          exit 1
+
+      - name: Run production route and API smoke tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('/tmp/production-index.html').read_text()
+          required = ['Great cafés', 'Simple steps. Better matches.', 'Why cafés and baristas love BaristaMatch']
+          assert all(item in text for item in required)
+          assert '$24.99' not in text and '$239.99' not in text
+          assert 'Trusted by coffee people' not in text
+          PY
+
+          for path in \
+            /login.html \
+            '/signup.html?role=barista' \
+            '/signup.html?role=cafe_owner_manager' \
+            /dashboard.html \
+            /support.html \
+            /privacy.html \
+            /terms.html; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://www.baristajobmatch.com${path}")
+            case "$code" in 200|204|301|302|307|308) ;; *) echo "Route ${path} returned ${code}"; exit 1;; esac
+          done
+
+          curl -fsSL --max-time 20 https://www.baristajobmatch.com/api/config > /tmp/config.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/config.json'))
+          assert data.get('supabaseUrl')
+          assert data.get('supabasePublishableKey')
+          print('Public config route is healthy.')
+          PY
+
+          for endpoint in apply-job match-application send-message; do
+            code=$(curl -sS -o /tmp/${endpoint}.json -w '%{http_code}' \
+              -X POST -H 'Content-Type: application/json' -d '{}' \
+              "https://www.baristajobmatch.com/api/${endpoint}")
+            if [ "$code" != "401" ]; then
+              echo "/api/${endpoint} expected 401 without authentication, got ${code}"
+              cat /tmp/${endpoint}.json
+              exit 1
+            fi
+          done
+
+      - name: Record successful E2E release check
+        run: |
+          mkdir -p .qa
+          cat > .qa/homepage-e2e-passed.txt <<EOF
+          Exact BaristaMatch blueprint homepage: PASSED
+          Source commit: ${GITHUB_SHA}
+          Run ID: ${GITHUB_RUN_ID}
+          Verified: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          Checks: exact source checksum, no public pricing, desktop browser, mobile browser, role links, role dialog, image load, responsive overflow, production routes, public config, protected API authentication.
+          EOF
+          git add .qa/homepage-e2e-passed.txt
+          git commit -m "Record exact homepage end-to-end verification"
+          git push
