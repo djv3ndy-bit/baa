@@ -83,7 +83,7 @@ export default function HomeScreen() {
           </>
         ) : (
           <>
-            <Action icon="＋" title="Post a job" copy="Create a new café opportunity." />
+            <Action icon="＋" title="Post a job" copy="Create a new café opportunity." onPress={()=>router.push('/post-job')} />
             <Action icon="☕" title="Candidates" copy="Review interested baristas." onPress={()=>router.push('/candidates')} />
             <Action icon="🤝" title="Matches" copy="See your active hiring connections." onPress={()=>router.push('/matches')} />
             <Action icon="💬" title="Messages" copy="Chat with matched baristas." onPress={()=>router.push('/messages')} />

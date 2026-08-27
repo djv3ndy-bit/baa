@@ -3,27 +3,36 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollV
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
-type Role = 'barista' | 'cafe';
+type Role = 'barista' | 'cafe_owner_manager';
 
 export default function SignupScreen() {
   const [role, setRole] = useState<Role>('barista');
   const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function signUp() {
-    if (!name.trim() || !email.trim() || password.length < 10) {
-      return Alert.alert('Check your information', 'Enter your name, email, and a password with at least 10 characters.');
+    if (!name.trim() || !location.trim() || !email.trim() || password.length < 10) {
+      return Alert.alert('Check your information', 'Enter your name, location, email, and a password with at least 10 characters.');
     }
+    const isCafe = role === 'cafe_owner_manager';
+    const profile = {
+      id: '',
+      role,
+      display_name: isCafe ? null : name.trim(),
+      cafe_name: isCafe ? name.trim() : null,
+      location: location.trim(),
+    };
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { data: { role, display_name: name.trim() } },
+      options: { data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
     });
     if (!error && data.user) {
-      await supabase.from('profiles').upsert({ id: data.user.id, role, display_name: name.trim() }, { onConflict: 'id' });
+      await supabase.from('profiles').upsert({ ...profile, id: data.user.id }, { onConflict: 'id' });
     }
     setLoading(false);
     if (error) return Alert.alert('Unable to create account', error.message);
@@ -40,7 +49,7 @@ export default function SignupScreen() {
           <Text style={styles.subtitle}>Choose how you’ll use BaristaMatch.</Text>
 
           <View style={styles.roleRow}>
-            {(['barista','cafe'] as Role[]).map(item => (
+            {(['barista','cafe_owner_manager'] as Role[]).map(item => (
               <Pressable key={item} onPress={() => setRole(item)} style={[styles.role, role === item && styles.roleActive]}>
                 <Text style={[styles.roleText, role === item && styles.roleTextActive]}>{item === 'barista' ? '☕ Barista' : '🏪 Café'}</Text>
               </Pressable>
@@ -49,6 +58,8 @@ export default function SignupScreen() {
 
           <Text style={styles.label}>{role === 'barista' ? 'Your name' : 'Café name'}</Text>
           <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={role === 'barista' ? 'Your full name' : 'Your café name'} />
+          <Text style={styles.label}>Location</Text>
+          <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="City, State" />
           <Text style={styles.label}>Email</Text>
           <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" />
           <Text style={styles.label}>Password</Text>
