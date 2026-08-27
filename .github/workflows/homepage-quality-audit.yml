@@ -1,0 +1,75 @@
+name: Homepage quality audit
+on:
+  push:
+    paths:
+      - '.github/workflows/homepage-quality-audit.yml'
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Lighthouse CI
+        run: npm install --no-save @lhci/cli@0.15.1
+      - name: Configure category thresholds
+        run: |
+          cat > lighthouserc.json <<'JSON'
+          {
+            "ci": {
+              "collect": {
+                "url": ["https://www.baristajobmatch.com/?quality_audit=1"],
+                "numberOfRuns": 2,
+                "settings": {
+                  "preset": "desktop",
+                  "chromeFlags": "--no-sandbox --headless --disable-gpu"
+                }
+              },
+              "assert": {
+                "assertions": {
+                  "categories:performance": ["error", {"minScore": 0.65}],
+                  "categories:accessibility": ["error", {"minScore": 0.90}],
+                  "categories:best-practices": ["error", {"minScore": 0.90}],
+                  "categories:seo": ["error", {"minScore": 0.90}],
+                  "document-title": "error",
+                  "meta-description": "error",
+                  "html-has-lang": "error",
+                  "viewport": "error",
+                  "image-alt": "error",
+                  "link-name": "error",
+                  "button-name": "error"
+                }
+              },
+              "upload": {"target": "filesystem", "outputDir": ".lighthouseci"}
+            }
+          }
+          JSON
+      - name: Run Lighthouse audit
+        run: npx lhci autorun --config=./lighthouserc.json
+      - name: Record quality pass
+        run: |
+          mkdir -p .qa
+          python3 - <<'PY'
+          import json,glob,statistics,datetime
+          reports=[]
+          for path in glob.glob('.lighthouseci/lhr-*.json'):
+              with open(path) as f: reports.append(json.load(f))
+          assert reports
+          cats=['performance','accessibility','best-practices','seo']
+          summary={c:round(statistics.mean(r['categories'][c]['score'] for r in reports)*100,1) for c in cats}
+          with open('.qa/homepage-quality-audit-passed.txt','w') as f:
+              f.write('BaristaMatch homepage quality audit: PASSED\n')
+              f.write('Verified: '+datetime.datetime.now(datetime.timezone.utc).isoformat()+'\n')
+              for c,v in summary.items(): f.write(f'{c}: {v}\n')
+              f.write('Thresholds: performance 65+, accessibility 90+, best practices 90+, SEO 90+.\n')
+          print(summary)
+          PY
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin main
+          git add .qa/homepage-quality-audit-passed.txt
+          git commit -m "Record homepage performance and accessibility audit"
+          git push
