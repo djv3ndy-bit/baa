@@ -1,0 +1,74 @@
+name: Deploy exact blueprint homepage v4
+on:
+  push:
+    paths:
+      - '.github/workflows/deploy-exact-homepage-v4.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode complete homepage payload
+        run: |
+          cat \
+            .github/homepage_exact_payload/part-00 \
+            .github/homepage_exact_payload/part-01 \
+            .github/homepage_exact_payload/part-02 \
+            .github/homepage_exact_payload/part-03 \
+            | base64 -d > index.html
+          wc -c index.html
+          sha256sum index.html
+      - name: Validate exact blueprint and public conversion flow
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          data = Path('index.html').read_bytes()
+          text = data.decode('utf-8')
+          expected_size = 29106
+          expected_sha = '0f8407ccbb703e178329c248b28938b94d793310be8625c2ac0172c34c6a516e'
+          actual_sha = hashlib.sha256(data).hexdigest()
+
+          assert len(data) == expected_size, f'homepage size {len(data)} != {expected_size}'
+          assert actual_sha == expected_sha, f'homepage checksum {actual_sha} != {expected_sha}'
+
+          required = [
+              'Great cafés',
+              'Simple steps. Better matches.',
+              'Why cafés and baristas love BaristaMatch',
+              'Barista dashboard',
+              'Café dashboard',
+              'Messages',
+              '/signup.html?role=barista',
+              '/signup.html?role=cafe_owner_manager',
+              '/login.html',
+              '/dashboard.html',
+              '/support.html',
+              '/privacy.html',
+              '/terms.html',
+              '/api/config',
+              'role-dialog',
+          ]
+          missing = [item for item in required if item not in text]
+          assert not missing, f'missing required homepage elements: {missing}'
+
+          forbidden = ['>Pricing<', '$24.99', '$239.99', 'Trusted by coffee people']
+          found = [item for item in forbidden if item.lower() in text.lower()]
+          assert not found, f'forbidden public homepage content: {found}'
+
+          print('Exact homepage payload and routes validated.')
+          PY
+      - name: Commit exact homepage
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "Homepage already matches the exact blueprint payload."
+            exit 0
+          fi
+          git commit -m "Implement exact BaristaMatch blueprint homepage"
+          git push
