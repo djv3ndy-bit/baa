@@ -23,6 +23,7 @@ for(const token of ['barista-image-field','preferred_city','preferred_state','pr
   if(!dashboard.includes(token)) throw new Error(`dashboard missing trust/location token ${token}`);
 }
 if(dashboard.includes(".wow-stat:nth-child(4) .profile-info{font-size:12px;color:#a95820;vertical-align:1px}.wow-stat-label{color:#dbcbbc}")) throw new Error('Dashboard has global wow-stat label color bleed');
-if(!fs.readFileSync('index.html','utf8').includes('href="/support.html">Support</a>')) throw new Error('Homepage Support link is not routed to support page');
+const homepage=fs.readFileSync('index.html','utf8');
+if(!homepage.includes('href="/support.html">Help Center</a>')||!homepage.includes('href="/support.html">Contact Us</a>')) throw new Error('Homepage support links are not routed to support page');
 
 console.log('BaristaMatch launch readiness static checks passed');
