@@ -1,0 +1,39 @@
+name: Deploy exact blueprint homepage v2
+on:
+  push:
+    paths:
+      - '.github/workflows/deploy-exact-homepage-v2.yml'
+permissions:
+  contents: write
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode homepage
+        run: cat .github/homepage_exact_payload/part-* | base64 -d > index.html
+      - name: Validate blueprint structure
+        run: |
+          test -s index.html
+          grep -q 'Great cafés' index.html
+          grep -q 'Simple steps. Better matches.' index.html
+          grep -q 'Why cafés and baristas love BaristaMatch' index.html
+          grep -q 'Barista dashboard' index.html
+          grep -q 'Café dashboard' index.html
+          grep -q 'Messages' index.html
+          grep -q '/signup.html?role=barista' index.html
+          grep -q '/signup.html?role=cafe_owner_manager' index.html
+          grep -q '/login.html' index.html
+          grep -q '/api/config' index.html
+          grep -q 'role-dialog' index.html
+          ! grep -qi '>Pricing<' index.html
+          ! grep -q '\$24.99' index.html
+          ! grep -q '\$239.99' index.html
+      - name: Commit exact homepage
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Implement exact BaristaMatch blueprint homepage"
+          git push
