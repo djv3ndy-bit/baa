@@ -17,6 +17,11 @@ for(const file of ['api/send-message.js','api/apply-job.js','api/match-applicati
 }
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
+if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
+const login=fs.readFileSync('login.html','utf8');
+if(!login.includes('resetPasswordForEmail')||!login.includes('/reset-password.html')) throw new Error('Password reset request flow is missing');
+const resetPassword=fs.readFileSync('reset-password.html','utf8');
+if(!resetPassword.includes('href="/login.html">Request another reset link</a>')) throw new Error('Expired reset link recovery does not return to login');
 
 // Marketplace trust, location, and responsive regression checks.
 for(const token of ['barista-image-field','preferred_city','preferred_state','preferred_postal_code','address_line1','postal_code','jobMatchesBaristaLocation','profileVisibilityReady']){
