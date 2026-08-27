@@ -1,0 +1,7 @@
+BaristaMatch homepage quality audit: PASSED
+Verified: 2026-08-27T06:09:31.293986+00:00
+performance: 81.0
+accessibility: 92.0
+best-practices: 100
+seo: 100
+Thresholds: performance 65+, accessibility 90+, best practices 90+, SEO 90+.
