@@ -29,9 +29,18 @@
         "backgroundColor": "#fbf7f1"
       }
     },
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "faef8923-6780-4373-bb0b-c789e3eb1bcc"
+      }
+    },
+    "owner": "tovendy"
   }
 }
