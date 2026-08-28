@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 
 const oauthAppCallback = 'baristamatch://auth/callback';
 const oauthRedirect = 'https://www.baristajobmatch.com/mobile-auth-callback.html';
+const oauthStart = 'https://www.baristajobmatch.com/mobile-auth-start.html';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -92,7 +93,8 @@ export default function LoginScreen() {
       return Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, error?.message || 'Please try again.');
     }
     try {
-      const result = await WebBrowser.openAuthSessionAsync(data.url, oauthAppCallback, { preferEphemeralSession: false });
+      const brandedAuthUrl = `${oauthStart}#${encodeURIComponent(data.url)}`;
+      const result = await WebBrowser.openAuthSessionAsync(brandedAuthUrl, oauthAppCallback, { preferEphemeralSession: false });
       if (result.type === 'success') await handleOAuth(result.url);
       else setSocialLoading(null);
     } catch {
