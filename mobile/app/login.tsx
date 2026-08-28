@@ -3,7 +3,8 @@ import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platfor
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
-const oauthRedirect = 'baristamatch://auth/callback';
+const oauthAppCallback = 'baristamatch://auth/callback';
+const oauthRedirect = 'https://www.baristajobmatch.com/mobile-auth-callback.html';
 
 function Text(props: TextProps) {
   return <NativeText allowFontScaling={false} maxFontSizeMultiplier={1} {...props} />;
@@ -25,7 +26,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     async function handleOAuth(url: string | null) {
-      if (!url?.startsWith(oauthRedirect)) return;
+      if (!url?.startsWith(oauthAppCallback)) return;
       const params = readOAuthParams(url);
       const errorDescription = params.get('error_description');
       if (errorDescription) {
