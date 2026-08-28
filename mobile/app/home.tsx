@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
@@ -8,6 +8,7 @@ type Profile = { role?: Role; display_name?: string | null; cafe_name?: string |
 
 export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<Profile>({});
   const [counts, setCounts] = useState({ jobs: 0, matches: 0, alerts: 0 });
 
@@ -15,39 +16,47 @@ export default function HomeScreen() {
   const isCafe = role === 'cafe_owner_manager';
   const name = useMemo(() => profile.cafe_name || profile.display_name || (isCafe ? 'Your café' : 'Barista'), [profile, isCafe]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(true); }, []);
 
-  async function load() {
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return router.replace('/login');
+  async function load(fullScreen = false) {
+    if (fullScreen) setLoading(true); else setRefreshing(true);
+    const { data: auth } = await supabase.auth.getSession();
+    const user = auth.session?.user;
+    if (!user) return router.replace('/login');
 
-    const { data: p } = await supabase.from('profiles').select('role,display_name,cafe_name').eq('id', auth.user.id).maybeSingle();
+    const { data: p, error: profileError } = await supabase.from('profiles').select('role,display_name,cafe_name').eq('id', user.id).maybeSingle();
+    if (profileError) {
+      setLoading(false);
+      setRefreshing(false);
+      return Alert.alert('Could not load your dashboard', 'Check your connection and try again.', [{ text: 'Retry', onPress: () => load(true) }]);
+    }
     if (p) setProfile(p as Profile);
 
     const inferredRole: Role = p?.role === 'cafe_owner_manager' ? 'cafe_owner_manager' : 'barista';
     if (inferredRole === 'barista') {
       const [{ count: jobs }, { count: matches }, { count: unread }] = await Promise.all([
         supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('active', true),
-        supabase.from('applications').select('*', { count: 'exact', head: true }).eq('barista_id', auth.user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', auth.user.id).is('read_at', null),
+        supabase.from('applications').select('*', { count: 'exact', head: true }).eq('barista_id', user.id).eq('status', 'matched'),
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
       ]);
       setCounts({ jobs: jobs || 0, matches: matches || 0, alerts: unread || 0 });
     } else {
       const [{ count: jobs }, { count: matches }, { count: unread }] = await Promise.all([
-        supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('owner_id', auth.user.id).eq('active', true),
-        supabase.from('applications').select('*,jobs!inner(owner_id)', { count: 'exact', head: true }).eq('jobs.owner_id', auth.user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', auth.user.id).is('read_at', null),
+        supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('owner_id', user.id).eq('active', true),
+        supabase.from('applications').select('*,jobs!inner(owner_id)', { count: 'exact', head: true }).eq('jobs.owner_id', user.id).eq('status', 'matched'),
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
       ]);
       setCounts({ jobs: jobs || 0, matches: matches || 0, alerts: unread || 0 });
     }
     setLoading(false);
+    setRefreshing(false);
   }
 
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.wrap}>
+      <ScrollView contentContainerStyle={styles.wrap} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(false)} tintColor="#321708" />}>
         <View style={styles.topRow}>
           <View>
             <Text style={styles.brand}>Barista<Text style={styles.match}>Match</Text></Text>

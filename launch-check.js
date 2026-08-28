@@ -41,5 +41,9 @@ const mobileChat=fs.readFileSync('mobile/app/chat/[id].tsx','utf8');
 if(!mobileDiscover.includes("authenticatedApi('/apply-job'")) throw new Error('Mobile application action bypasses the authenticated API');
 if(!mobileCandidates.includes("authenticatedApi('/match-application'")) throw new Error('Mobile match action bypasses the authenticated API');
 if(!mobileChat.includes("authenticatedApi('/send-message'")) throw new Error('Mobile messaging action bypasses the authenticated API');
+if(!mobileHome.includes("supabase.auth.getSession()")) throw new Error('Mobile dashboard performs a blocking remote auth check');
+const mobileLogin=fs.readFileSync('mobile/app/login.tsx','utf8');
+if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mobile login is missing password recovery');
+if(!mobileLogin.includes('setGoogleLoading(false)')) throw new Error('Mobile Google login can remain stuck after cancellation');
 
 console.log('BaristaMatch launch readiness static checks passed');

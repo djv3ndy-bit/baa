@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
@@ -35,7 +35,8 @@ export default function LoginScreen() {
       setGoogleLoading(false);
       if (error) return Alert.alert('Google sign-in failed', error.message);
       if (!data.user) return;
-      const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
+      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
+      if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
       if (existingProfile) return router.replace('/home');
       const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
       Alert.alert('How will you use BaristaMatch?', 'Choose your account type to finish setting up Google sign-in.', [
@@ -64,10 +65,15 @@ export default function LoginScreen() {
   async function signIn() {
     if (!email.trim() || !password) return Alert.alert('Missing information', 'Enter your email and password.');
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setLoading(false);
-    if (error) return Alert.alert('Unable to log in', error.message);
-    router.replace('/home');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      if (error) return Alert.alert('Unable to log in', error.message === 'Invalid login credentials' ? 'The email or password is incorrect.' : error.message);
+      router.replace('/home');
+    } catch {
+      Alert.alert('Connection problem', 'Check your internet connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function signInWithGoogle() {
@@ -85,7 +91,14 @@ export default function LoginScreen() {
       setGoogleLoading(false);
       return Alert.alert('Google sign-in unavailable', 'Unable to open the secure Google sign-in page.');
     }
-    await Linking.openURL(data.url);
+    try {
+      await Linking.openURL(data.url);
+    } catch {
+      Alert.alert('Google sign-in unavailable', 'Unable to open the secure Google sign-in page.');
+    } finally {
+      // Prevent a cancelled browser sign-in from leaving the button frozen.
+      setGoogleLoading(false);
+    }
   }
 
   return (
@@ -134,17 +147,18 @@ export default function LoginScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Welcome back</Text>
               <Text style={styles.cardCopy}>Log in to continue to BaristaJobMatch.</Text>
-              <Pressable onPress={signInWithGoogle} disabled={googleLoading || loading} style={({ pressed }) => [styles.google, pressed && styles.pressed]}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" onPress={signInWithGoogle} disabled={googleLoading || loading} style={({ pressed }) => [styles.google, pressed && styles.pressed, (googleLoading || loading) && styles.disabled]}>
                 <View style={styles.googleMark}><Text style={styles.googleLetter}>G</Text></View>
-                <Text style={styles.googleText}>{googleLoading ? 'Opening Google…' : 'Continue with Google'}</Text>
+                {googleLoading ? <ActivityIndicator color="#321708" /> : <Text style={styles.googleText}>Continue with Google</Text>}
               </Pressable>
               <View style={styles.divider}><View style={styles.line} /><Text style={styles.or}>OR CONTINUE WITH EMAIL</Text><View style={styles.line} /></View>
               <Text style={styles.label}>Email address</Text>
-              <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" placeholderTextColor="#b0a59d" />
+              <TextInput autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" returnKeyType="next" textContentType="emailAddress" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" placeholderTextColor="#b0a59d" />
               <Text style={styles.label}>Password</Text>
-              <TextInput secureTextEntry autoComplete="current-password" value={password} onChangeText={setPassword} style={styles.input} placeholder="Your password" placeholderTextColor="#b0a59d" />
+              <TextInput secureTextEntry autoComplete="current-password" returnKeyType="go" textContentType="password" onSubmitEditing={signIn} value={password} onChangeText={setPassword} style={styles.input} placeholder="Your password" placeholderTextColor="#b0a59d" />
+              <Pressable accessibilityRole="link" onPress={() => router.push('/forgot-password')} style={styles.forgot}><Text style={styles.forgotText}>Forgot password?</Text></Pressable>
               <Pressable onPress={signIn} disabled={loading || googleLoading} style={({ pressed }) => [styles.primary, pressed && styles.pressed, (loading || googleLoading) && styles.disabled]}>
-                <Text style={styles.primaryText}>{loading ? 'Logging in…' : 'Log in'}</Text>{!loading && <Text style={styles.arrow}>→</Text>}
+                {loading ? <><ActivityIndicator color="#fff" /><Text style={styles.primaryText}>Logging in…</Text></> : <><Text style={styles.primaryText}>Log in</Text><Text style={styles.arrow}>→</Text></>}
               </Pressable>
               <View style={styles.createRow}><Text style={styles.newText}>New to BaristaJobMatch?</Text><Pressable onPress={() => router.push('/signup')}><Text style={styles.link}> Create an account</Text></Pressable></View>
             </View>
@@ -174,5 +188,5 @@ const styles = StyleSheet.create({
   pathSectionCompact:{marginHorizontal:-17,paddingHorizontal:17,paddingTop:12,paddingBottom:10},pathTitleCompact:{fontSize:17,marginBottom:8},
   card:{backgroundColor:'#fff',borderRadius:22,padding:20,borderWidth:1,borderColor:'#eadfd5',shadowColor:'#321708',shadowOpacity:.1,shadowRadius:22,shadowOffset:{width:0,height:12}},cardTitle:{fontSize:27,fontWeight:'900',letterSpacing:-.7,color:'#321708'},cardCopy:{fontSize:13,color:'#71665f',marginTop:5,marginBottom:17},google:{height:54,borderRadius:999,borderWidth:1,borderColor:'#d5c1b1',backgroundColor:'#fff',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:11},googleMark:{width:26,height:26,borderRadius:13,backgroundColor:'#f4f7ff',alignItems:'center',justifyContent:'center'},googleLetter:{fontSize:17,fontWeight:'900',color:'#4285f4'},googleText:{fontSize:15,fontWeight:'800',color:'#321708'},
   divider:{flexDirection:'row',alignItems:'center',gap:9,marginVertical:18},line:{height:1,backgroundColor:'#e9ddd3',flex:1},or:{fontSize:8.5,fontWeight:'900',letterSpacing:1.1,color:'#998b82'},label:{fontSize:12,fontWeight:'900',color:'#4b2b1a',marginBottom:7,marginTop:10},input:{height:52,backgroundColor:'#fff',borderWidth:1,borderColor:'#e1d4c9',borderRadius:14,paddingHorizontal:15,fontSize:16,color:'#20140d'},
-  primary:{marginTop:20,height:55,backgroundColor:'#321708',borderRadius:999,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:14},primaryText:{color:'#fff',fontWeight:'900',fontSize:16},arrow:{color:'#fff',fontSize:21,lineHeight:23},pressed:{opacity:.84},disabled:{opacity:.55},createRow:{flexDirection:'row',alignItems:'center',justifyContent:'center',marginTop:18},newText:{fontSize:13,color:'#71665f'},link:{fontSize:13,color:'#b76022',fontWeight:'900'},foot:{textAlign:'center',fontSize:11,color:'#71665f',marginTop:14,fontWeight:'700'},footCompact:{marginTop:5,fontSize:10},
+  forgot:{alignSelf:'flex-end',paddingVertical:10,paddingLeft:14},forgotText:{fontSize:12,fontWeight:'900',color:'#b76022'},primary:{marginTop:8,height:55,backgroundColor:'#321708',borderRadius:999,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:14},primaryText:{color:'#fff',fontWeight:'900',fontSize:16},arrow:{color:'#fff',fontSize:21,lineHeight:23},pressed:{opacity:.84},disabled:{opacity:.55},createRow:{flexDirection:'row',alignItems:'center',justifyContent:'center',marginTop:18},newText:{fontSize:13,color:'#71665f'},link:{fontSize:13,color:'#b76022',fontWeight:'900'},foot:{textAlign:'center',fontSize:11,color:'#71665f',marginTop:14,fontWeight:'700'},footCompact:{marginTop:5,fontSize:10},
 });
