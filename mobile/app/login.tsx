@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
 
 const oauthAppCallback = 'baristamatch://auth/callback';
 const oauthRedirect = 'https://www.baristajobmatch.com/mobile-auth-callback.html';
+
+WebBrowser.maybeCompleteAuthSession();
 
 function Text(props: TextProps) {
   return <NativeText allowFontScaling={false} maxFontSizeMultiplier={1} {...props} />;
@@ -25,35 +28,35 @@ export default function LoginScreen() {
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
   useEffect(() => {
-    async function handleOAuth(url: string | null) {
-      if (!url?.startsWith(oauthAppCallback)) return;
-      const params = readOAuthParams(url);
-      const errorDescription = params.get('error_description');
-      if (errorDescription) {
-        setSocialLoading(null);
-        return Alert.alert('Sign-in failed', decodeURIComponent(errorDescription));
-      }
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      if (!accessToken || !refreshToken) return;
-      const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-      setSocialLoading(null);
-      if (error) return Alert.alert('Sign-in failed', error.message);
-      if (!data.user) return;
-      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
-      if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
-      if (existingProfile) return router.replace('/home');
-      const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
-      Alert.alert('How will you use BaristaMatch?', 'Choose your account type to finish setting up your profile.', [
-        { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
-        { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
-      ]);
-    }
-
     const subscription = Linking.addEventListener('url', ({ url }) => handleOAuth(url));
     Linking.getInitialURL().then(handleOAuth);
     return () => subscription.remove();
   }, []);
+
+  async function handleOAuth(url: string | null) {
+    if (!url?.startsWith(oauthAppCallback)) return;
+    const params = readOAuthParams(url);
+    const errorDescription = params.get('error_description');
+    if (errorDescription) {
+      setSocialLoading(null);
+      return Alert.alert('Sign-in failed', decodeURIComponent(errorDescription));
+    }
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken || !refreshToken) return;
+    const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    setSocialLoading(null);
+    if (error) return Alert.alert('Sign-in failed', error.message);
+    if (!data.user) return;
+    const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
+    if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
+    if (existingProfile) return router.replace('/home');
+    const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
+    Alert.alert('How will you use BaristaMatch?', 'Choose your account type to finish setting up your profile.', [
+      { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
+      { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
+    ]);
+  }
 
   async function createSocialProfile(userId: string, role: 'barista' | 'cafe_owner_manager', name: string) {
     const isCafe = role === 'cafe_owner_manager';
@@ -89,12 +92,12 @@ export default function LoginScreen() {
       return Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, error?.message || 'Please try again.');
     }
     try {
-      if (!(await Linking.canOpenURL(data.url))) throw new Error('Unsupported sign-in URL');
-      await Linking.openURL(data.url);
+      const result = await WebBrowser.openAuthSessionAsync(data.url, oauthAppCallback, { preferEphemeralSession: false });
+      if (result.type === 'success') await handleOAuth(result.url);
+      else setSocialLoading(null);
     } catch {
-      Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, 'Unable to open the secure sign-in page.');
-    } finally {
       setSocialLoading(null);
+      Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, 'Unable to open the secure sign-in page.');
     }
   }
 
