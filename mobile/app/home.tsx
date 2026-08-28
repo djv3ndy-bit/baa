@@ -43,11 +43,6 @@ export default function HomeScreen() {
     setLoading(false);
   }
 
-  async function logout() {
-    await supabase.auth.signOut();
-    router.replace('/login');
-  }
-
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
 
   return (
@@ -58,7 +53,7 @@ export default function HomeScreen() {
             <Text style={styles.brand}>Barista<Text style={styles.match}>Match</Text></Text>
             <Text style={styles.role}>{isCafe ? 'CAFÉ ACCOUNT' : 'BARISTA ACCOUNT'}</Text>
           </View>
-          <Pressable onPress={logout} style={styles.account}><Text style={styles.accountText}>⚙</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open account settings" onPress={() => router.push('/settings')} style={styles.account}><Text style={styles.accountText}>⚙</Text></Pressable>
         </View>
 
         <View style={styles.hero}>

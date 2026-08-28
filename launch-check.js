@@ -31,4 +31,15 @@ if(dashboard.includes(".wow-stat:nth-child(4) .profile-info{font-size:12px;color
 const homepage=fs.readFileSync('index.html','utf8');
 if(!homepage.includes('href="/support.html">Help Center</a>')||!homepage.includes('href="/support.html">Contact Us</a>')) throw new Error('Homepage support links are not routed to support page');
 
+// Mobile interaction regressions.
+const mobileHome=fs.readFileSync('mobile/app/home.tsx','utf8');
+if(!mobileHome.includes("router.push('/settings')")) throw new Error('Mobile dashboard settings button is not routed to Settings');
+if(mobileHome.includes('onPress={logout}')) throw new Error('Mobile dashboard settings button still logs the user out');
+const mobileDiscover=fs.readFileSync('mobile/app/discover.tsx','utf8');
+const mobileCandidates=fs.readFileSync('mobile/app/candidates.tsx','utf8');
+const mobileChat=fs.readFileSync('mobile/app/chat/[id].tsx','utf8');
+if(!mobileDiscover.includes("authenticatedApi('/apply-job'")) throw new Error('Mobile application action bypasses the authenticated API');
+if(!mobileCandidates.includes("authenticatedApi('/match-application'")) throw new Error('Mobile match action bypasses the authenticated API');
+if(!mobileChat.includes("authenticatedApi('/send-message'")) throw new Error('Mobile messaging action bypasses the authenticated API');
+
 console.log('BaristaMatch launch readiness static checks passed');

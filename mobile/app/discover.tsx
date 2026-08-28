@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Animated, Dimensions, PanResponder, Pressable
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { AppBottomNav } from '@/components/AppBottomNav';
+import { authenticatedApi } from '@/lib/api';
 
 type Job = {
   id: string;
@@ -96,20 +97,21 @@ export default function DiscoverScreen() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.replace('/login');
 
+    if (decision === 'interested') {
+      try {
+        await authenticatedApi('/apply-job', { job_id: current.id });
+      } catch (error) {
+        setBusy(false);
+        Alert.alert('Interest not sent', error instanceof Error ? error.message : 'Please try again.');
+        return;
+      }
+    }
+
     const { error: swipeError } = await supabase.from('job_swipes').upsert({ user_id: auth.user.id, job_id: current.id, decision }, { onConflict: 'user_id,job_id' });
     if (swipeError) {
       setBusy(false);
       Alert.alert('Try again', swipeError.message);
       return;
-    }
-
-    if (decision === 'interested') {
-      const { error: appError } = await supabase.from('applications').insert({ job_id: current.id, barista_id: auth.user.id, status: 'interested' });
-      if (appError && !appError.message.toLowerCase().includes('duplicate')) {
-        setBusy(false);
-        Alert.alert('Interest not sent', appError.message);
-        return;
-      }
     }
 
     setIndex(i => i + 1);
@@ -138,7 +140,6 @@ export default function DiscoverScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View><Text style={styles.logo}>Barista<Text style={styles.logoAccent}>Match</Text></Text><Text style={styles.tagline}>SWIPE · MATCH · BREW</Text></View>
-        <Pressable style={styles.filter}><Text style={styles.filterText}>☰</Text></Pressable>
       </View>
 
       <View style={styles.deck}>

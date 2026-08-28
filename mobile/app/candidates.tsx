@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { AppBottomNav } from '@/components/AppBottomNav';
+import { authenticatedApi } from '@/lib/api';
 
 type Candidate={id:string;job_id:string;status:string;job?:any;barista?:any};
 export default function CandidatesScreen(){
@@ -13,7 +14,7 @@ export default function CandidatesScreen(){
  async function load(){setLoading(true);const {user,role}=await getCurrentContext();if(!user)return router.replace('/login');if(role!=='cafe_owner_manager'){setLoading(false);return}
   const {data,error}=await supabase.from('applications').select('id,job_id,status,created_at,barista:profiles!applications_barista_id_fkey(id,display_name,location,bio,skills,availability,experience,pay_expectation,video_path,avatar_url),job:jobs!inner(id,title,owner_id)').eq('job.owner_id',user.id).eq('status','interested').order('created_at',{ascending:true});
   if(error)Alert.alert('Could not load candidates',error.message);setItems((data||[]) as Candidate[]);setIndex(0);setLoading(false)}
- async function decide(decision:'matched'|'declined') {if(!current||busy)return;setBusy(true);const {error}=await supabase.from('applications').update({status:decision}).eq('id',current.id);setBusy(false);if(error)return Alert.alert('Could not update candidate',error.message);if(decision==='matched')return router.push({pathname:'/match-success',params:{applicationId:current.id,name:current.barista?.display_name||'Barista'}});setIndex(i=>i+1)}
+ async function decide(decision:'matched'|'declined') {if(!current||busy)return;setBusy(true);if(decision==='matched'){try{await authenticatedApi('/match-application',{application_id:current.id})}catch(error){setBusy(false);return Alert.alert('Could not create match',error instanceof Error?error.message:'Please try again.')}}else{const {error}=await supabase.from('applications').update({status:decision}).eq('id',current.id);if(error){setBusy(false);return Alert.alert('Could not update candidate',error.message)}}setBusy(false);if(decision==='matched')return router.push({pathname:'/match-success',params:{applicationId:current.id,name:current.barista?.display_name||'Barista'}});setIndex(i=>i+1)}
  if(loading)return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator size="large" color="#321708"/></View></SafeAreaView>;
  if(!current)return <SafeAreaView style={s.safe}><View style={s.header}><Text style={s.logo}>Barista<Text style={s.accent}>Match</Text></Text><Text style={s.kicker}>CANDIDATES</Text></View><View style={s.empty}><Text style={s.emptyIcon}>☕</Text><Text style={s.emptyTitle}>You’re caught up</Text><Text style={s.emptyCopy}>New baristas who are interested in your jobs will appear here.</Text><Pressable style={s.primary} onPress={load}><Text style={s.primaryText}>Refresh</Text></Pressable></View><AppBottomNav active="candidates" role="cafe_owner_manager"/></SafeAreaView>;
  const b=current.barista||{},skills=(b.skills||[]).slice(0,4);

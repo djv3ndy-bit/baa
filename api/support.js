@@ -22,6 +22,12 @@ async function resendWithRetry(payload, attempts = 3) {
   }
   return result;
 }
+function adminHeaders(extra={}) {
+  const key=process.env.SUPABASE_SECRET_KEY;
+  const headers={apikey:key,'Content-Type':'application/json',...extra};
+  if(key&&!key.startsWith('sb_secret_'))headers.Authorization=`Bearer ${key}`;
+  return headers;
+}
 function supportEmailHtml({name,ticket,subject}) {
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
 <body style="margin:0;padding:0;background:#f4f0eb;-webkit-text-size-adjust:100%;text-size-adjust:100%;">
@@ -50,7 +56,7 @@ export default async function handler(req,res){
   if(req.method==='GET'){
     const ticket=clean(req.query?.ticket,40),email=clean(req.query?.email,320).toLowerCase();
     if(!ticket||!email)return res.status(400).json({error:'Ticket number and email are required.'});
-    const response=await fetch(`${supabaseUrl}/rest/v1/support_tickets?ticket_id=eq.${encodeURIComponent(ticket)}&email=eq.${encodeURIComponent(email)}&select=ticket_id,status,subject,resolution_note,created_at,updated_at&limit=1`,{headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`}});
+    const response=await fetch(`${supabaseUrl}/rest/v1/support_tickets?ticket_id=eq.${encodeURIComponent(ticket)}&email=eq.${encodeURIComponent(email)}&select=ticket_id,status,subject,resolution_note,created_at,updated_at&limit=1`,{headers:adminHeaders()});
     if(!response.ok){console.error('Support lookup error:',await response.text());return res.status(500).json({error:'Unable to check this ticket right now.'})}
     const rows=await response.json();if(!rows.length)return res.status(404).json({error:'Ticket not found.'});return res.status(200).json(rows[0]);
   }
@@ -61,7 +67,7 @@ export default async function handler(req,res){
     if(!email||!email.includes('@')||!issueType||!subject||description.length<10)return res.status(400).json({error:'Please complete all required fields.'});
     if(!new Set(['bug','account','barista','cafe','billing','feedback','question','other']).has(issueType))return res.status(400).json({error:'Please choose a valid issue type.'});
     const ticketId=makeTicketId();
-    const dbResponse=await fetch(`${supabaseUrl}/rest/v1/support_tickets`,{method:'POST',headers:{apikey:serviceKey,Authorization:`Bearer ${serviceKey}`,'Content-Type':'application/json',Prefer:'return=representation'},body:JSON.stringify({ticket_id:ticketId,email,name:name||null,issue_type:issueType,subject,description,page_url:pageUrl||null,browser_info:browserInfo||null,status:'new'})});
+    const dbResponse=await fetch(`${supabaseUrl}/rest/v1/support_tickets`,{method:'POST',headers:adminHeaders({Prefer:'return=representation'}),body:JSON.stringify({ticket_id:ticketId,email,name:name||null,issue_type:issueType,subject,description,page_url:pageUrl||null,browser_info:browserInfo||null,status:'new'})});
     if(!dbResponse.ok){console.error('Support insert error:',await dbResponse.text());return res.status(500).json({error:'We could not create your support ticket. Please try again.'})}
     const safeName=escapeHtml(name||'there'),safeTicket=escapeHtml(ticketId),safeSubject=escapeHtml(subject),safeDescription=escapeHtml(description).replaceAll('\n','<br>'),safeType=escapeHtml(issueType),safePage=escapeHtml(pageUrl||'Not provided');
     const userEmail=await resendWithRetry({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:[email],reply_to:'hello@baristajobmatch.com',subject:`We received your support request — ${ticketId}`,html:supportEmailHtml({name:safeName,ticket:safeTicket,subject:safeSubject})},3);

@@ -4,6 +4,10 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
+      return res.status(503).json({ error: "Waitlist signup is temporarily unavailable." });
+    }
+
     const { role, email, city } = req.body || {};
 
     const cleanRole = String(role || "").trim();
@@ -21,16 +25,21 @@ export default async function handler(req, res) {
         error: "Please enter a valid email address."
       });
     }
+    if (!new Set(["barista", "cafe_owner_manager"]).has(cleanRole)) {
+      return res.status(400).json({ error: "Please choose a valid account type." });
+    }
+
+    const adminHeaders = { apikey: process.env.SUPABASE_SECRET_KEY };
+    if (!process.env.SUPABASE_SECRET_KEY.startsWith("sb_secret_")) {
+      adminHeaders.Authorization = `Bearer ${process.env.SUPABASE_SECRET_KEY}`;
+    }
 
     // 1. Check whether this email is already on the waitlist
     const existingResponse = await fetch(
       `${process.env.SUPABASE_URL}/rest/v1/waitlist_signups?email=eq.${encodeURIComponent(cleanEmail)}&select=id`,
       {
         method: "GET",
-        headers: {
-          apikey: process.env.SUPABASE_SECRET_KEY,
-          Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`
-        }
+        headers: adminHeaders
       }
     );
 
@@ -59,8 +68,7 @@ export default async function handler(req, res) {
       {
         method: "POST",
         headers: {
-          apikey: process.env.SUPABASE_SECRET_KEY,
-          Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+          ...adminHeaders,
           "Content-Type": "application/json",
           Prefer: "return=minimal"
         },
