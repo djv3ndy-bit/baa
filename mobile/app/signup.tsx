@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 type Role = 'barista' | 'cafe_owner_manager';
 
 export default function SignupScreen() {
-  const [role, setRole] = useState<Role>('barista');
+  const params = useLocalSearchParams<{ role?: string }>();
+  const initialRole: Role = params.role === 'cafe_owner_manager' ? 'cafe_owner_manager' : 'barista';
+  const [role, setRole] = useState<Role>(initialRole);
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [email, setEmail] = useState('');
