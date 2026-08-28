@@ -45,7 +45,7 @@ export default function SignupScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back</Text></Pressable>
+          <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back to log in</Text></Pressable>
           <Text style={styles.kicker}>JOIN BARISTAMATCH</Text>
           <Text style={styles.title}>Create your account</Text>
           <Text style={styles.subtitle}>Choose how you’ll use BaristaMatch.</Text>
@@ -76,9 +76,9 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe:{flex:1,backgroundColor:'#fbf7f1'},flex:{flex:1},wrap:{padding:24,paddingBottom:48},back:{fontSize:17,fontWeight:'700',color:'#a95820',marginBottom:30},
-  kicker:{fontSize:12,fontWeight:'800',letterSpacing:2,color:'#a95820'},title:{fontSize:38,fontWeight:'800',color:'#17110d',marginTop:10},subtitle:{fontSize:17,color:'#746a61',marginTop:8,marginBottom:24},
-  roleRow:{flexDirection:'row',gap:10,marginBottom:12},role:{flex:1,borderWidth:1,borderColor:'#dbc8b8',borderRadius:15,padding:15,alignItems:'center',backgroundColor:'#fff'},roleActive:{backgroundColor:'#321708',borderColor:'#321708'},roleText:{fontWeight:'800',color:'#321708'},roleTextActive:{color:'#fff'},
-  label:{fontSize:14,fontWeight:'800',color:'#321708',marginBottom:8,marginTop:15},input:{backgroundColor:'#fff',borderWidth:1,borderColor:'#e7ddd2',borderRadius:15,paddingHorizontal:16,paddingVertical:15,fontSize:17,color:'#17110d'},
-  primary:{marginTop:26,backgroundColor:'#321708',paddingVertical:16,borderRadius:15,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18}
+  safe:{flex:1,backgroundColor:'#fff4e8'},flex:{flex:1},wrap:{padding:24,paddingBottom:48,backgroundColor:'#fff4e8'},back:{fontSize:16,fontWeight:'700',color:'#a95820',marginBottom:30},
+  kicker:{fontSize:12,fontWeight:'800',letterSpacing:2,color:'#a95820'},title:{fontFamily:Platform.OS==='ios'?'Georgia':'serif',fontSize:38,fontWeight:'700',color:'#4a2412',marginTop:10},subtitle:{fontSize:17,color:'#746a61',marginTop:8,marginBottom:24},
+  roleRow:{flexDirection:'row',gap:10,marginBottom:12},role:{flex:1,borderWidth:1,borderColor:'#ded7d1',borderRadius:13,padding:15,alignItems:'center',backgroundColor:'#fff'},roleActive:{backgroundColor:'#fff8f2',borderColor:'#a95820'},roleText:{fontWeight:'800',color:'#321708'},roleTextActive:{color:'#a95820'},
+  label:{fontSize:14,fontWeight:'800',color:'#321708',marginBottom:8,marginTop:15},input:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded7d1',borderRadius:10,paddingHorizontal:16,paddingVertical:15,fontSize:17,color:'#17110d'},
+  primary:{marginTop:26,backgroundColor:'#a9571f',paddingVertical:16,borderRadius:9,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18}
 });

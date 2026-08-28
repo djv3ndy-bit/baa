@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
@@ -11,6 +11,7 @@ function readOAuthParams(url: string) {
 }
 
 export default function LoginScreen() {
+  const { width } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -127,7 +128,7 @@ export default function LoginScreen() {
             </Pressable>
 
             <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.or}>or</Text><View style={styles.dividerLine} /></View>
-            <View style={styles.socialRow}>
+            <View style={[styles.socialRow, width < 390 && styles.socialStack]}>
               <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" onPress={() => signInWithProvider('google')} disabled={busy} style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, busy && styles.disabled]}>
                 {socialLoading === 'google' ? <ActivityIndicator color="#321708" /> : <Text style={styles.googleMark}>G</Text>}
                 <Text numberOfLines={1} style={styles.socialText}>Continue with Google</Text>
@@ -162,7 +163,7 @@ const styles = StyleSheet.create({
   eyeButton: { height: 44, width: 42, alignItems: 'center', justifyContent: 'center' }, eye: { width: 23, height: 15, borderWidth: 1.6, borderColor: '#3a3836', borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, eyePupil: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#3a3836' },
   primary: { height: 56, marginTop: 4, borderRadius: 9, backgroundColor: '#a9571f', alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 13, marginVertical: 20 }, dividerLine: { height: 1, flex: 1, backgroundColor: '#ddd9d5' }, or: { color: '#645d57', fontSize: 15 },
-  socialRow: { flexDirection: 'row', gap: 12 }, socialButton: { flex: 1, minWidth: 0, height: 52, borderWidth: 1, borderColor: '#d5d1ce', borderRadius: 9, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 8 },
+  socialRow: { flexDirection: 'row', gap: 12 }, socialStack: { flexDirection: 'column' }, socialButton: { flex: 1, minWidth: 0, height: 52, borderWidth: 1, borderColor: '#d5d1ce', borderRadius: 9, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 8 },
   socialText: { color: '#171311', fontSize: 12, fontWeight: '600', flexShrink: 1 }, googleMark: { color: '#4285f4', fontSize: 22, fontWeight: '900' }, appleMark: { color: '#050505', fontSize: 25, lineHeight: 27 },
   createButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 16, marginTop: 10 }, createText: { color: '#a44f18', fontSize: 17, fontWeight: '600' }, pressed: { opacity: 0.8 }, disabled: { opacity: 0.55 },
 });
