@@ -11,7 +11,7 @@ function readOAuthParams(url: string) {
 }
 
 export default function LoginScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -98,7 +98,7 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <View style={styles.hero}>
+          <View style={[styles.hero, { minHeight: Math.max(360, Math.min(410, height * 0.44)) }]}>
             <View style={styles.heroGlow} />
             <Image source={require('../assets/website-favicon.png')} resizeMode="contain" style={styles.logo} />
             <Text style={styles.brand}>Barista <Text style={styles.brandAccent}>Job</Text> Match</Text>
@@ -130,7 +130,7 @@ export default function LoginScreen() {
             <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.or}>or</Text><View style={styles.dividerLine} /></View>
             <View style={[styles.socialRow, width < 390 && styles.socialStack]}>
               <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" onPress={() => signInWithProvider('google')} disabled={busy} style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, busy && styles.disabled]}>
-                {socialLoading === 'google' ? <ActivityIndicator color="#321708" /> : <Text style={styles.googleMark}>G</Text>}
+                {socialLoading === 'google' ? <ActivityIndicator color="#321708" /> : <GoogleMark />}
                 <Text numberOfLines={1} style={styles.socialText}>Continue with Google</Text>
               </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Continue with Apple" onPress={() => signInWithProvider('apple')} disabled={busy} style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, busy && styles.disabled]}>
@@ -146,12 +146,22 @@ export default function LoginScreen() {
   );
 }
 
+function GoogleMark() {
+  return (
+    <View accessibilityElementsHidden style={styles.googleMark}>
+      <Text style={[styles.googlePart, styles.googleBlue]}>G</Text>
+      <View style={styles.googleWhiteCutout} />
+      <View style={styles.googleBar} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff4e8' }, flex: { flex: 1 }, page: { flexGrow: 1, backgroundColor: '#fff4e8' },
-  hero: { minHeight: 330, alignItems: 'center', justifyContent: 'center', paddingTop: 20, paddingBottom: 46, overflow: 'hidden' },
+  hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 22, paddingBottom: 48, overflow: 'hidden' },
   heroGlow: { position: 'absolute', width: 520, height: 320, borderRadius: 260, bottom: -205, backgroundColor: '#f4dcc6', opacity: 0.48 },
-  logo: { width: 118, height: 118, marginBottom: 5 },
-  brand: { color: '#4a2412', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 42, letterSpacing: -1.5 },
+  logo: { width: 102, height: 102, marginBottom: 7 },
+  brand: { color: '#4a2412', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 38, letterSpacing: -1.2 },
   brandAccent: { color: '#b86525' }, tagline: { marginTop: 8, color: '#2f211a', fontSize: 18, fontWeight: '500' },
   accentLine: { width: 80, height: 3, borderRadius: 3, backgroundColor: '#b86525', marginTop: 21 },
   sheet: { flex: 1, marginTop: -28, minHeight: 510, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 28, paddingTop: 14, paddingBottom: 34, shadowColor: '#321708', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: -6 } },
@@ -164,6 +174,8 @@ const styles = StyleSheet.create({
   primary: { height: 56, marginTop: 4, borderRadius: 9, backgroundColor: '#a9571f', alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 13, marginVertical: 20 }, dividerLine: { height: 1, flex: 1, backgroundColor: '#ddd9d5' }, or: { color: '#645d57', fontSize: 15 },
   socialRow: { flexDirection: 'row', gap: 12 }, socialStack: { flexDirection: 'column' }, socialButton: { flex: 1, minWidth: 0, height: 52, borderWidth: 1, borderColor: '#d5d1ce', borderRadius: 9, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, paddingHorizontal: 8 },
-  socialText: { color: '#171311', fontSize: 12, fontWeight: '600', flexShrink: 1 }, googleMark: { color: '#4285f4', fontSize: 22, fontWeight: '900' }, appleMark: { color: '#050505', fontSize: 25, lineHeight: 27 },
+  socialText: { color: '#171311', fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  googleMark: { width: 23, height: 23, position: 'relative', overflow: 'hidden' }, googlePart: { position: 'absolute', left: 0, top: -2, fontSize: 24, lineHeight: 27, fontWeight: '900' }, googleBlue: { color: '#4285f4' }, googleWhiteCutout: { position: 'absolute', right: 0, top: 2, width: 9, height: 9, backgroundColor: '#fff' }, googleBar: { position: 'absolute', right: 0, top: 10, width: 11, height: 4, backgroundColor: '#4285f4', borderRadius: 1 },
+  appleMark: { color: '#050505', fontSize: 25, lineHeight: 27 },
   createButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 16, marginTop: 10 }, createText: { color: '#a44f18', fontSize: 17, fontWeight: '600' }, pressed: { opacity: 0.8 }, disabled: { opacity: 0.55 },
 });
