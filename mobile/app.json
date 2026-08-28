@@ -4,7 +4,7 @@
     "slug": "baristamatch",
     "description": "Connect with local cafés and baristas, discover opportunities, match, and message securely.",
     "scheme": "baristamatch",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.baristajobmatch.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
