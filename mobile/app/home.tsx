@@ -20,9 +20,14 @@ export default function HomeScreen() {
 
   async function load(fullScreen = false) {
     if (fullScreen) setLoading(true); else setRefreshing(true);
-    const { data: auth } = await supabase.auth.getSession();
-    const user = auth.session?.user;
-    if (!user) return router.replace('/login');
+    try {
+      const { data: auth, error: authError } = await supabase.auth.getSession();
+      if (authError) throw authError;
+      const user = auth.session?.user;
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
 
     const { data: p, error: profileError } = await supabase.from('profiles').select('role,display_name,cafe_name').eq('id', user.id).maybeSingle();
     if (profileError) {
@@ -48,8 +53,13 @@ export default function HomeScreen() {
       ]);
       setCounts({ jobs: jobs || 0, matches: matches || 0, alerts: unread || 0 });
     }
-    setLoading(false);
-    setRefreshing(false);
+    } catch (error) {
+      console.error('Dashboard load failed', error);
+      Alert.alert('Could not refresh your dashboard', 'Your app is still safe. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;

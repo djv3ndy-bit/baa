@@ -1,31 +1,40 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 export default function Index() {
-  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('Opening BaristaMatch…');
 
   useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      router.replace(data.session ? '/home' : '/login');
-      setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      router.replace(session ? '/home' : '/login');
-    });
+    let active = true;
+    let routed = false;
+    const routeOnce = (signedIn: boolean) => {
+      if (!active || routed) return;
+      routed = true;
+      router.replace(signedIn ? '/home' : '/login');
+    };
+    const timeout = setTimeout(() => routeOnce(false), 8000);
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) throw error;
+        routeOnce(Boolean(data.session));
+      })
+      .catch(() => {
+        if (!active) return;
+        setMessage('Starting a fresh session…');
+        routeOnce(false);
+      });
     return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
+      active = false;
+      clearTimeout(timeout);
     };
   }, []);
 
-  return <View style={styles.center}>{loading && <ActivityIndicator size="large" color="#321708" />}</View>;
+  return <View style={styles.center}><ActivityIndicator size="large" color="#321708" /><Text style={styles.message}>{message}</Text></View>;
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fbf7f1' },
+  message: { marginTop: 14, fontSize: 14, fontWeight: '700', color: '#746a61' },
 });
