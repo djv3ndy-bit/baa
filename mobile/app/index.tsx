@@ -7,24 +7,10 @@ export default function Index() {
   const [message, setMessage] = useState('Opening BaristaMatch…');
 
   useEffect(() => {
-    let active = true;
-    let routed = false;
-    const routeOnce = (signedIn: boolean) => {
-      if (!active || routed) return;
-      routed = true;
-      router.replace(signedIn ? '/home' : '/login');
-    };
-    const timeout = setTimeout(() => routeOnce(false), 8000);
-    supabase.auth.getSession()
-      .then(({ data, error }) => {
-        if (error) throw error;
-        routeOnce(Boolean(data.session));
-      })
-      .catch(() => {
-        if (!active) return;
-        setMessage('Starting a fresh session…');
-        routeOnce(false);
-      });
+    let active = true,routed=false;
+    const go=(path:'/login'|'/home'|'/cafe-trial')=>{if(!active||routed)return;routed=true;router.replace(path)};
+    const timeout=setTimeout(()=>go('/login'),8000);
+    (async()=>{try{const {data,error}=await supabase.auth.getSession();if(error)throw error;const user=data.session?.user;if(!user)return go('/login');const {data:profile}=await supabase.from('profiles').select('role').eq('id',user.id).maybeSingle();if(profile?.role!=='cafe_owner_manager')return go('/home');const {data:subscription}=await supabase.from('cafe_subscriptions').select('user_id').eq('user_id',user.id).maybeSingle();go(subscription?'/home':'/cafe-trial')}catch{if(!active)return;setMessage('Starting a fresh session…');go('/login')}})();
     return () => {
       active = false;
       clearTimeout(timeout);

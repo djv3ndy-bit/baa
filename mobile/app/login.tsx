@@ -28,6 +28,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
+  async function routeSignedIn(userId:string,knownRole?:string|null){const role=knownRole||(await supabase.from('profiles').select('role').eq('id',userId).maybeSingle()).data?.role;if(role!=='cafe_owner_manager')return router.replace('/home');const {data:subscription}=await supabase.from('cafe_subscriptions').select('user_id').eq('user_id',userId).maybeSingle();router.replace(subscription?'/home':'/cafe-trial')}
+
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => handleOAuth(url));
     Linking.getInitialURL().then(handleOAuth);
@@ -49,9 +51,9 @@ export default function LoginScreen() {
     setSocialLoading(null);
     if (error) return Alert.alert('Sign-in failed', error.message);
     if (!data.user) return;
-    const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
+    const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id,role').eq('id', data.user.id).maybeSingle();
     if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
-    if (existingProfile) return router.replace('/home');
+    if (existingProfile) return routeSignedIn(data.user.id,existingProfile.role);
     const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
     Alert.alert('How will you use BaristaMatch?', 'Choose your account type to finish setting up your profile.', [
       { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
@@ -68,16 +70,16 @@ export default function LoginScreen() {
       cafe_name: isCafe ? (name || null) : null,
     }, { onConflict: 'id' });
     if (error) return Alert.alert('Could not finish your profile', error.message);
-    router.replace('/home');
+    router.replace(isCafe?'/cafe-trial':'/home');
   }
 
   async function signIn() {
     if (!email.trim() || !password) return Alert.alert('Missing information', 'Enter your email and password.');
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      const { data,error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (error) return Alert.alert('Unable to log in', error.message === 'Invalid login credentials' ? 'The email or password is incorrect.' : error.message);
-      router.replace('/home');
+      if(data.user)await routeSignedIn(data.user.id);
     } catch {
       Alert.alert('Connection problem', 'Check your internet connection and try again.');
     } finally {

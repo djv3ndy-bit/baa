@@ -9,17 +9,17 @@
 1. **Free Trial — $0 for 30 days**
    - Full café access
    - No credit card required to start
-2. **Monthly — $24.99/month per café location**
+2. **Monthly — $9.99/month per café location**
    - Full café access
    - Cancel anytime
-3. **Yearly — $239.99/year per café location**
+3. **Yearly — No yearly plan at launch**
    - Full café access
    - Best value
    - Equivalent to about $20/month
    - Saves $59.89 versus 12 monthly payments (about 20%)
 
 ## Launch strategy
-The goal is low-friction conversion. Every eligible new café starts with the 30-day free trial, then chooses monthly or yearly. The features are the same on both paid plans; yearly is a commitment discount, not a different product tier.
+The goal is low-friction conversion. Every eligible new café starts with the 30-day free trial, then chooses monthly. The features are the same on both paid plans; the launch offer has no long-term commitment.
 
 ## Included in paid Café plans
 - Café profile
@@ -37,7 +37,7 @@ The goal is low-friction conversion. Every eligible new café starts with the 30
 - Trial lasts 30 days.
 - No card required during trial.
 - Show remaining trial days in Account Settings and Subscription Management.
-- Before/after expiration, offer $24.99 monthly or $239.99 yearly.
+- After expiration, offer the $9.99 monthly café membership.
 - After trial expiration, keep the account/profile and existing data accessible but require an active subscription for new hiring actions.
 - Never delete café data because a trial expires.
 
