@@ -1,0 +1,31 @@
+name: Fix mobile Discover cards
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-mobile-discover-cards.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply mobile Discover fix
+        run: python .github/scripts/fix-mobile-discover-cards.py
+      - name: Validate layout patch
+        run: |
+          grep -q 'Mobile Discover café/barista card layout fix' dashboard.html
+          grep -q 'grid-template-columns:56px minmax(0,1fr)' dashboard.html
+          grep -q 'data-view-cafe' dashboard.html
+          grep -q 'data-discovery-interest' dashboard.html
+      - name: Commit fix
+        run: |
+          git config user.name "BaristaMatch Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add dashboard.html
+          if git diff --cached --quiet; then
+            echo "Already applied"
+            exit 0
+          fi
+          git commit -m "Fix mobile Discover cafe card actions"
+          git push
