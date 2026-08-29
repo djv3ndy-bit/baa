@@ -1,0 +1,8 @@
+-- Applied to the BaristaMatch Supabase project on 2026-08-29.
+-- The live migration creates three RLS-protected tables:
+--
+-- discovery_interests: one-way interest between opposite account roles
+-- discovery_matches: created only when reciprocal interests exist
+-- discovery_messages: private messages available only to match participants
+--
+-- See Supabase migration: add_mutual_discovery_matches_and_messages
