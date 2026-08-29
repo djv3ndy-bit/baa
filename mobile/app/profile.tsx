@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
@@ -46,6 +47,28 @@ const OPEN_DAYS = [
   "Saturday",
   "Sunday",
 ];
+const AVAILABILITY_OPTIONS = [
+  "Weekday mornings",
+  "Weekday afternoons",
+  "Weekday evenings",
+  "Saturday",
+  "Sunday",
+  "Full-time",
+  "Part-time",
+  "Flexible",
+];
+const SEARCH_AREAS = [10, 25, 50, 100];
+function parseAvailability(value?: string | null) {
+  const parts = String(value || "")
+    .split(" · ")
+    .filter(Boolean);
+  return {
+    selected: parts.filter((part) => AVAILABILITY_OPTIONS.includes(part)),
+    notes: parts
+      .filter((part) => !AVAILABILITY_OPTIONS.includes(part))
+      .join(" · "),
+  };
+}
 type OpenHours = Record<string, string>;
 function parseOpeningHours(value?: string | null): OpenHours {
   const result: OpenHours = {};
@@ -56,9 +79,13 @@ function parseOpeningHours(value?: string | null): OpenHours {
         (name) => part.startsWith(`${name} `) || part === name,
       );
       if (day)
-      result[day] = part === day ? "" : part.slice(day.length + 1).trim();
-  });
-  if (value && !OPEN_DAYS.some((day) => Object.prototype.hasOwnProperty.call(result, day))) result._legacy = value;
+        result[day] = part === day ? "" : part.slice(day.length + 1).trim();
+    });
+  if (
+    value &&
+    !OPEN_DAYS.some((day) => Object.prototype.hasOwnProperty.call(result, day))
+  )
+    result._legacy = value;
   return result;
 }
 function formatOpeningHours(value: OpenHours) {
@@ -76,7 +103,13 @@ export default function Profile() {
     [profile, setProfile] = useState<any>({}),
     [role, setRole] = useState<AppRole>("barista"),
     [saving, setSaving] = useState(false),
-    [openHours, setOpenHours] = useState<OpenHours>({});
+    [openHours, setOpenHours] = useState<OpenHours>({}),
+    [availability, setAvailability] = useState<string[]>([]),
+    [availabilityNotes, setAvailabilityNotes] = useState(""),
+    [profilePhoto, setProfilePhoto] =
+      useState<DocumentPicker.DocumentPickerAsset | null>(null),
+    [coffeeVideo, setCoffeeVideo] =
+      useState<DocumentPicker.DocumentPickerAsset | null>(null);
   useEffect(() => {
     load();
   }, []);
@@ -85,6 +118,9 @@ export default function Profile() {
     if (!user) return router.replace("/login");
     setProfile(p || {});
     setOpenHours(parseOpeningHours(p?.open_hours));
+    const savedAvailability = parseAvailability(p?.availability);
+    setAvailability(savedAvailability.selected);
+    setAvailabilityNotes(savedAvailability.notes);
     setRole(r || "barista");
     setLoading(false);
   }
@@ -95,6 +131,48 @@ export default function Profile() {
     const selected = new Set<string>(profile.barista_preferences || []);
     selected.has(value) ? selected.delete(value) : selected.add(value);
     set("barista_preferences", [...selected]);
+  }
+  function toggleAvailability(value: string) {
+    setAvailability((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value],
+    );
+  }
+  async function pickMedia(kind: "photo" | "video") {
+    const result = await DocumentPicker.getDocumentAsync({
+      type:
+        kind === "photo"
+          ? ["image/jpeg", "image/png", "image/webp"]
+          : ["video/mp4", "video/quicktime", "video/webm"],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    const limit = kind === "photo" ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
+    if ((asset.size || 0) > limit)
+      return Alert.alert(
+        `${kind === "photo" ? "Photo" : "Video"} is too large`,
+        kind === "photo"
+          ? "Choose a photo smaller than 5 MB."
+          : "Choose a video smaller than 50 MB.",
+      );
+    kind === "photo" ? setProfilePhoto(asset) : setCoffeeVideo(asset);
+  }
+  async function uploadAsset(
+    asset: DocumentPicker.DocumentPickerAsset,
+    bucket: string,
+    path: string,
+  ) {
+    const response = await fetch(asset.uri);
+    if (!response.ok) throw new Error("The selected file could not be opened.");
+    const bytes = await response.arrayBuffer();
+    const { error } = await supabase.storage.from(bucket).upload(path, bytes, {
+      contentType: asset.mimeType || undefined,
+      upsert: true,
+    });
+    if (error) throw error;
   }
   function toggleOpenDay(day: string) {
     setOpenHours((current) => {
@@ -119,15 +197,52 @@ export default function Profile() {
         userError?.message || "Please log in again.",
       );
     }
+    let avatarUrl = profile.avatar_url || null;
+    let videoPath = profile.video_path || null;
+    try {
+      if (profilePhoto) {
+        const ext = (profilePhoto.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${user.id}/avatar.${ext}`;
+        await uploadAsset(profilePhoto, "cafe-images", path);
+        avatarUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
+          .data.publicUrl;
+      }
+      if (coffeeVideo) {
+        const ext = (coffeeVideo.name.split(".").pop() || "mp4").toLowerCase();
+        const path = `${user.id}/coffee-showcase.${ext}`;
+        await uploadAsset(coffeeVideo, "coffee-videos", path);
+        videoPath = path;
+      }
+    } catch (error: any) {
+      setSaving(false);
+      return Alert.alert(
+        "Could not upload file",
+        error?.message || "Please try again.",
+      );
+    }
     const payload: any = {
       location: profile.location || null,
       bio: profile.bio || null,
     };
     if (role === "barista") {
       payload.display_name = profile.display_name || null;
-      payload.availability = profile.availability || null;
+      payload.availability =
+        [...availability, availabilityNotes.trim()]
+          .filter(Boolean)
+          .join(" · ") || null;
       payload.pay_expectation = profile.pay_expectation || null;
       payload.experience = profile.experience || null;
+      payload.preferred_city = profile.preferred_city || null;
+      payload.preferred_state =
+        String(profile.preferred_state || "")
+          .trim()
+          .toUpperCase() || null;
+      payload.preferred_postal_code = profile.preferred_postal_code || null;
+      payload.preferred_radius_miles = Number(
+        profile.preferred_radius_miles || 25,
+      );
+      payload.avatar_url = avatarUrl;
+      payload.video_path = videoPath;
       payload.skills = String(
         profile.skills_text || profile.skills?.join(", ") || "",
       )
@@ -172,6 +287,8 @@ export default function Profile() {
       ...payload,
       skills_text: payload.skills?.join(", "),
     }));
+    setProfilePhoto(null);
+    setCoffeeVideo(null);
     setEditing(false);
   }
   if (loading)
@@ -203,7 +320,12 @@ export default function Profile() {
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
         <View style={s.hero}>
-          {!isBarista && profile.bar_picture_url ? (
+          {isBarista && profile.avatar_url ? (
+            <Image
+              source={{ uri: profile.avatar_url }}
+              style={s.profilePhoto}
+            />
+          ) : !isBarista && profile.bar_picture_url ? (
             <Image
               source={{ uri: profile.bar_picture_url }}
               style={s.barPhoto}
@@ -232,13 +354,62 @@ export default function Profile() {
               }
               onChange={(v) => set(isBarista ? "display_name" : "cafe_name", v)}
             />
+            {isBarista ? (
+              <MediaPicker
+                label="Profile photo"
+                value={
+                  profilePhoto?.name ||
+                  (profile.avatar_url
+                    ? "Current photo saved ✓"
+                    : "No photo selected")
+                }
+                buttonLabel={
+                  profile.avatar_url || profilePhoto
+                    ? "Replace photo"
+                    : "Choose photo"
+                }
+                onPress={() => pickMedia("photo")}
+              />
+            ) : null}
             <Field
-              label="Location (city and state)"
+              label="Location"
               value={profile.location || ""}
               onChange={(v) => set("location", v)}
             />
+            {isBarista ? (
+              <>
+                <Field
+                  label="Preferred work city"
+                  value={profile.preferred_city || ""}
+                  onChange={(v) => set("preferred_city", v)}
+                />
+                <Field
+                  label="Preferred state"
+                  value={profile.preferred_state || ""}
+                  onChange={(v) => set("preferred_state", v)}
+                />
+                <Field
+                  label="Preferred ZIP code"
+                  value={profile.preferred_postal_code || ""}
+                  onChange={(v) => set("preferred_postal_code", v)}
+                />
+                <Text style={s.label}>Search area</Text>
+                <View style={s.choiceWrap}>
+                  {SEARCH_AREAS.map((miles) => (
+                    <Choice
+                      key={miles}
+                      label={`Within about ${miles} miles`}
+                      selected={
+                        Number(profile.preferred_radius_miles || 25) === miles
+                      }
+                      onPress={() => set("preferred_radius_miles", miles)}
+                    />
+                  ))}
+                </View>
+              </>
+            ) : null}
             <Field
-              label={isBarista ? "About" : "About your café"}
+              label={isBarista ? "About you" : "About your café"}
               value={profile.bio || ""}
               onChange={(v) => set("bio", v)}
               multiline
@@ -246,11 +417,29 @@ export default function Profile() {
             {isBarista ? (
               <>
                 <Field
-                  label="Skills / specialties"
+                  label="Skills"
                   value={
                     profile.skills_text || profile.skills?.join(", ") || ""
                   }
                   onChange={(v) => set("skills_text", v)}
+                />
+                <Text style={[s.label, { marginTop: 15 }]}>
+                  Availability — check all that apply
+                </Text>
+                <View style={s.choiceWrap}>
+                  {AVAILABILITY_OPTIONS.map((value) => (
+                    <Choice
+                      key={value}
+                      label={value}
+                      selected={availability.includes(value)}
+                      onPress={() => toggleAvailability(value)}
+                    />
+                  ))}
+                </View>
+                <Field
+                  label="Other availability details (optional)"
+                  value={availabilityNotes}
+                  onChange={setAvailabilityNotes}
                 />
                 <Field
                   label="Experience"
@@ -259,14 +448,25 @@ export default function Profile() {
                   multiline
                 />
                 <Field
-                  label="Availability"
-                  value={profile.availability || ""}
-                  onChange={(v) => set("availability", v)}
-                />
-                <Field
                   label="Desired pay"
                   value={profile.pay_expectation || ""}
                   onChange={(v) => set("pay_expectation", v)}
+                />
+                <MediaPicker
+                  label="Optional coffee video"
+                  value={
+                    coffeeVideo?.name ||
+                    (profile.video_path
+                      ? "Current video saved ✓"
+                      : "No video selected")
+                  }
+                  buttonLabel={
+                    profile.video_path || coffeeVideo
+                      ? "Replace video"
+                      : "Choose video"
+                  }
+                  onPress={() => pickMedia("video")}
+                  help="15–60 seconds recommended · up to 50 MB · MP4, MOV, or WebM"
                 />
               </>
             ) : (
@@ -276,61 +476,61 @@ export default function Profile() {
                   value={profile.cafe_address || ""}
                   onChange={(v) => set("cafe_address", v)}
                 />
-              <Text style={s.label}>
-                Opening hours — check every day you are open
-              </Text>
-              <View style={s.hoursList}>
-                {OPEN_DAYS.map((day) => {
-                  const selected = Object.prototype.hasOwnProperty.call(
-                    openHours,
-                    day,
-                  );
-                  return (
-                    <View
-                      key={day}
-                      style={[s.hoursRow, selected && s.hoursRowSelected]}
-                    >
-                      <Pressable
-                        onPress={() => toggleOpenDay(day)}
-                        style={s.dayCheck}
+                <Text style={s.label}>
+                  Opening hours — check every day you are open
+                </Text>
+                <View style={s.hoursList}>
+                  {OPEN_DAYS.map((day) => {
+                    const selected = Object.prototype.hasOwnProperty.call(
+                      openHours,
+                      day,
+                    );
+                    return (
+                      <View
+                        key={day}
+                        style={[s.hoursRow, selected && s.hoursRowSelected]}
                       >
-                        <Text
-                          style={[
-                            s.checkMark,
-                            selected && s.checkMarkSelected,
-                          ]}
+                        <Pressable
+                          onPress={() => toggleOpenDay(day)}
+                          style={s.dayCheck}
                         >
-                          {selected ? "✓" : "○"}
-                        </Text>
-                        <Text
-                          style={[
-                            s.dayText,
-                            selected && s.choiceTextSelected,
-                          ]}
-                        >
-                          {day}
-                        </Text>
-                      </Pressable>
-                      {selected ? (
-                        <TextInput
-                          value={openHours[day]}
-                          onChangeText={(value) =>
-                            setOpenHours((current) => ({
-                              ...current,
-                              [day]: value,
-                            }))
-                          }
-                          placeholder="7 AM–5 PM"
-                          style={s.hoursInput}
-                        />
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-              <Text style={s.hoursHelp}>
-                Check the open days, then add the hours for each one.
-              </Text>
+                          <Text
+                            style={[
+                              s.checkMark,
+                              selected && s.checkMarkSelected,
+                            ]}
+                          >
+                            {selected ? "✓" : "○"}
+                          </Text>
+                          <Text
+                            style={[
+                              s.dayText,
+                              selected && s.choiceTextSelected,
+                            ]}
+                          >
+                            {day}
+                          </Text>
+                        </Pressable>
+                        {selected ? (
+                          <TextInput
+                            value={openHours[day]}
+                            onChangeText={(value) =>
+                              setOpenHours((current) => ({
+                                ...current,
+                                [day]: value,
+                              }))
+                            }
+                            placeholder="7 AM–5 PM"
+                            style={s.hoursInput}
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={s.hoursHelp}>
+                  Check the open days, then add the hours for each one.
+                </Text>
                 <Text style={s.label}>What kind of shop is this?</Text>
                 <View style={s.choiceWrap}>
                   {SHOP_TYPES.map((value) => (
@@ -484,6 +684,34 @@ function Field({
     </View>
   );
 }
+function MediaPicker({
+  label,
+  value,
+  buttonLabel,
+  onPress,
+  help,
+}: {
+  label: string;
+  value: string;
+  buttonLabel: string;
+  onPress: () => void;
+  help?: string;
+}) {
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <View style={s.mediaRow}>
+        <Text style={s.mediaValue} numberOfLines={1}>
+          {value}
+        </Text>
+        <Pressable style={s.mediaButton} onPress={onPress}>
+          <Text style={s.mediaButtonText}>{buttonLabel}</Text>
+        </Pressable>
+      </View>
+      {help ? <Text style={s.mediaHelp}>{help}</Text> : null}
+    </View>
+  );
+}
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <View style={s.info}>
@@ -526,6 +754,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   barPhoto: { width: "100%", height: 180, borderRadius: 22 },
+  profilePhoto: { width: 88, height: 88, borderRadius: 44 },
   name: { fontSize: 28, fontWeight: "900", color: "#321708", marginTop: 12 },
   location: { fontSize: 14, color: "#746a61", marginTop: 5 },
   edit: {
@@ -558,6 +787,25 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
   },
   multi: { minHeight: 90, textAlignVertical: "top" },
+  mediaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#ddd0c6",
+    borderRadius: 12,
+    padding: 8,
+    backgroundColor: "#fff",
+  },
+  mediaValue: { flex: 1, fontSize: 12, color: "#746a61", paddingLeft: 4 },
+  mediaButton: {
+    backgroundColor: "#f3e8de",
+    borderRadius: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+  },
+  mediaButtonText: { fontSize: 11, fontWeight: "900", color: "#8d4215" },
+  mediaHelp: { fontSize: 10, lineHeight: 15, color: "#746a61", marginTop: 5 },
   hoursList: { gap: 8, marginBottom: 7 },
   hoursRow: {
     minHeight: 48,
@@ -570,7 +818,12 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
   },
   hoursRowSelected: { borderColor: "#5f8b50", backgroundColor: "#f7fbf4" },
-  dayCheck: { flex: 1, flexDirection: "row", alignItems: "center", paddingVertical: 12 },
+  dayCheck: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+  },
   dayText: { fontSize: 13, fontWeight: "800", color: "#5c4435" },
   hoursInput: {
     width: 116,
@@ -581,7 +834,12 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: "#24150d",
   },
-  hoursHelp: { fontSize: 11, lineHeight: 16, color: "#746a61", marginBottom: 16 },
+  hoursHelp: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#746a61",
+    marginBottom: 16,
+  },
   choiceWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: {
     flexDirection: "row",
