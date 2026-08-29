@@ -22,7 +22,7 @@ header{position:sticky;top:0;z-index:20;background:#fbf7f1ed;backdrop-filter:blu
 <article class="card">
 <h2>Contact support</h2>
 <p>Tell us what happened. For bugs, include what you clicked and what you expected to happen.</p>
-<form class="form" id="support-form">
+<form class="form" id="support-form" method="post">
 <div class="row"><label>Name (optional)<input name="name" autocomplete="name" placeholder="Your name"></label><label>Email<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label></div>
 <label>What do you need help with?<select name="issue_type" required><option value="">Choose one</option><option value="bug">Website or app bug</option><option value="account">Account or login</option><option value="barista">Barista profile or jobs</option><option value="cafe">Café profile or hiring</option><option value="billing">Billing or subscription</option><option value="feedback">Product feedback</option><option value="question">General question</option><option value="other">Other</option></select></label>
 <label>Subject<input name="subject" maxlength="180" required placeholder="Example: Dashboard won't open"></label>
@@ -37,7 +37,7 @@ header{position:sticky;top:0;z-index:20;background:#fbf7f1ed;backdrop-filter:blu
 </article>
 <aside>
 <article class="card"><h3>What happens next?</h3><div class="steps"><div class="step"><div class="step-icon">1</div><div><b>We create your ticket</b><span>Your request is saved with a unique BaristaMatch ticket number.</span></div></div><div class="step"><div class="step-icon">✉</div><div><b>You get confirmation</b><span>We email you immediately so you know the request was received.</span></div></div><div class="step"><div class="step-icon">🔎</div><div><b>We investigate</b><span>Technical issues can be routed into our development workflow for review and testing.</span></div></div><div class="step"><div class="step-icon">✓</div><div><b>We resolve it</b><span>Once a fix is verified, your ticket can be marked fixed and you can be notified.</span></div></div></div></article>
-<article class="card lookup"><h3>Check a ticket</h3><p class="fine">Enter the ticket number from your confirmation email.</p><form id="lookup-form"><input name="ticket" required placeholder="BM-20260825-ABC123"><input name="email" type="email" required placeholder="Email used for the ticket"><button class="btn" type="submit">Check status</button><p class="message" id="lookup-message"></p></form><div class="lookup-result" id="lookup-result"></div></article>
+<article class="card lookup"><h3>Check a ticket</h3><p class="fine">Enter the ticket number from your confirmation email.</p><form id="lookup-form" method="post"><input name="ticket" required placeholder="BM-20260825-ABC123"><input name="email" type="email" required placeholder="Email used for the ticket"><button class="btn" type="submit">Check status</button><p class="message" id="lookup-message"></p></form><div class="lookup-result" id="lookup-result"></div></article>
 </aside>
 </section>
 </main>

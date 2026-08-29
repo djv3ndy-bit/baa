@@ -22,17 +22,17 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
 <body>
 <header class="top"><a class="brand" href="/"><img src="/assets/favicon-transparent-v2.png" alt=""><span>Barista<b>Match</b></span></a><a class="login-link" href="/login.html">Already have an account? Log in</a></header>
 <main>
-  <section class="intro"><span class="eyebrow">Join BaristaMatch</span><h1>A better coffee career starts with a great profile.</h1><p>Create one simple account for finding barista work or hiring coffee talent. We’ll guide you through the rest.</p><div class="benefits"><div class="benefit"><span class="check">✓</span>Free and simple to get started</div><div class="benefit"><span class="check">✓</span>Your information stays under your control</div><div class="benefit"><span class="check">✓</span>Built specifically for cafés and baristas</div></div></section>
+  <section class="intro"><span class="eyebrow">Join BaristaMatch</span><h1 id="signup-headline">A better coffee career starts with a great profile.</h1><p id="signup-intro">Create your profile, discover nearby cafés, and connect when the fit feels right.</p><div class="benefits"><div class="benefit"><span class="check">✓</span>Free and simple to get started</div><div class="benefit"><span class="check">✓</span>Your information stays under your control</div><div class="benefit"><span class="check">✓</span>Built specifically for cafés and baristas</div></div></section>
   <section class="panel">
     <h2>Sign up</h2><p class="sub">First, tell us which side of the coffee community you’re joining.</p>
-    <form id="signup-form">
+    <form id="signup-form" method="post">
       <div class="roles">
         <div class="role"><input id="barista" type="radio" name="role" value="barista" required><label for="barista"><strong>☕ I’m a barista</strong><small>I want to find café opportunities.</small></label></div>
         <div class="role"><input id="cafe" type="radio" name="role" value="cafe_owner_manager" required><label for="cafe"><strong>🏪 I represent a café</strong><small>I want to hire coffee talent.</small></label></div>
       </div>
       <div class="grid">
         <label class="field wide" id="name-label">Your name<input name="name" autocomplete="name" required placeholder="Your full name"></label>
-        <label class="field wide">Location<input name="location" autocomplete="address-level2" required placeholder="City, State"></label>
+        <label class="field wide">Florida city<input name="location" autocomplete="address-level2" required placeholder="Miami, FL"><small>BaristaMatch is currently available in Florida only.</small></label>
         <label class="field wide">Email address<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
         <label class="field">Password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></label>
         <label class="field">Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required placeholder="Enter it again"></label>
@@ -43,7 +43,7 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
     <div class="divider">or</div>
     <div class="social-stack"><button class="button google" id="google-signup" type="button"><span>G</span>Continue with Google</button><button class="button apple" id="apple-signup" type="button"><svg class="apple-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.22.07 2.07.66 2.79.71 1.08-.22 2.11-.85 3.26-.77 1.38.11 2.42.66 3.11 1.64-2.84 1.7-2.17 5.44.44 6.49-.52 1.37-1.2 2.73-1.6 4.9zM12.03 7.25C11.88 5.21 13.55 3.53 15.45 3.37c.26 2.36-2.14 4.13-3.42 3.88z"/></svg>Continue with Apple</button></div>
     <p class="status" id="status" role="status" aria-live="polite"></p>
-    <p class="privacy">Secure signup powered by Supabase. BaristaMatch never sees your Google or Apple password.</p>
+    <p class="privacy">Secure sign-up. Your password stays private.</p>
   </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
@@ -51,9 +51,12 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
 const form=document.getElementById('signup-form'),status=document.getElementById('status'),googleButton=document.getElementById('google-signup'),appleButton=document.getElementById('apple-signup');let client;
 const setStatus=(message='',error=false)=>{status.textContent=message;status.classList.toggle('error',error)};
 const selectedRole=()=>form.querySelector('[name="role"]:checked')?.value||'';
-function updateNameLabel(){const cafe=selectedRole()==='cafe_owner_manager';document.getElementById('name-label').firstChild.textContent=cafe?'Café name':'Your name';form.elements.name.placeholder=cafe?'Your café name':'Your full name'}
+function updateNameLabel(){const cafe=selectedRole()==='cafe_owner_manager';document.getElementById('name-label').firstChild.textContent=cafe?'Café name':'Your name';form.elements.name.placeholder=cafe?'Your café name':'Your full name';document.getElementById('signup-headline').textContent=cafe?'Build your café team with the right people.':'A better coffee career starts with a great profile.';document.getElementById('signup-intro').textContent=cafe?'Create your café profile, discover nearby baristas, and connect when there’s mutual interest.':'Create your profile, discover nearby cafés, and connect when the fit feels right.'}
 form.querySelectorAll('[name="role"]').forEach(input=>input.addEventListener('change',updateNameLabel));
 const requestedRole=new URLSearchParams(location.search).get('role');if(['barista','cafe_owner_manager'].includes(requestedRole)){form.querySelector(`[value="${requestedRole}"]`).checked=true;updateNameLabel()}
+const isFloridaLocation=value=>/(^|,|\s)(fl|florida)(\s|$)/i.test(String(value||'').trim());
+form.addEventListener('submit',event=>{if(isFloridaLocation(form.elements.location.value))return;event.preventDefault();event.stopImmediatePropagation();form.elements.location.focus();setStatus('Enter a Florida location, such as Miami, FL.',true)},true);
+[googleButton,appleButton].forEach(button=>button.addEventListener('click',event=>{if(!form.elements.location.value.trim()||isFloridaLocation(form.elements.location.value))return;event.preventDefault();event.stopImmediatePropagation();form.elements.location.focus();setStatus('Enter a Florida location, such as Miami, FL.',true)},true));
 async function saveStarterProfile(user,role,name,location){const payload={id:user.id,role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location,updated_at:new Date().toISOString()};const {error}=await client.from('profiles').upsert(payload);if(error)console.warn('Starter profile will be completed in the dashboard.',error)}
 async function finishSocialSignup(session){const role=localStorage.getItem('baristamatch_pending_role');if(!session||!role)return false;const name=localStorage.getItem('baristamatch_pending_name')||session.user.user_metadata?.full_name||session.user.user_metadata?.name||'';const storedLocation=localStorage.getItem('baristamatch_pending_location')||'';await client.auth.updateUser({data:{role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location:storedLocation}});await saveStarterProfile(session.user,role,name,storedLocation);['baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key));window.location.replace(role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return true}
 async function initialize(){try{const response=await fetch('/api/config',{cache:'no-store'}),config=await response.json().catch(()=>({}));if(!response.ok||!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('Account signup is temporarily unavailable. Please try again shortly.');client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);const {data:{session}}=await client.auth.getSession();if(await finishSocialSignup(session))return;client.auth.onAuthStateChange(async(event,nextSession)=>{if(event==='SIGNED_IN')await finishSocialSignup(nextSession)})}catch(error){setStatus(error.message||'Account signup is temporarily unavailable. Please try again shortly.',true)}}

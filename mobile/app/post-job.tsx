@@ -3,6 +3,7 @@ import { Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollV
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
+import { authenticatedApi } from '@/lib/api';
 
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
 
@@ -41,9 +42,10 @@ export default function PostJobScreen() {
       description: form.description.trim(),
       active: true,
     };
-    const { error } = await supabase.from('jobs').insert(payload);
+    const { data: job, error } = await supabase.from('jobs').insert(payload).select('id').single();
     setPublishing(false);
     if (error) return Alert.alert('Could not publish job', error.message);
+    authenticatedApi('/push-event', { type: 'job', job_id: job.id }).catch(error => console.warn('Nearby job notification failed', error?.message || error));
     Alert.alert('Job published', 'Your opportunity is now visible to local baristas.', [{ text: 'Done', onPress: () => router.replace('/home') }]);
   }
 

@@ -1,3 +1,5 @@
+import {profileName,sendPushToUsers} from './_push.js';
+
 const clean=(v,max=5000)=>String(v??'').trim().slice(0,max);
 const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
 function adminHeaders(extra={}){const key=process.env.SUPABASE_SECRET_KEY;const h={apikey:key,'Content-Type':'application/json',...extra};if(key&&!key.startsWith('sb_secret_'))h.Authorization=`Bearer ${key}`;return h}
@@ -16,5 +18,6 @@ export default async function handler(req,res){
   const ir=await userRest('/rest/v1/messages',token,{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({application_id:applicationId,sender_id:user.id,body})});if(!ir.ok){console.error('Message insert failed',ir.status,await ir.text());return res.status(500).json({error:'Message could not be sent.'})}const message=(await ir.json())[0];
   const recipientId=user.id===app.barista_id?app.job.owner_id:app.barista_id;let emailSent=false;
   try{const [pr,sr]=await Promise.all([rest(`/rest/v1/notification_preferences?user_id=eq.${encodeURIComponent(recipientId)}&select=email_messages&limit=1`),rest(`/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=display_name,cafe_name&limit=1`)]);const prefs=pr.ok?(await pr.json())[0]:null;const sender=sr.ok?(await sr.json())[0]:null;if(prefs?.email_messages!==false){const to=await emailFor(recipientId);const senderName=sender?.display_name||sender?.cafe_name||'Your match';emailSent=await sendEmail(to,`New BaristaMatch message from ${senderName}`,`<div style="max-width:560px;margin:auto;padding:28px;font-family:Arial,sans-serif;color:#321708;background:#fbf7f1;border-radius:18px"><h2>New message from ${esc(senderName)}</h2><p style="color:#746a61">About ${esc(app.job?.title||'your match')}</p><div style="background:white;border:1px solid #e7ddd2;border-radius:12px;padding:16px;line-height:1.55">${esc(body)}</div><p><a href="https://www.baristajobmatch.com/dashboard.html" style="color:#a95820;font-weight:700">Open BaristaMatch Messages</a></p></div>`)} }catch(e){console.error('Message email notification failed',e?.message||e)}
-  return res.status(200).json({success:true,message,email_sent:emailSent});
+  let pushSent=0;try{const senderName=await profileName(user.id);pushSent=(await sendPushToUsers([recipientId],{title:`New message from ${senderName}`,body,data:{route:`/chat/${applicationId}?kind=application`,type:'message'}})).sent}catch(e){console.error('Message push notification failed',e?.message||e)}
+  return res.status(200).json({success:true,message,email_sent:emailSent,push_sent:pushSent});
 }

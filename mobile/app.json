@@ -30,7 +30,14 @@
       }
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#b75a1d",
+          "defaultChannel": "baristamatch-alerts"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
