@@ -149,7 +149,7 @@ export default function LoginScreen() {
                 <Text numberOfLines={1} style={styles.socialText}>Continue with Apple</Text>
               </Pressable>
             </View>
-            <Pressable accessibilityRole="link" accessibilityLabel="Create an account on the BaristaMatch website" onPress={() => Linking.openURL('https://www.baristajobmatch.com/signup.html')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
+            <Pressable accessibilityRole="link" onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
