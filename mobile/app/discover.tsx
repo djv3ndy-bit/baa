@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, PanResponder, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Image, PanResponder, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { AppBottomNav } from '@/components/AppBottomNav';
@@ -17,6 +17,11 @@ type Job = {
   required_skills: string[] | null;
   owner?: { cafe_name?: string | null; avatar_url?: string | null };
 };
+type Candidate = { id:string; display_name:string|null; location:string|null; bio:string|null; skills:string[]|null; availability:string|null; experience:string|null; avatar_url:string|null; preferred_city?:string|null; preferred_state?:string|null; preferred_postal_code?:string|null };
+
+const normalizePlace=(value?:string|null)=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ');
+const locationTokens=(value?:string|null)=>new Set(normalizePlace(value).split(' ').filter(token=>token.length>1));
+function sharesLocation(home?:string|null,...places:(string|null|undefined)[]){const base=locationTokens(home);if(!base.size)return true;return places.some(place=>{const other=locationTokens(place);return [...base].some(token=>other.has(token))})}
 
 const WIDTH = Dimensions.get('window').width;
 const SWIPE = Math.min(110, WIDTH * 0.28);
@@ -24,6 +29,8 @@ const SWIPE = Math.min(110, WIDTH * 0.28);
 export default function DiscoverScreen() {
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [role,setRole]=useState<'barista'|'cafe_owner_manager'>('barista');
+  const [candidates,setCandidates]=useState<Candidate[]>([]);
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const translate = useRef(new Animated.ValueXY()).current;
@@ -36,8 +43,14 @@ export default function DiscoverScreen() {
     const { data: auth } = await supabase.auth.getUser();
     if (!auth.user) return router.replace('/login');
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', auth.user.id).maybeSingle();
-    if (profile?.role !== 'barista') {
+    const { data: profile } = await supabase.from('profiles').select('role,location,preferred_city,preferred_state,preferred_postal_code').eq('id', auth.user.id).maybeSingle();
+    const accountRole=profile?.role==='cafe_owner_manager'?'cafe_owner_manager':'barista';
+    setRole(accountRole);
+    if(accountRole==='cafe_owner_manager'){
+      const {data,error}=await supabase.from('profiles').select('id,display_name,location,bio,skills,availability,experience,avatar_url,preferred_city,preferred_state,preferred_postal_code').eq('role','barista').eq('is_discoverable',true).neq('id',auth.user.id).order('updated_at',{ascending:false}).limit(100);
+      if(error)Alert.alert('Could not load nearby baristas',error.message);
+      const nearby=(data||[]).filter(person=>sharesLocation(profile?.location,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code));
+      setCandidates(nearby as Candidate[]);
       setLoading(false);
       return;
     }
@@ -55,7 +68,8 @@ export default function DiscoverScreen() {
     }
 
     const hidden = new Set([...(swipes || []).map(x => x.job_id), ...(applications || []).map(x => x.job_id)]);
-    const visible = (rawJobs || []).filter(job => !hidden.has(job.id));
+    const preferred=[profile?.preferred_city,profile?.preferred_state,profile?.preferred_postal_code].filter(Boolean).join(' ')||profile?.location;
+    const visible = (rawJobs || []).filter(job => !hidden.has(job.id)&&sharesLocation(preferred,job.location));
     const ownerIds = [...new Set(visible.map(job => job.owner_id))];
     let owners: Record<string, { cafe_name?: string | null; avatar_url?: string | null }> = {};
     if (ownerIds.length) {
@@ -120,6 +134,8 @@ export default function DiscoverScreen() {
 
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
 
+  if(role==='cafe_owner_manager')return <SafeAreaView style={styles.safe}><View style={styles.header}><View><Text style={styles.logo}>Barista<Text style={styles.logoAccent}>Match</Text></Text><Text style={styles.tagline}>DISCOVER · CONNECT · HIRE</Text></View><Pressable onPress={()=>router.push('/settings')} style={styles.filter}><Text style={styles.filterText}>⚙</Text></Pressable></View><ScrollView contentContainerStyle={styles.candidateList}>{candidates.length?<><Text style={styles.nearbyTitle}>Baristas near your café</Text><Text style={styles.nearbyCopy}>Discoverable profiles matching your saved location.</Text>{candidates.map(person=><Pressable key={person.id} style={styles.candidateCard} onPress={()=>Alert.alert(person.display_name||'Barista',[person.location,person.experience,person.availability].filter(Boolean).join('\n\n')||'Profile details are coming soon.')}><View style={styles.candidatePhoto}>{person.avatar_url?<Image source={{uri:person.avatar_url}} style={styles.candidateImage}/>:<Text style={styles.candidateEmoji}>👤</Text>}</View><View style={styles.candidateBody}><Text style={styles.candidateName}>{person.display_name||'Local barista'}</Text><Text style={styles.candidateLocation}>📍 {person.location||'Nearby'}</Text><Text numberOfLines={2} style={styles.candidateBio}>{person.bio||person.experience||'Ready for a new café opportunity.'}</Text><View style={styles.candidateTags}>{(person.skills||[]).slice(0,3).map(skill=><Tag key={skill} text={skill} soft/>)}</View></View><Text style={styles.candidateArrow}>›</Text></Pressable>)}</>:<View style={styles.emptyWrap}><View style={styles.emptyIcon}><Text style={{fontSize:34}}>👥</Text></View><Text style={styles.emptyTitle}>No nearby baristas yet</Text><Text style={styles.emptyCopy}>Add your café location and check again as local baristas complete their profiles.</Text><Pressable style={styles.primary} onPress={()=>router.push('/profile')}><Text style={styles.primaryText}>Update café location</Text></Pressable></View>}</ScrollView><AppBottomNav active="discover" role="cafe_owner_manager"/></SafeAreaView>;
+
   if (!current) return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.emptyWrap}>
@@ -182,4 +198,5 @@ const styles=StyleSheet.create({
   actions:{height:84,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:20},action:{alignItems:'center',justifyContent:'center',borderRadius:999,backgroundColor:'#fff',borderWidth:1,borderColor:'#eadfd5',shadowColor:'#321708',shadowOpacity:.08,shadowRadius:8,shadowOffset:{width:0,height:3}},pass:{width:58,height:58},info:{width:50,height:50},heart:{width:62,height:62,backgroundColor:'#2f7c42',borderColor:'#2f7c42'},actionPass:{fontSize:38,color:'#c84b3e',fontWeight:'300',marginTop:-5},actionInfo:{fontSize:22,fontWeight:'800',color:'#321708'},actionHeart:{fontSize:28,color:'#fff'},
   bottomNav:{height:67,borderTopWidth:1,borderTopColor:'#eadfd5',backgroundColor:'#fff',flexDirection:'row',justifyContent:'space-around',alignItems:'center',paddingBottom:3},navItem:{alignItems:'center',justifyContent:'center',minWidth:62},navIcon:{fontSize:20,color:'#99897f'},navLabel:{fontSize:10,color:'#99897f',marginTop:2,fontWeight:'700'},navActive:{color:'#321708'},
   emptyWrap:{flex:1,alignItems:'center',justifyContent:'center',padding:28},emptyIcon:{width:86,height:86,borderRadius:28,backgroundColor:'#f3e8de',alignItems:'center',justifyContent:'center',marginTop:28},emptyTitle:{fontSize:28,fontWeight:'900',color:'#321708',marginTop:20},emptyCopy:{textAlign:'center',fontSize:15,lineHeight:22,color:'#746a61',marginTop:9,maxWidth:310},primary:{marginTop:24,backgroundColor:'#321708',paddingHorizontal:24,paddingVertical:14,borderRadius:14},primaryText:{color:'#fff',fontWeight:'900'},linkButton:{marginTop:14,padding:10},linkText:{color:'#a95820',fontWeight:'800'}
+  ,candidateList:{padding:18,paddingBottom:30},nearbyTitle:{fontSize:25,fontWeight:'900',color:'#321708'},nearbyCopy:{fontSize:13,color:'#746a61',marginTop:4,marginBottom:16},candidateCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#fff',borderWidth:1,borderColor:'#eadfd5',borderRadius:20,padding:12,marginBottom:11},candidatePhoto:{width:70,height:78,borderRadius:16,backgroundColor:'#f3e8de',overflow:'hidden',alignItems:'center',justifyContent:'center'},candidateImage:{width:'100%',height:'100%'},candidateEmoji:{fontSize:32},candidateBody:{flex:1,paddingHorizontal:12},candidateName:{fontSize:17,fontWeight:'900',color:'#321708'},candidateLocation:{fontSize:11,color:'#746a61',marginTop:3},candidateBio:{fontSize:11,lineHeight:16,color:'#746a61',marginTop:5},candidateTags:{flexDirection:'row',flexWrap:'wrap',gap:5,marginTop:7},candidateArrow:{fontSize:30,color:'#b75a1d'}
 });
