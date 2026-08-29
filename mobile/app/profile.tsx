@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -108,6 +107,8 @@ export default function Profile() {
     [availabilityNotes, setAvailabilityNotes] = useState(""),
     [profilePhoto, setProfilePhoto] =
       useState<DocumentPicker.DocumentPickerAsset | null>(null),
+    [barPicture, setBarPicture] =
+      useState<DocumentPicker.DocumentPickerAsset | null>(null),
     [coffeeVideo, setCoffeeVideo] =
       useState<DocumentPicker.DocumentPickerAsset | null>(null);
   useEffect(() => {
@@ -139,10 +140,10 @@ export default function Profile() {
         : [...current, value],
     );
   }
-  async function pickMedia(kind: "photo" | "video") {
+  async function pickMedia(kind: "photo" | "bar" | "video") {
     const result = await DocumentPicker.getDocumentAsync({
       type:
-        kind === "photo"
+        kind !== "video"
           ? ["image/jpeg", "image/png", "image/webp"]
           : ["video/mp4", "video/quicktime", "video/webm"],
       copyToCacheDirectory: true,
@@ -150,15 +151,17 @@ export default function Profile() {
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    const limit = kind === "photo" ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
+    const limit = kind !== "video" ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
     if ((asset.size || 0) > limit)
       return Alert.alert(
-        `${kind === "photo" ? "Photo" : "Video"} is too large`,
-        kind === "photo"
+        `${kind !== "video" ? "Photo" : "Video"} is too large`,
+        kind !== "video"
           ? "Choose a photo smaller than 5 MB."
           : "Choose a video smaller than 50 MB.",
       );
-    kind === "photo" ? setProfilePhoto(asset) : setCoffeeVideo(asset);
+    if (kind === "photo") setProfilePhoto(asset);
+    else if (kind === "bar") setBarPicture(asset);
+    else setCoffeeVideo(asset);
   }
   async function uploadAsset(
     asset: DocumentPicker.DocumentPickerAsset,
@@ -198,13 +201,21 @@ export default function Profile() {
       );
     }
     let avatarUrl = profile.avatar_url || null;
+    let barPictureUrl = profile.bar_picture_url || null;
     let videoPath = profile.video_path || null;
     try {
       if (profilePhoto) {
         const ext = (profilePhoto.name.split(".").pop() || "jpg").toLowerCase();
-        const path = `${user.id}/avatar.${ext}`;
+        const path = `${user.id}/${role === "barista" ? "avatar" : "profile"}.${ext}`;
         await uploadAsset(profilePhoto, "cafe-images", path);
         avatarUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
+          .data.publicUrl;
+      }
+      if (role === "cafe_owner_manager" && barPicture) {
+        const ext = (barPicture.name.split(".").pop() || "jpg").toLowerCase();
+        const path = `${user.id}/bar.${ext}`;
+        await uploadAsset(barPicture, "cafe-images", path);
+        barPictureUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
           .data.publicUrl;
       }
       if (coffeeVideo) {
@@ -266,6 +277,8 @@ export default function Profile() {
       payload.open_hours = formatOpeningHours(openHours) || null;
       payload.shop_type = profile.shop_type || null;
       payload.barista_preferences = profile.barista_preferences || [];
+      payload.avatar_url = avatarUrl;
+      payload.bar_picture_url = barPictureUrl;
       payload.is_discoverable =
         [
           payload.cafe_name,
@@ -288,6 +301,7 @@ export default function Profile() {
       skills_text: payload.skills?.join(", "),
     }));
     setProfilePhoto(null);
+    setBarPicture(null);
     setCoffeeVideo(null);
     setEditing(false);
   }
@@ -320,7 +334,7 @@ export default function Profile() {
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
         <View style={s.hero}>
-          {isBarista && profile.avatar_url ? (
+          {profile.avatar_url ? (
             <Image
               source={{ uri: profile.avatar_url }}
               style={s.profilePhoto}
@@ -354,23 +368,24 @@ export default function Profile() {
               }
               onChange={(v) => set(isBarista ? "display_name" : "cafe_name", v)}
             />
-            {isBarista ? (
-              <MediaPicker
-                label="Profile photo"
-                value={
-                  profilePhoto?.name ||
-                  (profile.avatar_url
-                    ? "Current photo saved ✓"
-                    : "No photo selected")
-                }
-                buttonLabel={
-                  profile.avatar_url || profilePhoto
-                    ? "Replace photo"
-                    : "Choose photo"
-                }
-                onPress={() => pickMedia("photo")}
-              />
-            ) : null}
+            <MediaPicker
+              label={
+                isBarista ? "Profile picture" : "Café logo or profile picture"
+              }
+              value={
+                profilePhoto?.name ||
+                (profile.avatar_url
+                  ? "Current picture saved ✓"
+                  : "No picture selected")
+              }
+              buttonLabel={
+                profile.avatar_url || profilePhoto
+                  ? "Replace picture"
+                  : "Choose picture"
+              }
+              onPress={() => pickMedia("photo")}
+              help="Up to 5 MB · JPG, PNG, or WebP"
+            />
             <Field
               label="Location"
               value={profile.location || ""}
@@ -453,7 +468,7 @@ export default function Profile() {
                   onChange={(v) => set("pay_expectation", v)}
                 />
                 <MediaPicker
-                  label="Optional coffee video"
+                  label="Optional skills video"
                   value={
                     coffeeVideo?.name ||
                     (profile.video_path
@@ -466,7 +481,7 @@ export default function Profile() {
                       : "Choose video"
                   }
                   onPress={() => pickMedia("video")}
-                  help="15–60 seconds recommended · up to 50 MB · MP4, MOV, or WebM"
+                  help="Show latte art, espresso preparation, or customer-service skills · 15–60 seconds recommended · up to 50 MB"
                 />
               </>
             ) : (
@@ -557,21 +572,22 @@ export default function Profile() {
                     />
                   ))}
                 </View>
-                <Pressable
-                  style={s.photoLink}
-                  onPress={() =>
-                    Linking.openURL(
-                      "https://www.baristajobmatch.com/dashboard.html",
-                    )
+                <MediaPicker
+                  label="Optional picture of the bar"
+                  value={
+                    barPicture?.name ||
+                    (profile.bar_picture_url
+                      ? "Current bar picture saved ✓"
+                      : "No picture selected")
                   }
-                >
-                  <Text style={s.photoLinkText}>
-                    {profile.bar_picture_url
-                      ? "Replace optional bar picture on website"
-                      : "Add optional bar picture on website"}{" "}
-                    →
-                  </Text>
-                </Pressable>
+                  buttonLabel={
+                    profile.bar_picture_url || barPicture
+                      ? "Replace picture"
+                      : "Choose picture"
+                  }
+                  onPress={() => pickMedia("bar")}
+                  help="Show baristas the workspace · up to 5 MB"
+                />
               </>
             )}
             <Pressable disabled={saving} onPress={save} style={s.primary}>
