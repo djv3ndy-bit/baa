@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Animated, Dimensions, Image, PanResponder, Pr
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { AppBottomNav } from '@/components/AppBottomNav';
-import { authenticatedApi } from '@/lib/api';
+import { sendDiscoveryInterest } from '@/lib/discovery';
 
 type Job = {
   id: string;
@@ -46,10 +46,15 @@ export default function DiscoverScreen() {
     const { data: profile } = await supabase.from('profiles').select('role,location,preferred_city,preferred_state,preferred_postal_code').eq('id', auth.user.id).maybeSingle();
     const accountRole=profile?.role==='cafe_owner_manager'?'cafe_owner_manager':'barista';
     setRole(accountRole);
+    const [{data:sentInterests},{data:existingMatches}]=await Promise.all([
+      supabase.from('discovery_interests').select('target_id').eq('sender_id',auth.user.id),
+      supabase.from('discovery_matches').select('barista_id,cafe_id').or(`barista_id.eq.${auth.user.id},cafe_id.eq.${auth.user.id}`),
+    ]);
+    const hiddenPeople=new Set([...(sentInterests||[]).map(row=>row.target_id),...(existingMatches||[]).map(row=>accountRole==='barista'?row.cafe_id:row.barista_id)]);
     if(accountRole==='cafe_owner_manager'){
       const {data,error}=await supabase.from('profiles').select('id,display_name,location,bio,skills,availability,experience,avatar_url,preferred_city,preferred_state,preferred_postal_code').eq('role','barista').eq('is_discoverable',true).neq('id',auth.user.id).order('updated_at',{ascending:false}).limit(100);
       if(error)Alert.alert('Could not load nearby baristas',error.message);
-      const nearby=(data||[]).filter(person=>sharesLocation(profile?.location,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code));
+      const nearby=(data||[]).filter(person=>!hiddenPeople.has(person.id)&&sharesLocation(profile?.location,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code));
       setCandidates(nearby as Candidate[]);
       setLoading(false);
       return;
@@ -69,7 +74,7 @@ export default function DiscoverScreen() {
 
     const hidden = new Set([...(swipes || []).map(x => x.job_id), ...(applications || []).map(x => x.job_id)]);
     const preferred=[profile?.preferred_city,profile?.preferred_state,profile?.preferred_postal_code].filter(Boolean).join(' ')||profile?.location;
-    const visible = (rawJobs || []).filter(job => !hidden.has(job.id)&&sharesLocation(preferred,job.location));
+    const visible = (rawJobs || []).filter(job => !hidden.has(job.id)&&!hiddenPeople.has(job.owner_id)&&sharesLocation(preferred,job.location));
     const ownerIds = [...new Set(visible.map(job => job.owner_id))];
     let owners: Record<string, { cafe_name?: string | null; avatar_url?: string | null }> = {};
     if (ownerIds.length) {
@@ -113,7 +118,8 @@ export default function DiscoverScreen() {
 
     if (decision === 'interested') {
       try {
-        await authenticatedApi('/apply-job', { job_id: current.id });
+        const result=await sendDiscoveryInterest(auth.user.id,current.owner_id,'barista');
+        if(result.matched)Alert.alert('It’s a match!','You can now message this café from Matches.');
       } catch (error) {
         setBusy(false);
         Alert.alert('Interest not sent', error instanceof Error ? error.message : 'Please try again.');
@@ -132,9 +138,15 @@ export default function DiscoverScreen() {
     setBusy(false);
   }
 
+  async function interestInBarista(person:Candidate){
+    if(busy)return;setBusy(true);
+    try{const {data:auth}=await supabase.auth.getUser();if(!auth.user)return router.replace('/login');const result=await sendDiscoveryInterest(auth.user.id,person.id,'cafe_owner_manager');setCandidates(list=>list.filter(item=>item.id!==person.id));Alert.alert(result.matched?'It’s a match!':'Interest sent',result.matched?'You can now message this barista from Matches.':'We’ll let you know when this barista is interested too.');}
+    catch(error){Alert.alert('Interest not sent',error instanceof Error?error.message:'Please try again.')}finally{setBusy(false)}
+  }
+
   if (loading) return <SafeAreaView style={styles.safe}><View style={styles.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
 
-  if(role==='cafe_owner_manager')return <SafeAreaView style={styles.safe}><View style={styles.header}><View><Text style={styles.logo}>Barista<Text style={styles.logoAccent}>Match</Text></Text><Text style={styles.tagline}>DISCOVER · CONNECT · HIRE</Text></View><Pressable onPress={()=>router.push('/settings')} style={styles.filter}><Text style={styles.filterText}>⚙</Text></Pressable></View><ScrollView contentContainerStyle={styles.candidateList}>{candidates.length?<><Text style={styles.nearbyTitle}>Baristas near your café</Text><Text style={styles.nearbyCopy}>Discoverable profiles matching your saved location.</Text>{candidates.map(person=><Pressable key={person.id} style={styles.candidateCard} onPress={()=>Alert.alert(person.display_name||'Barista',[person.location,person.experience,person.availability].filter(Boolean).join('\n\n')||'Profile details are coming soon.')}><View style={styles.candidatePhoto}>{person.avatar_url?<Image source={{uri:person.avatar_url}} style={styles.candidateImage}/>:<Text style={styles.candidateEmoji}>👤</Text>}</View><View style={styles.candidateBody}><Text style={styles.candidateName}>{person.display_name||'Local barista'}</Text><Text style={styles.candidateLocation}>📍 {person.location||'Nearby'}</Text><Text numberOfLines={2} style={styles.candidateBio}>{person.bio||person.experience||'Ready for a new café opportunity.'}</Text><View style={styles.candidateTags}>{(person.skills||[]).slice(0,3).map(skill=><Tag key={skill} text={skill} soft/>)}</View></View><Text style={styles.candidateArrow}>›</Text></Pressable>)}</>:<View style={styles.emptyWrap}><View style={styles.emptyIcon}><Text style={{fontSize:34}}>👥</Text></View><Text style={styles.emptyTitle}>No nearby baristas yet</Text><Text style={styles.emptyCopy}>Add your café location and check again as local baristas complete their profiles.</Text><Pressable style={styles.primary} onPress={()=>router.push('/profile')}><Text style={styles.primaryText}>Update café location</Text></Pressable></View>}</ScrollView><AppBottomNav active="discover" role="cafe_owner_manager"/></SafeAreaView>;
+  if(role==='cafe_owner_manager')return <SafeAreaView style={styles.safe}><View style={styles.header}><View><Text style={styles.logo}>Barista<Text style={styles.logoAccent}>Match</Text></Text><Text style={styles.tagline}>DISCOVER · CONNECT · HIRE</Text></View><Pressable onPress={()=>router.push('/settings')} style={styles.filter}><Text style={styles.filterText}>⚙</Text></Pressable></View><ScrollView contentContainerStyle={styles.candidateList}>{candidates.length?<><Text style={styles.nearbyTitle}>Baristas near your café</Text><Text style={styles.nearbyCopy}>Discoverable profiles matching your saved location.</Text>{candidates.map(person=><Pressable key={person.id} style={styles.candidateCard} onPress={()=>Alert.alert(person.display_name||'Barista',[person.location,person.experience,person.availability].filter(Boolean).join('\n\n')||'Profile details are coming soon.')}><View style={styles.candidatePhoto}>{person.avatar_url?<Image source={{uri:person.avatar_url}} style={styles.candidateImage}/>:<Text style={styles.candidateEmoji}>👤</Text>}</View><View style={styles.candidateBody}><Text style={styles.candidateName}>{person.display_name||'Local barista'}</Text><Text style={styles.candidateLocation}>📍 {person.location||'Nearby'}</Text><Text numberOfLines={2} style={styles.candidateBio}>{person.bio||person.experience||'Ready for a new café opportunity.'}</Text><View style={styles.candidateTags}>{(person.skills||[]).slice(0,3).map(skill=><Tag key={skill} text={skill} soft/>)}</View></View><View style={styles.candidateActions}><Pressable style={styles.profileButton} onPress={()=>Alert.alert(person.display_name||'Barista',[person.location,person.experience,person.availability].filter(Boolean).join('\n\n')||'Profile details are coming soon.')}><Text style={styles.profileButtonText}>Profile</Text></Pressable><Pressable disabled={busy} style={styles.interestButton} onPress={()=>interestInBarista(person)}><Text style={styles.interestButtonText}>Interested</Text></Pressable></View></Pressable>)}</>:<View style={styles.emptyWrap}><View style={styles.emptyIcon}><Text style={{fontSize:34}}>👥</Text></View><Text style={styles.emptyTitle}>No nearby baristas yet</Text><Text style={styles.emptyCopy}>Add your café location and check again as local baristas complete their profiles.</Text><Pressable style={styles.primary} onPress={()=>router.push('/profile')}><Text style={styles.primaryText}>Update café location</Text></Pressable></View>}</ScrollView><AppBottomNav active="discover" role="cafe_owner_manager"/></SafeAreaView>;
 
   if (!current) return (
     <SafeAreaView style={styles.safe}>
@@ -198,5 +210,5 @@ const styles=StyleSheet.create({
   actions:{height:84,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:20},action:{alignItems:'center',justifyContent:'center',borderRadius:999,backgroundColor:'#fff',borderWidth:1,borderColor:'#eadfd5',shadowColor:'#321708',shadowOpacity:.08,shadowRadius:8,shadowOffset:{width:0,height:3}},pass:{width:58,height:58},info:{width:50,height:50},heart:{width:62,height:62,backgroundColor:'#2f7c42',borderColor:'#2f7c42'},actionPass:{fontSize:38,color:'#c84b3e',fontWeight:'300',marginTop:-5},actionInfo:{fontSize:22,fontWeight:'800',color:'#321708'},actionHeart:{fontSize:28,color:'#fff'},
   bottomNav:{height:67,borderTopWidth:1,borderTopColor:'#eadfd5',backgroundColor:'#fff',flexDirection:'row',justifyContent:'space-around',alignItems:'center',paddingBottom:3},navItem:{alignItems:'center',justifyContent:'center',minWidth:62},navIcon:{fontSize:20,color:'#99897f'},navLabel:{fontSize:10,color:'#99897f',marginTop:2,fontWeight:'700'},navActive:{color:'#321708'},
   emptyWrap:{flex:1,alignItems:'center',justifyContent:'center',padding:28},emptyIcon:{width:86,height:86,borderRadius:28,backgroundColor:'#f3e8de',alignItems:'center',justifyContent:'center',marginTop:28},emptyTitle:{fontSize:28,fontWeight:'900',color:'#321708',marginTop:20},emptyCopy:{textAlign:'center',fontSize:15,lineHeight:22,color:'#746a61',marginTop:9,maxWidth:310},primary:{marginTop:24,backgroundColor:'#321708',paddingHorizontal:24,paddingVertical:14,borderRadius:14},primaryText:{color:'#fff',fontWeight:'900'},linkButton:{marginTop:14,padding:10},linkText:{color:'#a95820',fontWeight:'800'}
-  ,candidateList:{padding:18,paddingBottom:30},nearbyTitle:{fontSize:25,fontWeight:'900',color:'#321708'},nearbyCopy:{fontSize:13,color:'#746a61',marginTop:4,marginBottom:16},candidateCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#fff',borderWidth:1,borderColor:'#eadfd5',borderRadius:20,padding:12,marginBottom:11},candidatePhoto:{width:70,height:78,borderRadius:16,backgroundColor:'#f3e8de',overflow:'hidden',alignItems:'center',justifyContent:'center'},candidateImage:{width:'100%',height:'100%'},candidateEmoji:{fontSize:32},candidateBody:{flex:1,paddingHorizontal:12},candidateName:{fontSize:17,fontWeight:'900',color:'#321708'},candidateLocation:{fontSize:11,color:'#746a61',marginTop:3},candidateBio:{fontSize:11,lineHeight:16,color:'#746a61',marginTop:5},candidateTags:{flexDirection:'row',flexWrap:'wrap',gap:5,marginTop:7},candidateArrow:{fontSize:30,color:'#b75a1d'}
+  ,candidateList:{padding:18,paddingBottom:30},nearbyTitle:{fontSize:25,fontWeight:'900',color:'#321708'},nearbyCopy:{fontSize:13,color:'#746a61',marginTop:4,marginBottom:16},candidateCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#fff',borderWidth:1,borderColor:'#eadfd5',borderRadius:20,padding:12,marginBottom:11},candidatePhoto:{width:70,height:78,borderRadius:16,backgroundColor:'#f3e8de',overflow:'hidden',alignItems:'center',justifyContent:'center'},candidateImage:{width:'100%',height:'100%'},candidateEmoji:{fontSize:32},candidateBody:{flex:1,paddingHorizontal:12},candidateName:{fontSize:17,fontWeight:'900',color:'#321708'},candidateLocation:{fontSize:11,color:'#746a61',marginTop:3},candidateBio:{fontSize:11,lineHeight:16,color:'#746a61',marginTop:5},candidateTags:{flexDirection:'row',flexWrap:'wrap',gap:5,marginTop:7},candidateArrow:{fontSize:30,color:'#b75a1d'},candidateActions:{gap:6},profileButton:{borderWidth:1,borderColor:'#d9c7b9',borderRadius:10,paddingHorizontal:10,paddingVertical:7},profileButtonText:{fontSize:10,fontWeight:'900',color:'#321708'},interestButton:{backgroundColor:'#321708',borderRadius:10,paddingHorizontal:10,paddingVertical:8},interestButtonText:{fontSize:10,fontWeight:'900',color:'#fff'}
 });

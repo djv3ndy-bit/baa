@@ -35,13 +35,15 @@ export default function HomeScreen() {
         supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('owner_id', user.id).eq('active', true),
         supabase.from('applications').select('*,jobs!inner(owner_id)', { count: 'exact', head: true }).eq('jobs.owner_id', user.id).eq('status', 'matched'),
         supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
+        supabase.from('discovery_matches').select('*', { count: 'exact', head: true }).eq('cafe_id', user.id),
       ] : [
         supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('active', true),
         supabase.from('applications').select('*', { count: 'exact', head: true }).eq('barista_id', user.id).eq('status', 'matched'),
         supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
+        supabase.from('discovery_matches').select('*', { count: 'exact', head: true }).eq('barista_id', user.id),
       ];
-      const [jobs, matches, alerts] = await Promise.all(queries);
-      setCounts({ jobs: jobs.count || 0, matches: matches.count || 0, alerts: alerts.count || 0 });
+      const [jobs, legacyMatches, alerts, mutualMatches] = await Promise.all(queries);
+      setCounts({ jobs: jobs.count || 0, matches: (legacyMatches.count || 0)+(mutualMatches.count||0), alerts: alerts.count || 0 });
     } catch (error) {
       console.error('Dashboard load failed', error);
       Alert.alert('Could not refresh your dashboard', 'Your app is still safe. Check your connection and try again.');
@@ -64,13 +66,13 @@ export default function HomeScreen() {
 
 function CafeDashboard({ counts }: { counts: { jobs: number; matches: number; alerts: number } }) {
   return <>
-    <View style={s.stats}><MiniStat icon="▣" value={counts.jobs} label="Active jobs" bars={[10,18,13,25,20]} tint="#78954e" /><MiniStat icon="♟" value={counts.alerts} label="Candidates" bars={[12,25,18,30,22]} tint="#e66a28" /><MiniStat icon="♥" value={counts.matches} label="Matches" bars={[9,16,22,18,27]} tint="#d96856" /></View>
+    <View style={s.stats}><MiniStat icon="▣" value={counts.jobs} label="Active jobs" bars={[10,18,13,25,20]} tint="#78954e" /><MiniStat icon="♟" value={counts.alerts} label="Discover" bars={[12,25,18,30,22]} tint="#e66a28" /><MiniStat icon="♥" value={counts.matches} label="Matches" bars={[9,16,22,18,27]} tint="#d96856" /></View>
     <Pressable onPress={() => Linking.openURL('https://www.baristajobmatch.com/pricing.html')} style={({ pressed }) => [s.blueprintPlan, pressed && s.pressed]}><View style={s.blueprintCrown}><Text style={s.crownText}>♕</Text></View><View style={s.blueprintPlanBody}><Text style={s.planLabel}>SUBSCRIPTION</Text><View style={s.planNameRow}><Text style={s.blueprintPlanTitle}>Pro</Text><View style={s.activePill}><Text style={s.activeText}>Active</Text></View></View><Text style={s.renewText}>Manage your plan and benefits</Text></View><Text style={s.planCup}>☕</Text></Pressable>
     <Pressable onPress={() => router.push('/post-job')} style={({ pressed }) => [s.actionHero, pressed && s.pressed]}><View style={s.actionContent}><Text style={s.actionTitle}>Post a job</Text><Text style={s.actionCopy}>Find your next great barista.</Text><View style={s.primaryButton}><Text style={s.primaryText}>Post a job  →</Text></View></View><Image source={require('../assets/cafe-storefront-icon.png')} resizeMode="contain" style={s.cafeStorefront} /></Pressable>
-    <SectionHeader title="Hiring pulse" action="This week" onPress={() => router.push('/candidates')} />
+    <SectionHeader title="Hiring pulse" action="This week" onPress={() => router.push('/discover')} />
     <View style={s.chartCard}><View style={s.chart}>{[18,32,24,45,36,52,41].map((height, i) => <View key={i} style={s.chartColumn}><View style={[s.chartBar, { height, backgroundColor: i === 5 ? '#e66a28' : '#78954e' }]} /><Text style={s.day}>{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</Text></View>)}</View></View>
-    <SectionHeader title="Recent candidates" action="View all" onPress={() => router.push('/candidates')} />
-    <Pressable onPress={() => router.push('/candidates')} style={({ pressed }) => [s.candidateStrip, pressed && s.pressed]}>{['AM','JT','SK','LP','RB'].map((initials, i) => <View key={initials} style={[s.candidateAvatar,{backgroundColor:['#d8a47f','#8ca36a','#d87c59','#b89a83','#7a9a7b'][i]}]}><Text style={s.candidateInitials}>{initials}</Text><View style={s.candidateOnline}/></View>)}<View style={s.addCandidate}><Text style={s.addCandidateText}>＋</Text></View></Pressable>
+    <SectionHeader title="Nearby baristas" action="View all" onPress={() => router.push('/discover')} />
+    <Pressable onPress={() => router.push('/discover')} style={({ pressed }) => [s.candidateStrip, pressed && s.pressed]}>{['AM','JT','SK','LP','RB'].map((initials, i) => <View key={initials} style={[s.candidateAvatar,{backgroundColor:['#d8a47f','#8ca36a','#d87c59','#b89a83','#7a9a7b'][i]}]}><Text style={s.candidateInitials}>{initials}</Text><View style={s.candidateOnline}/></View>)}<View style={s.addCandidate}><Text style={s.addCandidateText}>＋</Text></View></Pressable>
   </>;
 }
 
