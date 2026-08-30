@@ -15,6 +15,12 @@ if((dashboard.match(/<h2>Profile Views<\/h2>/g)||[]).length>1) throw new Error('
 for(const file of ['api/send-message.js','api/apply-job.js','api/match-application.js','api/report-error.js','api/support.js','api/support-admin.js','api/delete-account.js']){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
 }
+const membershipGrantMigration='supabase/migrations/20260830130318_grant_service_role_cafe_subscription_updates.sql';
+if(!fs.existsSync(membershipGrantMigration)) throw new Error('Missing café membership service-role grant migration');
+const membershipGrant=fs.readFileSync(membershipGrantMigration,'utf8');
+if(!/grant\s+select\s*,\s*update\s+on\s+table\s+public\.cafe_subscriptions\s+to\s+service_role/i.test(membershipGrant)){
+  throw new Error('Café membership service-role grant migration is incomplete');
+}
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
 if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
