@@ -6,7 +6,7 @@ function escapeHtml(value) {
 }
 function makeTicketId() {
   const date=new Date().toISOString().slice(0,10).replaceAll('-','');
-  return `BM-${date}-${Math.random().toString(36).slice(2,8).toUpperCase()}`;
+  return `BM-${date}-${randomBytes(6).toString('hex').toUpperCase()}`;
 }
 async function resend(payload) {
   const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -76,3 +76,4 @@ export default async function handler(req,res){
     return res.status(200).json({success:true,ticket_id:ticketId,confirmation_sent:userEmail.ok});
   }catch(error){console.error('Support API error:',error);return res.status(500).json({error:'Something went wrong. Please try again.'})}
 }
+import { randomBytes } from 'node:crypto';

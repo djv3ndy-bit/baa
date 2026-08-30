@@ -8,7 +8,7 @@ import { authenticatedApi } from '@/lib/api';
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
 
 export default function PostJobScreen() {
-  const [form, setForm] = useState({ title: '', address1: '', address2: '', city: '', state: '', postalCode: '', hourlyPay: '', skills: '', description: '' });
+  const [form, setForm] = useState({ title: '', address1: '', address2: '', city: '', state: 'FL', postalCode: '', hourlyPay: '', skills: '', description: '' });
   const [schedules, setSchedules] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
 
@@ -19,13 +19,15 @@ export default function PostJobScreen() {
     const { user, role, profile } = await getCurrentContext();
     if (!user) return router.replace('/login');
     if (role !== 'cafe_owner_manager') return Alert.alert('Café account required', 'Only café accounts can publish jobs.');
-    if (!profile?.cafe_name) return Alert.alert('Complete your café profile', 'Add your café name before publishing a job.');
+    const profileReady=[profile?.cafe_name,profile?.avatar_url,profile?.location,profile?.bio,profile?.cafe_address,profile?.open_hours,profile?.shop_type].every(Boolean)&&Array.isArray(profile?.barista_preferences)&&profile.barista_preferences.length>0;
+    if (!profileReady) return Alert.alert('Complete your café profile', 'Add your café name, Florida location, photo, address, opening hours, shop type, description, and barista preferences before publishing a job.', [{text:'Open profile',onPress:()=>router.push('/profile')}]);
     const pay = Number(form.hourlyPay);
     if (!form.title.trim() || !form.address1.trim() || !form.city.trim() || !form.state.trim() || !form.postalCode.trim() || !form.description.trim() || !Number.isFinite(pay) || pay <= 0 || !schedules.length) {
       return Alert.alert('Complete the job details', 'Add the title, address, pay, schedule, and description before publishing.');
     }
     setPublishing(true);
     const state = form.state.trim().toUpperCase();
+    if(state!=='FL')return Alert.alert('Florida jobs only','BaristaMatch is currently available for jobs located in Florida.');
     const payload = {
       owner_id: user.id,
       title: form.title.trim(),
@@ -61,7 +63,7 @@ export default function PostJobScreen() {
           <Field label="Suite / unit (optional)" value={form.address2} onValueChange={value => update('address2', value)} placeholder="Suite 200" autoComplete="address-line2" />
           <View style={styles.row}>
             <View style={styles.flex}><Field label="City" value={form.city} onValueChange={value => update('city', value)} placeholder="Miami" /></View>
-            <View style={styles.state}><Field label="State" value={form.state} onValueChange={value => update('state', value.slice(0, 2))} placeholder="FL" autoCapitalize="characters" /></View>
+            <View style={styles.state}><Field label="State" value={form.state} onValueChange={()=>{}} placeholder="FL" autoCapitalize="characters" editable={false} /></View>
           </View>
           <Field label="ZIP code" value={form.postalCode} onValueChange={value => update('postalCode', value)} placeholder="33101" keyboardType="numbers-and-punctuation" autoComplete="postal-code" />
           <Field label="Hourly pay" value={form.hourlyPay} onValueChange={value => update('hourlyPay', value)} placeholder="20.00" keyboardType="decimal-pad" />

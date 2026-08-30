@@ -10,9 +10,9 @@ export default async function handler(req, res) {
 
     const { role, email, city } = req.body || {};
 
-    const cleanRole = String(role || "").trim();
-    const cleanEmail = String(email || "").trim().toLowerCase();
-    const cleanCity = String(city || "").trim();
+    const cleanRole = String(role || "").trim().slice(0, 40);
+    const cleanEmail = String(email || "").trim().toLowerCase().slice(0, 320);
+    const cleanCity = String(city || "").trim().slice(0, 120);
 
     if (!cleanRole || !cleanEmail || !cleanCity) {
       return res.status(400).json({

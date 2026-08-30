@@ -57,6 +57,8 @@ const AVAILABILITY_OPTIONS = [
   "Flexible",
 ];
 const SEARCH_AREAS = [10, 25, 50, 100];
+const isFloridaLocation = (value?: string | null) =>
+  /(^|,|\s)(fl|florida)(\s|$)/i.test(String(value || "").trim());
 function parseAvailability(value?: string | null) {
   const parts = String(value || "")
     .split(" · ")
@@ -188,6 +190,11 @@ export default function Profile() {
     });
   }
   async function save() {
+    if (!isFloridaLocation(profile.location))
+      return Alert.alert(
+        "Florida location required",
+        "Enter a Florida location, such as Miami, FL. BaristaMatch is currently available in Florida only.",
+      );
     setSaving(true);
     const {
       data: { user },
@@ -244,10 +251,7 @@ export default function Profile() {
       payload.pay_expectation = profile.pay_expectation || null;
       payload.experience = profile.experience || null;
       payload.preferred_city = profile.preferred_city || null;
-      payload.preferred_state =
-        String(profile.preferred_state || "")
-          .trim()
-          .toUpperCase() || null;
+      payload.preferred_state = "FL";
       payload.preferred_postal_code = profile.preferred_postal_code || null;
       payload.preferred_radius_miles = Number(
         profile.preferred_radius_miles || 25,
@@ -387,9 +391,10 @@ export default function Profile() {
               help="Up to 5 MB · JPG, PNG, or WebP"
             />
             <Field
-              label="Location"
+              label="Florida city"
               value={profile.location || ""}
               onChange={(v) => set("location", v)}
+              placeholder="Miami, FL"
             />
             {isBarista ? (
               <>
@@ -400,8 +405,9 @@ export default function Profile() {
                 />
                 <Field
                   label="Preferred state"
-                  value={profile.preferred_state || ""}
-                  onChange={(v) => set("preferred_state", v)}
+                  value="FL"
+                  onChange={() => {}}
+                  editable={false}
                 />
                 <Field
                   label="Preferred ZIP code"
@@ -682,11 +688,15 @@ function Field({
   value,
   onChange,
   multiline = false,
+  placeholder,
+  editable = true,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
+  placeholder?: string;
+  editable?: boolean;
 }) {
   return (
     <View style={s.field}>
@@ -695,7 +705,9 @@ function Field({
         value={value}
         onChangeText={onChange}
         multiline={multiline}
-        style={[s.input, multiline && s.multi]}
+        placeholder={placeholder}
+        editable={editable}
+        style={[s.input, multiline && s.multi, !editable && s.inputDisabled]}
       />
     </View>
   );
@@ -802,6 +814,7 @@ const s = StyleSheet.create({
     color: "#24150d",
     backgroundColor: "#fff",
   },
+  inputDisabled: { backgroundColor: "#f3eee9", color: "#746a61" },
   multi: { minHeight: 90, textAlignVertical: "top" },
   mediaRow: {
     flexDirection: "row",

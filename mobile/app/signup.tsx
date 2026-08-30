@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 type Role = 'barista' | 'cafe_owner_manager';
+const isFloridaLocation = (value: string) => /(^|,|\s)(fl|florida)(\s|$)/i.test(value.trim());
 
 export default function SignupScreen() {
   const params = useLocalSearchParams<{ role?: string }>();
@@ -19,6 +20,7 @@ export default function SignupScreen() {
     if (!name.trim() || !location.trim() || !email.trim() || password.length < 10) {
       return Alert.alert('Check your information', 'Enter your name, location, email, and a password with at least 10 characters.');
     }
+    if (!isFloridaLocation(location)) return Alert.alert('Florida location required', 'Enter a Florida location, such as Miami, FL. BaristaMatch is currently available in Florida only.');
     const isCafe = role === 'cafe_owner_manager';
     const profile = {
       id: '',
@@ -48,8 +50,8 @@ export default function SignupScreen() {
         <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
           <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back to log in</Text></Pressable>
           <Text style={styles.kicker}>JOIN BARISTAMATCH</Text>
-          <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.subtitle}>Choose how you’ll use BaristaMatch.</Text>
+          <Text style={styles.title}>{role === 'barista' ? 'Build your barista profile.' : 'Build your café team.'}</Text>
+          <Text style={styles.subtitle}>{role === 'barista' ? 'Discover nearby cafés and connect when the fit feels right.' : 'Discover nearby baristas and connect when there’s mutual interest.'}</Text>
 
           <View style={styles.roleRow}>
             {(['barista','cafe_owner_manager'] as Role[]).map(item => (
@@ -61,8 +63,9 @@ export default function SignupScreen() {
 
           <Text style={styles.label}>{role === 'barista' ? 'Your name' : 'Café name'}</Text>
           <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={role === 'barista' ? 'Your full name' : 'Your café name'} />
-          <Text style={styles.label}>Location</Text>
-          <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="City, State" />
+          <Text style={styles.label}>Florida city</Text>
+          <TextInput value={location} onChangeText={setLocation} style={styles.input} placeholder="Miami, FL" />
+          <Text style={styles.helper}>BaristaMatch is currently available in Florida only.</Text>
           <Text style={styles.label}>Email</Text>
           <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" />
           <Text style={styles.label}>Password</Text>
@@ -81,5 +84,5 @@ const styles = StyleSheet.create({
   kicker:{fontSize:12,fontWeight:'800',letterSpacing:2,color:'#a95820'},title:{fontFamily:Platform.OS==='ios'?'Georgia':'serif',fontSize:38,fontWeight:'700',color:'#4a2412',marginTop:10},subtitle:{fontSize:17,color:'#746a61',marginTop:8,marginBottom:24},
   roleRow:{flexDirection:'row',gap:10,marginBottom:12},role:{flex:1,borderWidth:1,borderColor:'#ded7d1',borderRadius:13,padding:15,alignItems:'center',backgroundColor:'#fff'},roleActive:{backgroundColor:'#fff8f2',borderColor:'#a95820'},roleText:{fontWeight:'800',color:'#321708'},roleTextActive:{color:'#a95820'},
   label:{fontSize:14,fontWeight:'800',color:'#321708',marginBottom:8,marginTop:15},input:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded7d1',borderRadius:10,paddingHorizontal:16,paddingVertical:15,fontSize:17,color:'#17110d'},
-  primary:{marginTop:26,backgroundColor:'#a9571f',paddingVertical:16,borderRadius:9,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18}
+  helper:{fontSize:12,lineHeight:17,color:'#746a61',marginTop:7},primary:{marginTop:26,backgroundColor:'#a9571f',paddingVertical:16,borderRadius:9,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18}
 });

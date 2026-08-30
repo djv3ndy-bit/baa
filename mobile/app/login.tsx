@@ -114,7 +114,7 @@ export default function LoginScreen() {
           <View style={[styles.hero, { flexBasis: compact ? '37%' : '41%' }, compact && styles.heroCompact]}>
             <View style={styles.heroGlow} />
             <Image source={require('../assets/website-favicon.png')} resizeMode="contain" style={[styles.logo, compact && styles.logoCompact]} />
-            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.brand, compact && styles.brandCompact]}>Barista <Text style={styles.brandAccent}>Job</Text> Match</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.brand, compact && styles.brandCompact]}>Barista<Text style={styles.brandAccent}>Match</Text></Text>
             <Text style={[styles.tagline, compact && styles.taglineCompact]}>Where cafés meet baristas.</Text>
             <View style={[styles.accentLine, compact && styles.accentLineCompact]} />
           </View>
@@ -136,6 +136,8 @@ export default function LoginScreen() {
               </Pressable>
             </View>
 
+            <Pressable accessibilityRole="link" onPress={() => router.push('/forgot-password')} style={styles.forgotButton}><Text style={styles.forgotText}>Forgot password?</Text></Pressable>
+
             <Pressable onPress={signIn} disabled={busy} style={({ pressed }) => [styles.primary, compact && styles.primaryCompact, pressed && styles.pressed, busy && styles.disabled]}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Log in</Text>}
             </Pressable>
@@ -151,7 +153,7 @@ export default function LoginScreen() {
                 <Text numberOfLines={1} style={styles.socialText}>Continue with Apple</Text>
               </Pressable>
             </View>
-            <Pressable accessibilityRole="link" onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
+            <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://www.baristajobmatch.com/signup.html')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -202,5 +204,5 @@ const styles = StyleSheet.create({
   socialText: { color: '#171311', fontSize: 11, fontWeight: '600', flexShrink: 1 },
   googleMark: { width: 23, height: 23, position: 'relative', overflow: 'hidden' }, googlePart: { position: 'absolute', left: 0, top: -2, fontSize: 24, lineHeight: 27, fontWeight: '900' }, googleBlue: { color: '#4285f4' }, googleWhiteCutout: { position: 'absolute', right: 0, top: 2, width: 9, height: 9, backgroundColor: '#fff' }, googleBar: { position: 'absolute', right: 0, top: 10, width: 11, height: 4, backgroundColor: '#4285f4', borderRadius: 1 },
   appleMark: { color: '#050505', fontSize: 25, lineHeight: 27 },
-  createButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 12, marginTop: 6 }, createButtonCompact: { paddingVertical: 8, marginTop: 2 }, createText: { color: '#a44f18', fontSize: 16, fontWeight: '600' }, pressed: { opacity: 0.8 }, disabled: { opacity: 0.55 },
+  forgotButton:{alignSelf:'flex-end',paddingVertical:8},forgotText:{color:'#a44f18',fontSize:12,fontWeight:'700'},createButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 12, marginTop: 6 }, createButtonCompact: { paddingVertical: 8, marginTop: 2 }, createText: { color: '#a44f18', fontSize: 16, fontWeight: '600' }, pressed: { opacity: 0.8 }, disabled: { opacity: 0.55 },
 });

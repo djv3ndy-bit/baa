@@ -20,8 +20,9 @@ type Job = {
 type Candidate = { id:string; display_name:string|null; location:string|null; bio:string|null; skills:string[]|null; availability:string|null; experience:string|null; avatar_url:string|null; preferred_city?:string|null; preferred_state?:string|null; preferred_postal_code?:string|null };
 
 const normalizePlace=(value?:string|null)=>String(value||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,' ');
-const locationTokens=(value?:string|null)=>new Set(normalizePlace(value).split(' ').filter(token=>token.length>1));
-function sharesLocation(home?:string|null,...places:(string|null|undefined)[]){const base=locationTokens(home);if(!base.size)return true;return places.some(place=>{const other=locationTokens(place);return [...base].some(token=>other.has(token))})}
+const isFloridaPlace=(value?:string|null)=>/(^|\s)(fl|florida)(\s|$)/.test(normalizePlace(value));
+const locationTokens=(value?:string|null)=>new Set(normalizePlace(value).split(' ').filter(token=>token.length>2&&token!=='florida'));
+function sharesLocation(home?:string|null,...places:(string|null|undefined)[]){if(!isFloridaPlace(home))return false;const base=locationTokens(home);if(!base.size)return false;return places.some(place=>{const other=locationTokens(place);return [...base].some(token=>other.has(token))})}
 
 const WIDTH = Dimensions.get('window').width;
 const SWIPE = Math.min(110, WIDTH * 0.28);
