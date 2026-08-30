@@ -46,7 +46,10 @@ export default function LoginScreen() {
     }
     const accessToken = params.get('access_token');
     const refreshToken = params.get('refresh_token');
-    if (!accessToken || !refreshToken) return;
+    if (!accessToken || !refreshToken) {
+      setSocialLoading(null);
+      return Alert.alert('Sign-in failed', 'The sign-in response was incomplete. Please try again.');
+    }
     const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
     setSocialLoading(null);
     if (error) return Alert.alert('Sign-in failed', error.message);
@@ -89,19 +92,18 @@ export default function LoginScreen() {
 
   async function signInWithProvider(provider: 'google' | 'apple') {
     setSocialLoading(provider);
-    const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect, skipBrowserRedirect: true } });
-    if (error || !data.url) {
-      setSocialLoading(null);
-      return Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, error?.message || 'Please try again.');
-    }
     try {
+      const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect, skipBrowserRedirect: true } });
+      if (error || !data.url) {
+        return Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, error?.message || 'Please try again.');
+      }
       const brandedAuthUrl = `${oauthStart}#${encodeURIComponent(data.url)}`;
       const result = await WebBrowser.openAuthSessionAsync(brandedAuthUrl, oauthAppCallback, { preferEphemeralSession: false });
       if (result.type === 'success') await handleOAuth(result.url);
-      else setSocialLoading(null);
     } catch {
-      setSocialLoading(null);
       Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, 'Unable to open the secure sign-in page.');
+    } finally {
+      setSocialLoading(null);
     }
   }
 

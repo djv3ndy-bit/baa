@@ -42,14 +42,18 @@ const mobileHome=fs.readFileSync('mobile/app/home.tsx','utf8');
 if(!mobileHome.includes("router.push('/settings')")) throw new Error('Mobile dashboard settings button is not routed to Settings');
 if(mobileHome.includes('onPress={logout}')) throw new Error('Mobile dashboard settings button still logs the user out');
 const mobileDiscover=fs.readFileSync('mobile/app/discover.tsx','utf8');
+const mobileDiscovery=fs.readFileSync('mobile/lib/discovery.ts','utf8');
 const mobileCandidates=fs.readFileSync('mobile/app/candidates.tsx','utf8');
 const mobileChat=fs.readFileSync('mobile/app/chat/[id].tsx','utf8');
-if(!mobileDiscover.includes("authenticatedApi('/apply-job'")) throw new Error('Mobile application action bypasses the authenticated API');
+if(!mobileDiscover.includes('sendDiscoveryInterest')) throw new Error('Mobile discovery screen bypasses the shared interest flow');
+if(!/supabase\s*\.from\('discovery_interests'\)/.test(mobileDiscovery)||!mobileDiscovery.includes("authenticatedApi('/push-event'")){
+  throw new Error('Mobile discovery interest flow is incomplete');
+}
 if(!mobileCandidates.includes("authenticatedApi('/match-application'")) throw new Error('Mobile match action bypasses the authenticated API');
 if(!mobileChat.includes("authenticatedApi('/send-message'")) throw new Error('Mobile messaging action bypasses the authenticated API');
 if(!mobileHome.includes("supabase.auth.getSession()")) throw new Error('Mobile dashboard performs a blocking remote auth check');
 const mobileLogin=fs.readFileSync('mobile/app/login.tsx','utf8');
 if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mobile login is missing password recovery');
-if(!mobileLogin.includes('setGoogleLoading(false)')) throw new Error('Mobile Google login can remain stuck after cancellation');
+if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error('Mobile social login can remain stuck after cancellation');
 
 console.log('BaristaMatch launch readiness static checks passed');
