@@ -57,6 +57,24 @@ const AVAILABILITY_OPTIONS = [
   "Flexible",
 ];
 const SEARCH_AREAS = [10, 25, 50, 100];
+const AGE_RANGES = [
+  { value: "", label: "Not provided" },
+  { value: "16_17", label: "16–17" },
+  { value: "18_24", label: "18–24" },
+  { value: "25_34", label: "25–34" },
+  { value: "35_44", label: "35–44" },
+  { value: "45_54", label: "45–54" },
+  { value: "55_plus", label: "55+" },
+  { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
+const GENDER_OPTIONS = [
+  { value: "", label: "Not provided" },
+  { value: "woman", label: "Woman" },
+  { value: "man", label: "Man" },
+  { value: "non_binary", label: "Non-binary" },
+  { value: "another_identity", label: "Another identity" },
+  { value: "prefer_not_to_say", label: "Prefer not to say" },
+];
 const isFloridaLocation = (value?: string | null) =>
   /(^|,|\s)(fl|florida)(\s|$)/i.test(String(value || "").trim());
 function parseAvailability(value?: string | null) {
@@ -119,7 +137,19 @@ export default function Profile() {
   async function load() {
     const { user, profile: p, role: r } = await getCurrentContext();
     if (!user) return router.replace("/login");
-    setProfile(p || {});
+    const { data: demographics, error: demographicsError } = await supabase
+      .from("profile_demographics")
+      .select("age_range,gender_identity")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (demographicsError) {
+      setLoading(false);
+      return Alert.alert(
+        "Could not load private profile details",
+        demographicsError.message,
+      );
+    }
+    setProfile({ ...(p || {}), ...(demographics || {}) });
     setOpenHours(parseOpeningHours(p?.open_hours));
     const savedAvailability = parseAvailability(p?.availability);
     setAvailability(savedAvailability.selected);
@@ -297,8 +327,23 @@ export default function Profile() {
       .from("profiles")
       .update(payload)
       .eq("id", user.id);
+    const { error: demographicsError } = error
+      ? { error }
+      : await supabase.from("profile_demographics").upsert(
+          {
+            user_id: user.id,
+            age_range: profile.age_range || null,
+            gender_identity: profile.gender_identity || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
     setSaving(false);
-    if (error) return Alert.alert("Could not save profile", error.message);
+    if (error || demographicsError)
+      return Alert.alert(
+        "Could not save profile",
+        (error || demographicsError)?.message,
+      );
     setProfile((p: any) => ({
       ...p,
       ...payload,
@@ -396,6 +441,32 @@ export default function Profile() {
               onChange={(v) => set("location", v)}
               placeholder="Miami, FL"
             />
+            <Text style={s.label}>Age range (optional)</Text>
+            <View style={s.choiceWrap}>
+              {AGE_RANGES.map((option) => (
+                <Choice
+                  key={option.value || "not_provided"}
+                  label={option.label}
+                  selected={(profile.age_range || "") === option.value}
+                  onPress={() => set("age_range", option.value)}
+                />
+              ))}
+            </View>
+            <Text style={[s.label, { marginTop: 15 }]}>Gender (optional)</Text>
+            <View style={s.choiceWrap}>
+              {GENDER_OPTIONS.map((option) => (
+                <Choice
+                  key={option.value || "not_provided"}
+                  label={option.label}
+                  selected={(profile.gender_identity || "") === option.value}
+                  onPress={() => set("gender_identity", option.value)}
+                />
+              ))}
+            </View>
+            <Text style={s.privateHelp}>
+              These private details are never shown on your marketplace profile.
+              They are used only in anonymous platform totals.
+            </Text>
             {isBarista ? (
               <>
                 <Field
@@ -885,6 +956,13 @@ const s = StyleSheet.create({
   checkMarkSelected: { color: "#4f7d43" },
   choiceText: { fontSize: 11, fontWeight: "700", color: "#5c4435" },
   choiceTextSelected: { color: "#3f6738" },
+  privateHelp: {
+    fontSize: 11,
+    lineHeight: 17,
+    color: "#746a61",
+    marginTop: 10,
+    marginBottom: 10,
+  },
   photoLink: {
     marginTop: 18,
     borderWidth: 1,

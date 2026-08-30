@@ -1,5 +1,5 @@
 const fs=require('fs');
-const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html'];
+const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
 for(const file of requiredHtml){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
   const src=fs.readFileSync(file,'utf8');
@@ -21,6 +21,13 @@ const membershipGrant=fs.readFileSync(membershipGrantMigration,'utf8');
 if(!/grant\s+select\s*,\s*update\s+on\s+table\s+public\.cafe_subscriptions\s+to\s+service_role/i.test(membershipGrant)){
   throw new Error('Café membership service-role grant migration is incomplete');
 }
+const demographicMigration='supabase/migrations/20260830132340_add_private_profile_demographics.sql';
+if(!fs.existsSync(demographicMigration)) throw new Error('Missing private profile demographics migration');
+const demographicSql=fs.readFileSync(demographicMigration,'utf8');
+if(!demographicSql.includes('alter table public.profile_demographics enable row level security')||!demographicSql.includes('owner_demographic_analytics')) throw new Error('Private profile demographics migration is incomplete');
+const ownerDashboardScript=fs.readFileSync('owner-dashboard.js','utf8');
+for(const page of ['overview','growth','subscriptions','marketplace','audience'])if(!ownerDashboardScript.includes(`renderers.${page}`))throw new Error(`Owner dashboard renderer missing ${page}`);
+if(!ownerDashboardScript.includes('lineChart')||!ownerDashboardScript.includes('donutChart'))throw new Error('Owner dashboard charts are incomplete');
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
 if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
