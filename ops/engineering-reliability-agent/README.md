@@ -73,6 +73,23 @@ PYTHONPATH=src .venv/bin/python -m era.main collect-live \
 
 `collect-live` never calls a model or performs a provider write. Each selected provider fails closed unless its exact allowlist and read-only configuration are present. Vercel and Supabase activation additionally requires dedicated credentials described below; do not reuse website runtime secrets.
 
+Run one complete deterministic monitoring cycle locally:
+
+```bash
+ERA_ALLOWED_HEALTH_HOSTS=www.baristajobmatch.com \
+GITHUB_REPOSITORY=djv3ndy-bit/baa \
+PYTHONPATH=src .venv/bin/python -m era.main monitor \
+  --environment production \
+  --provider health \
+  --health-url https://www.baristajobmatch.com/ \
+  --health-url https://www.baristajobmatch.com/api/public-config \
+  --provider github \
+  --lookback 1h \
+  --limit 10
+```
+
+The command exits with status `2` for a P0/P1/P2 alert and `0` for P3. Provider collection failures become sanitized P2 degradation evidence, so a broken monitoring integration cannot silently report a healthy cycle. See [Recurring monitoring](docs/recurring-monitoring.md) for the inactive review-gated schedule and credential activation boundary.
+
 Run the readiness server:
 
 ```bash
@@ -106,6 +123,7 @@ See [Least-privilege integrations](docs/least-privilege-integrations.md) for the
 - `dry-run`: deterministic classification and correlation; no model or network call.
 - `analyze`: the same deterministic path plus one model-generated explanation.
 - `collect-live`: bounded, sanitized GET-only evidence collection; no model or write operation.
+- `monitor`: collection plus deterministic correlation and P0-P3 classification; no model or write operation.
 - `serve`: readiness endpoint only in this foundation release.
 
 Automated branch creation, code patching, test execution, draft PR creation, preview verification, and post-deployment observation remain disabled until their dedicated tools and approval checks receive separate review.

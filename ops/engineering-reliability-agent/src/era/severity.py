@@ -102,7 +102,14 @@ def classify_incident(evidence: Sequence[IncidentEvidence]) -> SeverityDecision:
     error_count = sum(int(_number(item, "error_count")) for item in metadata)
     has_server_error = any((item.status_code or 0) >= 500 for item in evidence)
     degraded = any(bool(item.get("degraded")) for item in metadata)
-    if has_server_error or degraded or error_count >= 2:
+    operational_failure = any(
+        bool(item.get("deployment_failed"))
+        or bool(item.get("collection_failed"))
+        or str(item.get("conclusion", "")).lower()
+        in {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
+        for item in metadata
+    )
+    if has_server_error or degraded or operational_failure or error_count >= 2:
         return SeverityDecision(
             Severity.P2,
             ("The incident is a partial or limited production degradation.",),

@@ -12,8 +12,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .config import AgentConfig
-from .live import build_live_plan, run_live_plan
+from .live import LiveCollectionPlan, build_live_plan, run_live_plan
 from .models import IncidentEvidence, RecentChange
+from .monitor import run_monitoring_cycle
 from .workflows.investigate import investigate
 
 
@@ -49,8 +50,8 @@ async def _run_investigation(path: str, *, use_model: bool) -> None:
     _write_json(result.to_dict())
 
 
-async def _run_live_collection(args: argparse.Namespace) -> None:
-    plan = build_live_plan(
+def _live_plan_from_args(args: argparse.Namespace) -> LiveCollectionPlan:
+    return build_live_plan(
         provider_names=args.provider,
         environment_name=args.environment,
         environment=os.environ,
@@ -59,8 +60,19 @@ async def _run_live_collection(args: argparse.Namespace) -> None:
         limit=args.limit,
         lookback=args.lookback,
     )
+
+
+async def _run_live_collection(args: argparse.Namespace) -> None:
+    plan = _live_plan_from_args(args)
     result = await run_live_plan(plan)
     _write_json(result.to_dict())
+
+
+async def _run_monitoring(args: argparse.Namespace) -> int:
+    plan = _live_plan_from_args(args)
+    result = await run_monitoring_cycle(plan)
+    _write_json(result.to_dict())
+    return result.exit_code
 
 
 class _HealthHandler(BaseHTTPRequestHandler):
@@ -134,6 +146,29 @@ def serve() -> None:
         server.server_close()
 
 
+def _add_live_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--provider",
+        action="append",
+        required=True,
+        choices=("health", "github", "vercel", "supabase"),
+    )
+    parser.add_argument(
+        "--environment",
+        required=True,
+        choices=("production", "preview"),
+    )
+    parser.add_argument("--health-url", action="append", default=[])
+    parser.add_argument(
+        "--supabase-service",
+        action="append",
+        default=[],
+        choices=("api", "postgres", "auth", "storage", "realtime", "edge-function"),
+    )
+    parser.add_argument("--lookback", default="1h")
+    parser.add_argument("--limit", default=25, type=int)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="BaristaMatch Engineering & Reliability Agent"
@@ -151,26 +186,14 @@ def _parser() -> argparse.ArgumentParser:
         "collect-live",
         help="Collect sanitized evidence using read-only provider operations.",
     )
-    live.add_argument(
-        "--provider",
-        action="append",
-        required=True,
-        choices=("health", "github", "vercel", "supabase"),
+    _add_live_arguments(live)
+    monitor = subparsers.add_parser(
+        "monitor",
+        help=(
+            "Collect and classify sanitized evidence without a model or write action."
+        ),
     )
-    live.add_argument(
-        "--environment",
-        required=True,
-        choices=("production", "preview"),
-    )
-    live.add_argument("--health-url", action="append", default=[])
-    live.add_argument(
-        "--supabase-service",
-        action="append",
-        default=[],
-        choices=("api", "postgres", "auth", "storage", "realtime", "edge-function"),
-    )
-    live.add_argument("--lookback", default="1h")
-    live.add_argument("--limit", default=25, type=int)
+    _add_live_arguments(monitor)
     subparsers.add_parser("serve", help="Start the readiness-only HTTP service.")
     return parser
 
@@ -190,6 +213,8 @@ def main() -> None:
             asyncio.run(_run_investigation(args.input, use_model=True))
         elif command == "collect-live":
             asyncio.run(_run_live_collection(args))
+        elif command == "monitor":
+            raise SystemExit(asyncio.run(_run_monitoring(args)))
         else:
             parser.print_help()
     except Exception as error:

@@ -1,8 +1,10 @@
+import re
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = ROOT.parents[1]
 
 
 class PackageSafetyTests(unittest.TestCase):
@@ -33,6 +35,38 @@ class PackageSafetyTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertNotIn(f'method="{method}"', source)
         self.assertIn('method="GET"', source)
+
+    def test_recurring_workflow_is_read_only_and_model_free(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT
+            / ".github"
+            / "workflows"
+            / "engineering-reliability-monitor.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("contents: read", workflow)
+        self.assertIn("checks: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertNotIn("contents: write", workflow)
+        self.assertNotIn("OPENAI_API_KEY", workflow)
+        job_header = workflow.split("    steps:", 1)[0]
+        self.assertNotIn("READ_TOKEN", job_header)
+        for forbidden in (
+            "git push",
+            "vercel deploy",
+            "supabase db",
+            "pull-requests: write",
+            "deployments: write",
+            "issues: write",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, workflow)
+
+        action_references = re.findall(r"uses:\s+[^\s]+@([^\s]+)", workflow)
+        self.assertTrue(action_references)
+        self.assertTrue(
+            all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_references)
+        )
 
 
 if __name__ == "__main__":

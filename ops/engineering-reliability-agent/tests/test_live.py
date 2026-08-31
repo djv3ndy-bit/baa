@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from era.live import (
     LiveCollectionPlan,
+    NamedCollector,
     build_live_plan,
     parse_lookback_minutes,
     run_live_plan,
@@ -46,6 +47,11 @@ class FakeGitHubCollector:
                 files=("api/send-message.js",),
             )
         ]
+
+
+class FailingCollector:
+    async def collect(self):
+        raise RuntimeError("authorization=must-not-leak")
 
 
 class LiveCollectionTests(unittest.IsolatedAsyncioTestCase):
@@ -93,7 +99,8 @@ class LiveCollectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_collection_is_sanitized_and_never_uses_a_model(self) -> None:
         plan = LiveCollectionPlan(
             provider_names=("health", "github"),
-            evidence_collectors=(FakeEvidenceCollector(),),
+            environment=Environment.PREVIEW,
+            evidence_collectors=(NamedCollector("health", FakeEvidenceCollector()),),
             github_collector=FakeGitHubCollector(),
         )
 
@@ -105,6 +112,19 @@ class LiveCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("must-not-leak", str(payload))
         self.assertEqual(len(payload["evidence"]), 2)
         self.assertEqual(payload["changes"][0]["sha"], "abcdef1234567890")
+
+    async def test_provider_failures_are_sanitized_degraded_evidence(self) -> None:
+        plan = LiveCollectionPlan(
+            provider_names=("vercel",),
+            environment=Environment.PRODUCTION,
+            evidence_collectors=(NamedCollector("vercel", FailingCollector()),),
+        )
+
+        payload = (await run_live_plan(plan)).to_dict()
+
+        self.assertNotIn("must-not-leak", str(payload))
+        self.assertEqual(payload["collection_failures"][0]["provider"], "vercel")
+        self.assertTrue(payload["evidence"][0]["metadata"]["degraded"])
 
 
 if __name__ == "__main__":

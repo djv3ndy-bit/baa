@@ -4,6 +4,7 @@ import asyncio
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from era.collectors.base import ReadOnlyCollector
@@ -11,7 +12,7 @@ from era.collectors.github import GitHubCollector
 from era.collectors.health import HealthCollector
 from era.collectors.supabase import SupabaseCollector
 from era.collectors.vercel import VercelCollector
-from era.models import Environment, IncidentEvidence, RecentChange
+from era.models import Environment, EvidenceSource, IncidentEvidence, RecentChange
 from era.providers.github import GitHubApiSource
 from era.providers.supabase import SupabaseManagementSource
 from era.providers.vercel import VercelApiSource
@@ -29,9 +30,30 @@ class GitHubLiveCollector(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class NamedCollector:
+    provider: str
+    collector: ReadOnlyCollector = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectionFailure:
+    provider: str
+    operation: str
+    error_type: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "provider": self.provider,
+            "operation": self.operation,
+            "error_type": self.error_type,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class LiveCollectionPlan:
     provider_names: tuple[str, ...]
-    evidence_collectors: tuple[ReadOnlyCollector, ...] = field(repr=False)
+    environment: Environment
+    evidence_collectors: tuple[NamedCollector, ...] = field(repr=False)
     github_collector: GitHubLiveCollector | None = field(default=None, repr=False)
 
 
@@ -40,6 +62,7 @@ class LiveCollectionResult:
     providers: tuple[str, ...]
     evidence: tuple[IncidentEvidence, ...]
     changes: tuple[RecentChange, ...]
+    failures: tuple[CollectionFailure, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +70,7 @@ class LiveCollectionResult:
             "model_used": False,
             "production_writes_enabled": False,
             "providers": list(self.providers),
+            "collection_failures": [item.to_dict() for item in self.failures],
             "evidence": [item.to_dict() for item in self.evidence],
             "changes": [
                 {
@@ -102,7 +126,7 @@ def build_live_plan(
         raise ValueError("Live collection is limited to production or preview")
 
     lookback_minutes = parse_lookback_minutes(lookback)
-    evidence_collectors: list[ReadOnlyCollector] = []
+    evidence_collectors: list[NamedCollector] = []
     github_collector: GitHubLiveCollector | None = None
 
     if "health" in providers:
@@ -116,10 +140,13 @@ def build_live_plan(
         if not allowed_hosts:
             raise RuntimeError("ERA_ALLOWED_HEALTH_HOSTS is required for health checks")
         evidence_collectors.extend(
-            HealthCollector(
-                url,
-                allowed_hosts,
-                environment=target_environment,
+            NamedCollector(
+                "health",
+                HealthCollector(
+                    url,
+                    allowed_hosts,
+                    environment=target_environment,
+                ),
             )
             for url in health_urls
         )
@@ -139,12 +166,15 @@ def build_live_plan(
             team_id=_required(environment, "VERCEL_TEAM_ID"),
         )
         evidence_collectors.append(
-            VercelCollector(
-                vercel_source,
-                _required(environment, "VERCEL_PROJECT_ID"),
-                environment=target_environment,
-                since=lookback,
-                limit=limit,
+            NamedCollector(
+                "vercel",
+                VercelCollector(
+                    vercel_source,
+                    _required(environment, "VERCEL_PROJECT_ID"),
+                    environment=target_environment,
+                    since=lookback,
+                    limit=limit,
+                ),
             )
         )
 
@@ -158,40 +188,76 @@ def build_live_plan(
             lookback_minutes=lookback_minutes,
         )
         evidence_collectors.append(
-            SupabaseCollector(
-                supabase_source,
-                _required(environment, "SUPABASE_PROJECT_REF"),
-                services=supabase_services,
-                limit=limit,
+            NamedCollector(
+                "supabase",
+                SupabaseCollector(
+                    supabase_source,
+                    _required(environment, "SUPABASE_PROJECT_REF"),
+                    services=supabase_services,
+                    limit=limit,
+                ),
             )
         )
 
     return LiveCollectionPlan(
         provider_names=providers,
+        environment=target_environment,
         evidence_collectors=tuple(evidence_collectors),
         github_collector=github_collector,
     )
 
 
 async def run_live_plan(plan: LiveCollectionPlan) -> LiveCollectionResult:
-    evidence_tasks = [collector.collect() for collector in plan.evidence_collectors]
-    github_changes_index: int | None = None
+    task_specs: list[tuple[str, str, Any]] = [
+        (item.provider, "evidence", item.collector.collect())
+        for item in plan.evidence_collectors
+    ]
     if plan.github_collector:
-        evidence_tasks.append(plan.github_collector.collect())
-        github_changes_index = len(evidence_tasks)
-        evidence_tasks.append(plan.github_collector.collect_changes())
+        task_specs.extend(
+            (
+                ("github", "evidence", plan.github_collector.collect()),
+                ("github", "changes", plan.github_collector.collect_changes()),
+            )
+        )
 
-    results = await asyncio.gather(*evidence_tasks)
-    if github_changes_index is None:
-        evidence_batches = results
-        changes: Sequence[RecentChange] = ()
-    else:
-        evidence_batches = results[:github_changes_index]
-        changes = results[github_changes_index]
-    evidence = [item for batch in evidence_batches for item in batch]
+    results = await asyncio.gather(
+        *(task for _, _, task in task_specs), return_exceptions=True
+    )
+    evidence: list[IncidentEvidence] = []
+    changes: list[RecentChange] = []
+    failures: list[CollectionFailure] = []
+    for index, ((provider, operation, _), result) in enumerate(
+        zip(task_specs, results, strict=True)
+    ):
+        if isinstance(result, BaseException) and not isinstance(result, Exception):
+            raise result
+        if isinstance(result, Exception):
+            failure = CollectionFailure(provider, operation, type(result).__name__)
+            failures.append(failure)
+            evidence.append(
+                IncidentEvidence(
+                    id=f"collection-{provider}-{operation}-{index}",
+                    source=EvidenceSource(provider),
+                    occurred_at=datetime.now(UTC),
+                    summary="Read-only provider collection failed",
+                    environment=plan.environment,
+                    metadata={
+                        "collection_failed": True,
+                        "degraded": True,
+                        "operation": operation,
+                        "error_type": failure.error_type,
+                    },
+                )
+            )
+        elif operation == "changes":
+            changes.extend(result)
+        else:
+            evidence.extend(result)
+
     sanitized = tuple(sanitize_evidence_batch(evidence))
     return LiveCollectionResult(
         providers=plan.provider_names,
         evidence=sanitized,
         changes=tuple(changes),
+        failures=tuple(failures),
     )

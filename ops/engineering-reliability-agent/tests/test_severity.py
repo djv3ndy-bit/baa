@@ -52,6 +52,17 @@ class SeverityTests(unittest.TestCase):
         )
         self.assertEqual(decision.severity, Severity.P2)
 
+    def test_failed_check_is_p2(self) -> None:
+        decision = classify_incident(
+            [
+                evidence(
+                    source=EvidenceSource.GITHUB,
+                    metadata={"conclusion": "failure"},
+                )
+            ]
+        )
+        self.assertEqual(decision.severity, Severity.P2)
+
     def test_deprecation_warning_is_p3(self) -> None:
         decision = classify_incident([evidence(summary="Node deprecation warning")])
         self.assertEqual(decision.severity, Severity.P3)
