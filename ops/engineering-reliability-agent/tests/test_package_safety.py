@@ -51,6 +51,12 @@ class PackageSafetyTests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", workflow)
         job_header = workflow.split("    steps:", 1)[0]
         self.assertNotIn("READ_TOKEN", job_header)
+        public_steps = workflow.split(
+            "      - name: Collect private-provider read-only evidence", 1
+        )[0]
+        self.assertNotIn("VERCEL_READ_TOKEN", public_steps)
+        self.assertNotIn("SUPABASE_READ_ONLY_TOKEN", public_steps)
+        self.assertIn("if: vars.ERA_PRIVATE_MONITORING_ENABLED == 'true'", workflow)
         for forbidden in (
             "git push",
             "vercel deploy",

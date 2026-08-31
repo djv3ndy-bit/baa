@@ -189,7 +189,7 @@ class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):
                         {
                             "occurred_at": "2026-08-31T12:00:00Z",
                             "status_code": "500",
-                            "route": "/rest/v1/messages",
+                            "route": "/rest/v1/messages?token=must-not-leak",
                             "count": 3,
                             "event_message": "customer data must not be returned",
                         }
@@ -205,6 +205,8 @@ class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(logs[0]["status_code"], 500)
         self.assertEqual(logs[0]["count"], 3)
+        self.assertEqual(logs[0]["route"], "/rest/v1/messages")
+        self.assertNotIn("must-not-leak", str(logs))
         self.assertNotIn("customer data", str(logs))
         parsed = urlsplit(transport.requests[0][0])
         query = parse_qs(parsed.query)

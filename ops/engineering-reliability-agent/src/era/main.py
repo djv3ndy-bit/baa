@@ -113,8 +113,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
                 {
                     "level": "info",
                     "message": "readiness_request",
-                    "path": urlsplit(self.path).path,
-                    "detail": format % args,
+                    "path": urlsplit(self.path).path[:300],
                 },
                 separators=(",", ":"),
             )

@@ -34,6 +34,12 @@ def _status_code(value: Any) -> int | None:
     return status if 100 <= status <= 599 else None
 
 
+def _route(value: Any) -> str | None:
+    if not value:
+        return None
+    return str(value).split("?", 1)[0].split("#", 1)[0][:300]
+
+
 class SupabaseManagementSource:
     """Read sanitized error metadata from the unified Supabase log stream."""
 
@@ -126,7 +132,7 @@ class SupabaseManagementSource:
                     "level": "error",
                     "summary": f"Supabase {service} emitted an error",
                     "status_code": _status_code(row.get("status_code")),
-                    "route": str(row.get("route"))[:300] if row.get("route") else None,
+                    "route": _route(row.get("route")),
                     "count": int(row.get("count") or 1),
                 }
             )
