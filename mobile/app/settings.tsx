@@ -14,13 +14,15 @@ import { router } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
+import { authenticatedApi } from "@/lib/api";
 export default function Settings() {
   const [role, setRole] = useState<AppRole>("barista"),
     [email, setEmail] = useState(""),
     [showPassword, setShowPassword] = useState(false),
     [p1, setP1] = useState(""),
     [p2, setP2] = useState(""),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [billing, setBilling] = useState(false);
   useEffect(() => {
     load();
   }, []);
@@ -49,6 +51,17 @@ export default function Settings() {
     await supabase.auth.signOut();
     router.replace("/login");
   }
+  async function openBilling() {
+    setBilling(true);
+    try {
+      const status = await authenticatedApi<{ connectedToBilling: boolean }>("/billing-status", {}, "GET");
+      const path = status.connectedToBilling ? "/create-portal-session" : "/create-checkout-session";
+      const result = await authenticatedApi<{ url: string }>(path, { channel: "mobile" });
+      await Linking.openURL(result.url);
+    } catch (error) {
+      Alert.alert("Could not open billing", error instanceof Error ? error.message : "Please try again.");
+    } finally { setBilling(false); }
+  }
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
@@ -64,10 +77,8 @@ export default function Settings() {
           <Card
             title="Subscription management"
             copy="Review your café plan and free-trial details."
-            action="View subscription"
-            onPress={() =>
-              Linking.openURL("https://www.baristajobmatch.com/pricing.html")
-            }
+            action={billing ? "Opening…" : "View subscription"}
+            onPress={billing ? undefined : openBilling}
           />
         ) : null}
         <Card

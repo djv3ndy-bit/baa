@@ -1,4 +1,4 @@
-const fs=require('fs');
+import fs from 'node:fs';
 const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
 for(const file of requiredHtml){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
@@ -15,6 +15,14 @@ if((dashboard.match(/<h2>Profile Views<\/h2>/g)||[]).length>1) throw new Error('
 for(const file of ['api/send-message.js','api/apply-job.js','api/match-application.js','api/report-error.js','api/support.js','api/support-admin.js','api/delete-account.js']){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
 }
+for(const file of ['api/_billing.js','api/billing-status.js','api/create-checkout-session.js','api/create-portal-session.js','api/stripe-webhook.js','mobile-billing-return.html']){
+  if(!fs.existsSync(file)) throw new Error(`Missing Stripe billing file ${file}`);
+}
+const stripeCheckout=fs.readFileSync('api/create-checkout-session.js','utf8');
+const stripeWebhook=fs.readFileSync('api/stripe-webhook.js','utf8');
+if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
+if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
+if(!dashboard.includes('create-checkout-session')||!dashboard.includes('create-portal-session')) throw new Error('Website Stripe billing controls are incomplete');
 const membershipGrantMigration='supabase/migrations/20260830130318_grant_service_role_cafe_subscription_updates.sql';
 if(!fs.existsSync(membershipGrantMigration)) throw new Error('Missing café membership service-role grant migration');
 const membershipGrant=fs.readFileSync(membershipGrantMigration,'utf8');
@@ -62,5 +70,9 @@ if(!mobileHome.includes("supabase.auth.getSession()")) throw new Error('Mobile d
 const mobileLogin=fs.readFileSync('mobile/app/login.tsx','utf8');
 if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mobile login is missing password recovery');
 if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error('Mobile social login can remain stuck after cancellation');
+const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
+if(!mobileSettings.includes('{ channel: "mobile" }')||!mobileSettings.includes('/create-checkout-session')) throw new Error('Mobile Stripe billing controls are incomplete');
+const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
+if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API cannot target a Stripe-enabled preview deployment');
 
 console.log('BaristaMatch launch readiness static checks passed');

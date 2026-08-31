@@ -1,0 +1,14 @@
+alter table public.cafe_subscriptions add column if not exists stripe_customer_id text;
+alter table public.cafe_subscriptions add column if not exists stripe_subscription_id text;
+alter table public.cafe_subscriptions add column if not exists current_period_end timestamptz;
+alter table public.cafe_subscriptions add column if not exists cancel_at_period_end boolean not null default false;
+create unique index if not exists cafe_subscriptions_stripe_customer_id_key on public.cafe_subscriptions(stripe_customer_id) where stripe_customer_id is not null;
+create unique index if not exists cafe_subscriptions_stripe_subscription_id_key on public.cafe_subscriptions(stripe_subscription_id) where stripe_subscription_id is not null;
+create table if not exists public.stripe_webhook_events(event_id text primary key,event_type text not null,processed_at timestamptz not null default now());
+alter table public.stripe_webhook_events enable row level security;
+drop policy if exists "No client access to Stripe webhook events" on public.stripe_webhook_events;
+create policy "No client access to Stripe webhook events" on public.stripe_webhook_events for all using(false) with check(false);
+revoke all on public.stripe_webhook_events from anon,authenticated;
+grant select,insert on public.stripe_webhook_events to service_role;
+grant select,update on public.cafe_subscriptions to service_role;
+grant select,insert,update on public.subscription_payments to service_role;
