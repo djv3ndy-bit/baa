@@ -13,5 +13,5 @@ export default function handler(request, response) {
 
   response.setHeader('Cache-Control', 'no-store, max-age=0');
   response.setHeader('Content-Type', 'application/json; charset=utf-8');
-  return response.status(200).json({ supabaseUrl, supabasePublishableKey });
+  return response.status(200).json({ supabaseUrl, supabasePublishableKey, supabaseKey: supabasePublishableKey });
 }

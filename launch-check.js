@@ -15,11 +15,11 @@ if((dashboard.match(/<h2>Profile Views<\/h2>/g)||[]).length>1) throw new Error('
 for(const file of ['api/send-message.js','api/apply-job.js','api/match-application.js','api/report-error.js','api/support.js','api/support-admin.js','api/delete-account.js']){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
 }
-for(const file of ['api/_billing.js','api/billing-status.js','api/create-checkout-session.js','api/create-portal-session.js','api/stripe-webhook.js','mobile-billing-return.html']){
+for(const file of ['api/_billing.js','api/billing.js','mobile-billing-return.html']){
   if(!fs.existsSync(file)) throw new Error(`Missing Stripe billing file ${file}`);
 }
-const stripeCheckout=fs.readFileSync('api/create-checkout-session.js','utf8');
-const stripeWebhook=fs.readFileSync('api/stripe-webhook.js','utf8');
+const stripeCheckout=fs.readFileSync('api/billing.js','utf8');
+const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 if(!dashboard.includes('create-checkout-session')||!dashboard.includes('create-portal-session')) throw new Error('Website Stripe billing controls are incomplete');
