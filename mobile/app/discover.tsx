@@ -34,6 +34,8 @@ export default function DiscoverScreen() {
   const [candidates,setCandidates]=useState<Candidate[]>([]);
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [profileReady,setProfileReady]=useState(false);
+  const [workAreaReady,setWorkAreaReady]=useState(false);
   const [expandedCandidateId,setExpandedCandidateId]=useState<string|null>(null);
   const translate = useRef(new Animated.ValueXY()).current;
   const current = jobs[index];
@@ -42,19 +44,23 @@ export default function DiscoverScreen() {
 
   async function loadJobs() {
     setLoading(true);
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return router.replace('/login');
+    const { data: auth } = await supabase.auth.getSession();
+    const user=auth.session?.user;
+    if (!user) return router.replace('/login');
 
-    const { data: profile } = await supabase.from('profiles').select('role,location,preferred_city,preferred_state,preferred_postal_code').eq('id', auth.user.id).maybeSingle();
+    const { data: profile } = await supabase.from('profiles').select('role,display_name,cafe_name,avatar_url,location,bio,skills,availability,experience,pay_expectation,cafe_address,open_hours,shop_type,barista_preferences,preferred_city,preferred_state,preferred_postal_code').eq('id', user.id).maybeSingle();
     const accountRole=profile?.role==='cafe_owner_manager'?'cafe_owner_manager':'barista';
     setRole(accountRole);
+    const required=accountRole==='barista'?[profile?.display_name,profile?.avatar_url,profile?.location,profile?.bio,profile?.availability,profile?.experience,profile?.pay_expectation,profile?.skills]:[profile?.cafe_name,profile?.avatar_url,profile?.location,profile?.bio,profile?.cafe_address,profile?.open_hours,profile?.shop_type,profile?.barista_preferences];
+    setProfileReady(required.every(value=>Array.isArray(value)?value.length>0:Boolean(value)));
+    setWorkAreaReady(Boolean(profile?.preferred_city||profile?.preferred_postal_code||profile?.location));
     const [{data:sentInterests},{data:existingMatches}]=await Promise.all([
-      supabase.from('discovery_interests').select('target_id').eq('sender_id',auth.user.id),
-      supabase.from('discovery_matches').select('barista_id,cafe_id').or(`barista_id.eq.${auth.user.id},cafe_id.eq.${auth.user.id}`),
+      supabase.from('discovery_interests').select('target_id').eq('sender_id',user.id),
+      supabase.from('discovery_matches').select('barista_id,cafe_id').or(`barista_id.eq.${user.id},cafe_id.eq.${user.id}`),
     ]);
     const hiddenPeople=new Set([...(sentInterests||[]).map(row=>row.target_id),...(existingMatches||[]).map(row=>accountRole==='barista'?row.cafe_id:row.barista_id)]);
     if(accountRole==='cafe_owner_manager'){
-      const {data,error}=await supabase.from('profiles').select('id,display_name,location,bio,skills,availability,experience,avatar_url,preferred_city,preferred_state,preferred_postal_code').eq('role','barista').eq('is_discoverable',true).neq('id',auth.user.id).order('updated_at',{ascending:false}).limit(100);
+      const {data,error}=await supabase.from('profiles').select('id,display_name,location,bio,skills,availability,experience,avatar_url,preferred_city,preferred_state,preferred_postal_code').eq('role','barista').eq('is_discoverable',true).neq('id',user.id).order('updated_at',{ascending:false}).limit(100);
       if(error)Alert.alert('Could not load nearby baristas',error.message);
       const nearby=(data||[]).filter(person=>!hiddenPeople.has(person.id)&&sharesLocation(profile?.location,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code));
       setCandidates(nearby as Candidate[]);
@@ -63,8 +69,8 @@ export default function DiscoverScreen() {
     }
 
     const [{ data: swipes }, { data: applications }, { data: rawJobs, error }] = await Promise.all([
-      supabase.from('job_swipes').select('job_id').eq('user_id', auth.user.id),
-      supabase.from('applications').select('job_id').eq('barista_id', auth.user.id),
+      supabase.from('job_swipes').select('job_id').eq('user_id', user.id),
+      supabase.from('applications').select('job_id').eq('barista_id', user.id),
       supabase.from('jobs').select('id,owner_id,title,location,pay_min,pay_max,schedule,description,required_skills,created_at').eq('active', true).order('created_at', { ascending: false }),
     ]);
 
@@ -115,12 +121,14 @@ export default function DiscoverScreen() {
   async function saveDecision(decision: 'pass' | 'interested') {
     if (!current || busy) return;
     setBusy(true);
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return router.replace('/login');
+    const { data: auth } = await supabase.auth.getSession();
+    const user=auth.session?.user;
+    if (!user) return router.replace('/login');
 
     if (decision === 'interested') {
+      if(!profileReady){setBusy(false);Alert.alert('Complete your profile','Add every required profile detail before showing interest so cafés can review a real, complete profile.',[{text:'Not now',style:'cancel'},{text:'Open profile',onPress:()=>router.push('/profile')}]);return}
       try {
-        const result=await sendDiscoveryInterest(auth.user.id,current.owner_id,'barista');
+        const result=await sendDiscoveryInterest(user.id,current.owner_id,'barista');
         if(result.matched)Alert.alert('It’s a match!','You can now message this café from Matches.');
       } catch (error) {
         setBusy(false);
@@ -129,7 +137,7 @@ export default function DiscoverScreen() {
       }
     }
 
-    const { error: swipeError } = await supabase.from('job_swipes').upsert({ user_id: auth.user.id, job_id: current.id, decision }, { onConflict: 'user_id,job_id' });
+    const { error: swipeError } = await supabase.from('job_swipes').upsert({ user_id: user.id, job_id: current.id, decision }, { onConflict: 'user_id,job_id' });
     if (swipeError) {
       setBusy(false);
       Alert.alert('Try again', swipeError.message);
@@ -142,7 +150,8 @@ export default function DiscoverScreen() {
 
   async function interestInBarista(person:Candidate){
     if(busy)return;setBusy(true);
-    try{const {data:auth}=await supabase.auth.getUser();if(!auth.user)return router.replace('/login');const result=await sendDiscoveryInterest(auth.user.id,person.id,'cafe_owner_manager');setCandidates(list=>list.filter(item=>item.id!==person.id));Alert.alert(result.matched?'It’s a match!':'Interest sent',result.matched?'You can now message this barista from Matches.':'We’ll let you know when this barista is interested too.');}
+    if(!profileReady){setBusy(false);Alert.alert('Complete your café profile','Add every required café detail before showing interest so baristas can review a real, complete workplace profile.',[{text:'Not now',style:'cancel'},{text:'Open profile',onPress:()=>router.push('/profile')}]);return}
+    try{const {data:auth}=await supabase.auth.getSession();const user=auth.session?.user;if(!user)return router.replace('/login');const result=await sendDiscoveryInterest(user.id,person.id,'cafe_owner_manager');setCandidates(list=>list.filter(item=>item.id!==person.id));Alert.alert(result.matched?'It’s a match!':'Interest sent',result.matched?'You can now message this barista from Matches.':'We’ll let you know when this barista is interested too.');}
     catch(error){Alert.alert('Interest not sent',error instanceof Error?error.message:'Please try again.')}finally{setBusy(false)}
   }
 
@@ -161,7 +170,7 @@ export default function DiscoverScreen() {
               <View style={styles.candidatePhoto}>{person.avatar_url?<Image source={{uri:person.avatar_url}} style={styles.candidateImage}/>:<Text style={styles.candidateEmoji}>👤</Text>}</View>
               <View style={styles.candidateBody}>
                 <Text numberOfLines={2} style={styles.candidateName}>{person.display_name||'Local barista'}</Text>
-                <Text numberOfLines={1} style={styles.candidateLocation}>📍 {person.location||'Nearby'}</Text>
+                <Text numberOfLines={1} style={styles.candidateLocation}>📍 {person.location||'Location not added'}</Text>
                 <Text numberOfLines={3} style={styles.candidateBio}>{person.bio||person.experience||'Ready for a new café opportunity.'}</Text>
               </View>
             </View>
@@ -187,11 +196,13 @@ export default function DiscoverScreen() {
       <View style={styles.emptyWrap}>
         <Text style={styles.logo}>Barista<Text style={styles.logoAccent}>Match</Text></Text>
         <View style={styles.emptyIcon}><Text style={{fontSize:34}}>☕</Text></View>
-        <Text style={styles.emptyTitle}>You’re all caught up</Text>
-        <Text style={styles.emptyCopy}>New café opportunities will appear here as soon as they’re posted.</Text>
+        <Text style={styles.emptyTitle}>{workAreaReady?'You’re all caught up':'Add your work area'}</Text>
+        <Text style={styles.emptyCopy}>{workAreaReady?'New café opportunities in your saved area will appear here as soon as they’re posted.':'Add your preferred city or ZIP in your profile so BaristaMatch can show accurate local jobs.'}</Text>
+        {!workAreaReady?<Pressable style={styles.primary} onPress={()=>router.push('/profile')}><Text style={styles.primaryText}>Update profile</Text></Pressable>:null}
         <Pressable style={styles.primary} onPress={loadJobs}><Text style={styles.primaryText}>Refresh jobs</Text></Pressable>
         <Pressable style={styles.linkButton} onPress={() => router.replace('/home')}><Text style={styles.linkText}>Back to home</Text></Pressable>
       </View>
+      <AppBottomNav active="discover" role="barista"/>
     </SafeAreaView>
   );
 
@@ -236,8 +247,6 @@ export default function DiscoverScreen() {
 
 function cleanSkill(value:string){const text=String(value||'').trim().replace(/[.,;:]+$/,'');return text.replace(/\b\w/g,letter=>letter.toUpperCase())}
 function Tag({text,soft=false}:{text:string;soft?:boolean}){return <View style={[styles.tag,soft&&styles.tagSoft]}><Text numberOfLines={1} style={[styles.tagText,soft&&styles.tagSoftText]}>{text}</Text></View>}
-function Nav({icon,label,active,onPress}:{icon:string;label:string;active?:boolean;onPress:()=>void}){return <Pressable style={styles.navItem} onPress={onPress}><Text style={[styles.navIcon,active&&styles.navActive]}>{icon}</Text><Text style={[styles.navLabel,active&&styles.navActive]}>{label}</Text></Pressable>}
-
 const styles=StyleSheet.create({
   safe:{flex:1,backgroundColor:'#fbf7f1'},center:{flex:1,alignItems:'center',justifyContent:'center'},header:{paddingHorizontal:20,paddingTop:6,paddingBottom:12,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},logo:{fontSize:24,fontWeight:'900',color:'#321708'},logoAccent:{color:'#a95820'},tagline:{fontSize:9,fontWeight:'900',letterSpacing:1.5,color:'#9a7c68',marginTop:2},filter:{width:42,height:42,borderRadius:14,borderWidth:1,borderColor:'#e4d6cb',backgroundColor:'#fff',alignItems:'center',justifyContent:'center'},filterText:{fontSize:18,color:'#321708'},
   deck:{flex:1,paddingHorizontal:18,paddingBottom:4},card:{flex:1,backgroundColor:'#fff',borderRadius:27,overflow:'hidden',borderWidth:1,borderColor:'#eadfd5',shadowColor:'#321708',shadowOpacity:.14,shadowRadius:18,shadowOffset:{width:0,height:8},elevation:7},photo:{height:'44%',minHeight:250,backgroundColor:'#24150d',alignItems:'center',justifyContent:'center',position:'relative'},photoEmoji:{fontSize:86},photoBadge:{position:'absolute',left:18,bottom:16,borderRadius:999,backgroundColor:'#fff',paddingHorizontal:11,paddingVertical:7},photoBadgeText:{fontSize:10,fontWeight:'900',color:'#321708',letterSpacing:1.3},choiceBadge:{position:'absolute',top:24,borderWidth:3,borderRadius:9,paddingHorizontal:12,paddingVertical:7,transform:[{rotate:'-7deg'}]},interestedBadge:{right:18,borderColor:'#2f7c42'},passBadge:{left:18,borderColor:'#b33e32',transform:[{rotate:'7deg'}]},choiceText:{fontWeight:'900',fontSize:18,color:'#fff'},

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
-import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { authenticatedApi } from '@/lib/api';
@@ -8,9 +8,14 @@ import { authenticatedApi } from '@/lib/api';
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
 
 export default function PostJobScreen() {
+  const {jobId}=useLocalSearchParams<{jobId?:string}>();
+  const editing=Boolean(jobId);
   const [form, setForm] = useState({ title: '', address1: '', address2: '', city: '', state: 'FL', postalCode: '', hourlyPay: '', skills: '', description: '' });
   const [schedules, setSchedules] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
+  const [loadingJob,setLoadingJob]=useState(editing);
+
+  useEffect(()=>{if(!jobId){setLoadingJob(false);return}let live=true;(async()=>{const {user}=await getCurrentContext();if(!user)return router.replace('/login');const {data,error}=await supabase.from('jobs').select('title,address_line1,address_line2,city,state,postal_code,pay_min,schedule,required_skills,description').eq('id',jobId).eq('owner_id',user.id).maybeSingle();if(!live)return;if(error||!data){setLoadingJob(false);Alert.alert('Job unavailable','This job could not be loaded.');return router.back()}setForm({title:data.title||'',address1:data.address_line1||'',address2:data.address_line2||'',city:data.city||'',state:data.state||'FL',postalCode:data.postal_code||'',hourlyPay:data.pay_min==null?'':String(data.pay_min),skills:(data.required_skills||[]).join(', '),description:data.description||''});setSchedules(String(data.schedule||'').split(' · ').filter(Boolean));setLoadingJob(false)})();return()=>{live=false}},[jobId]);
 
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
   const toggleSchedule = (value: string) => setSchedules(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
@@ -25,9 +30,9 @@ export default function PostJobScreen() {
     if (!form.title.trim() || !form.address1.trim() || !form.city.trim() || !form.state.trim() || !form.postalCode.trim() || !form.description.trim() || !Number.isFinite(pay) || pay <= 0 || !schedules.length) {
       return Alert.alert('Complete the job details', 'Add the title, address, pay, schedule, and description before publishing.');
     }
-    setPublishing(true);
     const state = form.state.trim().toUpperCase();
     if(state!=='FL')return Alert.alert('Florida jobs only','BaristaMatch is currently available for jobs located in Florida.');
+    setPublishing(true);
     const payload = {
       owner_id: user.id,
       title: form.title.trim(),
@@ -42,22 +47,26 @@ export default function PostJobScreen() {
       schedule: schedules.join(' · '),
       required_skills: form.skills.split(',').map(item => item.trim()).filter(Boolean),
       description: form.description.trim(),
-      active: true,
     };
-    const { data: job, error } = await supabase.from('jobs').insert(payload).select('id').single();
+    const result=editing
+      ? await supabase.from('jobs').update(payload).eq('id',jobId!).eq('owner_id',user.id).select('id').single()
+      : await supabase.from('jobs').insert({...payload,active:true}).select('id').single();
+    const {data:job,error}=result;
     setPublishing(false);
-    if (error) return Alert.alert('Could not publish job', error.message);
-    authenticatedApi('/push-event', { type: 'job', job_id: job.id }).catch(error => console.warn('Nearby job notification failed', error?.message || error));
-    Alert.alert('Job published', 'Your opportunity is now visible to local baristas.', [{ text: 'Done', onPress: () => router.replace('/home') }]);
+    if (error) return Alert.alert(editing?'Could not update job':'Could not publish job', error.message);
+    if(!editing)authenticatedApi('/push-event', { type: 'job', job_id: job.id }).catch(error => console.warn('Nearby job notification failed', error?.message || error));
+    Alert.alert(editing?'Job updated':'Job published', editing?'Your changes are now live.':'Your opportunity is now visible to local baristas.', [{ text: 'Done', onPress: () => router.replace(editing?'/jobs':'/home') }]);
   }
+
+  if(loadingJob)return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#321708"/><Text style={styles.loadingText}>Loading job…</Text></View></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>Post a job</Text><View style={styles.headerSpacer} /></View>
+        <View style={styles.header}><Pressable onPress={() => router.back()}><Text style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>{editing?'Edit job':'Post a job'}</Text><View style={styles.headerSpacer} /></View>
         <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Find your next great barista.</Text>
-          <Text style={styles.subtitle}>Publish a clear local opportunity in a few minutes.</Text>
+          <Text style={styles.title}>{editing?'Keep your job accurate.':'Find your next great barista.'}</Text>
+          <Text style={styles.subtitle}>{editing?'Update the role, schedule, pay, or description.':'Publish a clear local opportunity in a few minutes.'}</Text>
           <Field label="Job title" value={form.title} onValueChange={value => update('title', value)} placeholder="Lead Barista" />
           <Field label="Street address" value={form.address1} onValueChange={value => update('address1', value)} placeholder="123 Main Street" autoComplete="address-line1" />
           <Field label="Suite / unit (optional)" value={form.address2} onValueChange={value => update('address2', value)} placeholder="Suite 200" autoComplete="address-line2" />
@@ -71,7 +80,7 @@ export default function PostJobScreen() {
           <View style={styles.options}>{scheduleOptions.map(option => <Pressable key={option} onPress={() => toggleSchedule(option)} style={[styles.option, schedules.includes(option) && styles.optionSelected]}><Text style={[styles.optionText, schedules.includes(option) && styles.optionTextSelected]}>{option}</Text></Pressable>)}</View>
           <Field label="Skills (comma separated)" value={form.skills} onValueChange={value => update('skills', value)} placeholder="Espresso, latte art" />
           <Field label="Description" value={form.description} onValueChange={value => update('description', value)} placeholder="Describe the role, team, and what success looks like." multiline />
-          <Pressable disabled={publishing} onPress={publish} style={[styles.primary, publishing && styles.disabled]}><Text style={styles.primaryText}>{publishing ? 'Publishing…' : 'Publish job'}</Text></Pressable>
+          <Pressable disabled={publishing} onPress={publish} style={[styles.primary, publishing && styles.disabled]}><Text style={styles.primaryText}>{publishing ? (editing?'Saving…':'Publishing…') : (editing?'Save changes':'Publish job')}</Text></Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -83,5 +92,5 @@ function Field({ label, value, onValueChange, placeholder, multiline = false, ..
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fbf7f1' }, flex: { flex: 1 }, header: { height: 58, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eadfd5' }, back: { fontSize: 38, color: '#321708', lineHeight: 40 }, headerTitle: { fontSize: 18, fontWeight: '900', color: '#321708' }, headerSpacer: { width: 28 }, wrap: { padding: 20, paddingBottom: 48 }, title: { fontSize: 32, lineHeight: 38, fontWeight: '900', color: '#21150f' }, subtitle: { fontSize: 15, lineHeight: 22, color: '#746a61', marginTop: 8, marginBottom: 18 }, field: { marginTop: 15 }, label: { fontSize: 13, fontWeight: '900', color: '#321708', marginBottom: 8 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e4d6cb', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, fontSize: 16, color: '#21150f' }, textarea: { minHeight: 120, textAlignVertical: 'top' }, row: { flexDirection: 'row', gap: 12 }, state: { width: 92 }, options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 2 }, option: { borderWidth: 1, borderColor: '#ddcdbf', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#fff' }, optionSelected: { backgroundColor: '#321708', borderColor: '#321708' }, optionText: { color: '#5f5148', fontSize: 12, fontWeight: '800' }, optionTextSelected: { color: '#fff' }, primary: { marginTop: 28, backgroundColor: '#2f7c42', borderRadius: 15, paddingVertical: 16, alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '900', fontSize: 17 }, disabled: { opacity: .55 }
+  safe: { flex: 1, backgroundColor: '#fbf7f1' }, loading:{flex:1,alignItems:'center',justifyContent:'center'},loadingText:{marginTop:12,fontSize:13,fontWeight:'800',color:'#746a61'}, flex: { flex: 1 }, header: { height: 58, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eadfd5' }, back: { fontSize: 38, color: '#321708', lineHeight: 40 }, headerTitle: { fontSize: 18, fontWeight: '900', color: '#321708' }, headerSpacer: { width: 28 }, wrap: { padding: 20, paddingBottom: 48 }, title: { fontSize: 32, lineHeight: 38, fontWeight: '900', color: '#21150f' }, subtitle: { fontSize: 15, lineHeight: 22, color: '#746a61', marginTop: 8, marginBottom: 18 }, field: { marginTop: 15 }, label: { fontSize: 13, fontWeight: '900', color: '#321708', marginBottom: 8 }, input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e4d6cb', borderRadius: 14, paddingHorizontal: 15, paddingVertical: 14, fontSize: 16, color: '#21150f' }, textarea: { minHeight: 120, textAlignVertical: 'top' }, row: { flexDirection: 'row', gap: 12 }, state: { width: 92 }, options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 2 }, option: { borderWidth: 1, borderColor: '#ddcdbf', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#fff' }, optionSelected: { backgroundColor: '#321708', borderColor: '#321708' }, optionText: { color: '#5f5148', fontSize: 12, fontWeight: '800' }, optionTextSelected: { color: '#fff' }, primary: { marginTop: 28, backgroundColor: '#2f7c42', borderRadius: 15, paddingVertical: 16, alignItems: 'center' }, primaryText: { color: '#fff', fontWeight: '900', fontSize: 17 }, disabled: { opacity: .55 }
 });

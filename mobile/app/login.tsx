@@ -11,7 +11,7 @@ const oauthStart = 'https://www.baristajobmatch.com/mobile-auth-start.html';
 WebBrowser.maybeCompleteAuthSession();
 
 function Text(props: TextProps) {
-  return <NativeText allowFontScaling={false} maxFontSizeMultiplier={1} {...props} />;
+  return <NativeText maxFontSizeMultiplier={1.5} {...props} />;
 }
 
 function readOAuthParams(url: string) {
@@ -28,7 +28,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
-  async function routeSignedIn(userId:string,knownRole?:string|null){const role=knownRole||(await supabase.from('profiles').select('role').eq('id',userId).maybeSingle()).data?.role;if(role!=='cafe_owner_manager')return router.replace('/home');const {data:subscription}=await supabase.from('cafe_subscriptions').select('user_id').eq('user_id',userId).maybeSingle();router.replace(subscription?'/home':'/cafe-trial')}
+  async function routeSignedIn(userId:string,knownRole?:string|null){const role=knownRole||(await supabase.from('profiles').select('role').eq('id',userId).maybeSingle()).data?.role;if(role==='cafe_owner_manager')await supabase.rpc('ensure_cafe_subscription');router.replace('/home')}
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => handleOAuth(url));
@@ -73,7 +73,8 @@ export default function LoginScreen() {
       cafe_name: isCafe ? (name || null) : null,
     }, { onConflict: 'id' });
     if (error) return Alert.alert('Could not finish your profile', error.message);
-    router.replace(isCafe?'/cafe-trial':'/home');
+    if(isCafe)await supabase.rpc('ensure_cafe_subscription');
+    router.replace('/home');
   }
 
   async function signIn() {
@@ -155,7 +156,7 @@ export default function LoginScreen() {
                 <Text numberOfLines={1} style={styles.socialText}>Continue with Apple</Text>
               </Pressable>
             </View>
-            <Pressable accessibilityRole="link" onPress={() => Linking.openURL('https://www.baristajobmatch.com/signup.html')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
+            <Pressable accessibilityRole="link" onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>

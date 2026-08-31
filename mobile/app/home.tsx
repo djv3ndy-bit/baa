@@ -1,22 +1,31 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { AppBottomNav } from '@/components/AppBottomNav';
 import { supabase } from '@/lib/supabase';
 
 type Role = 'barista' | 'cafe_owner_manager';
-type Profile = { role?: Role; display_name?: string | null; cafe_name?: string | null };
+type Profile = { role?: Role; display_name?: string | null; cafe_name?: string | null; avatar_url?:string|null; location?:string|null; bio?:string|null; skills?:string[]|null; availability?:string|null; experience?:string|null; pay_expectation?:string|null; cafe_address?:string|null; open_hours?:string|null; shop_type?:string|null; barista_preferences?:string|null };
+type DashboardCounts = { jobs: number; matches: number; alerts: number; candidates: number };
+
+function completion(profile:Profile){
+  const fields=profile.role==='cafe_owner_manager'
+    ? [profile.cafe_name,profile.avatar_url,profile.location,profile.bio,profile.cafe_address,profile.open_hours,profile.shop_type,profile.barista_preferences]
+    : [profile.display_name,profile.avatar_url,profile.location,profile.bio,profile.skills,profile.availability,profile.experience,profile.pay_expectation];
+  const completed=fields.filter(value=>Array.isArray(value)?value.length>0:Boolean(String(value||'').trim())).length;
+  return Math.round((completed/fields.length)*100);
+}
 
 export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<Profile>({});
-  const [counts, setCounts] = useState({ jobs: 0, matches: 0, alerts: 0 });
+  const [counts, setCounts] = useState<DashboardCounts>({ jobs: 0, matches: 0, alerts: 0, candidates:0 });
   const role: Role = profile.role === 'cafe_owner_manager' ? 'cafe_owner_manager' : 'barista';
   const isCafe = role === 'cafe_owner_manager';
   const name = profile.cafe_name || profile.display_name || (isCafe ? 'Your café' : 'Barista');
   const firstName = name.trim().split(/\s+/)[0] || 'there';
-  const profileProgress = profile.display_name || profile.cafe_name ? 72 : 40;
+  const profileProgress = completion(profile);
 
   useEffect(() => { load(true); }, []);
 
@@ -27,23 +36,28 @@ export default function HomeScreen() {
       if (authError) throw authError;
       const user = auth.session?.user;
       if (!user) { router.replace('/login'); return; }
-      const { data: p, error: profileError } = await supabase.from('profiles').select('role,display_name,cafe_name').eq('id', user.id).maybeSingle();
+      const { data: p, error: profileError } = await supabase.from('profiles').select('role,display_name,cafe_name,avatar_url,location,bio,skills,availability,experience,pay_expectation,cafe_address,open_hours,shop_type,barista_preferences').eq('id', user.id).maybeSingle();
       if (profileError) throw profileError;
       if (p) setProfile(p as Profile);
       const cafe = p?.role === 'cafe_owner_manager';
-      const queries = cafe ? [
-        supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('owner_id', user.id).eq('active', true),
-        supabase.from('applications').select('*,jobs!inner(owner_id)', { count: 'exact', head: true }).eq('jobs.owner_id', user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
-        supabase.from('discovery_matches').select('*', { count: 'exact', head: true }).eq('cafe_id', user.id),
-      ] : [
-        supabase.from('jobs').select('*', { count: 'exact', head: true }).eq('active', true),
-        supabase.from('applications').select('*', { count: 'exact', head: true }).eq('barista_id', user.id).eq('status', 'matched'),
-        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('recipient_id', user.id).is('read_at', null),
-        supabase.from('discovery_matches').select('*', { count: 'exact', head: true }).eq('barista_id', user.id),
-      ];
-      const [jobs, legacyMatches, alerts, mutualMatches] = await Promise.all(queries);
-      setCounts({ jobs: jobs.count || 0, matches: (legacyMatches.count || 0)+(mutualMatches.count||0), alerts: alerts.count || 0 });
+      if(cafe){
+        const [jobs,legacyMatches,alerts,mutualMatches,candidates]=await Promise.all([
+          supabase.from('jobs').select('*',{count:'exact',head:true}).eq('owner_id',user.id).eq('active',true),
+          supabase.from('applications').select('*,jobs!inner(owner_id)',{count:'exact',head:true}).eq('jobs.owner_id',user.id).eq('status','matched'),
+          supabase.from('notifications').select('*',{count:'exact',head:true}).eq('recipient_id',user.id).is('read_at',null),
+          supabase.from('discovery_matches').select('*',{count:'exact',head:true}).eq('cafe_id',user.id),
+          supabase.from('applications').select('*,jobs!inner(owner_id)',{count:'exact',head:true}).eq('jobs.owner_id',user.id).eq('status','interested'),
+        ]);
+        setCounts({jobs:jobs.count||0,matches:(legacyMatches.count||0)+(mutualMatches.count||0),alerts:alerts.count||0,candidates:candidates.count||0});
+      }else{
+        const [jobs,legacyMatches,alerts,mutualMatches]=await Promise.all([
+          supabase.from('jobs').select('*',{count:'exact',head:true}).eq('active',true),
+          supabase.from('applications').select('*',{count:'exact',head:true}).eq('barista_id',user.id).eq('status','matched'),
+          supabase.from('notifications').select('*',{count:'exact',head:true}).eq('recipient_id',user.id).is('read_at',null),
+          supabase.from('discovery_matches').select('*',{count:'exact',head:true}).eq('barista_id',user.id),
+        ]);
+        setCounts({jobs:jobs.count||0,matches:(legacyMatches.count||0)+(mutualMatches.count||0),alerts:alerts.count||0,candidates:0});
+      }
     } catch (error) {
       console.error('Dashboard load failed', error);
       Alert.alert('Could not refresh your dashboard', 'Your app is still safe. Check your connection and try again.');
@@ -64,30 +78,29 @@ export default function HomeScreen() {
   </SafeAreaView>;
 }
 
-function CafeDashboard({ counts }: { counts: { jobs: number; matches: number; alerts: number } }) {
+function CafeDashboard({ counts }: { counts: DashboardCounts }) {
   return <>
-    <View style={s.stats}><MiniStat icon="▣" value={counts.jobs} label="Active jobs" bars={[10,18,13,25,20]} tint="#78954e" /><MiniStat icon="♟" value={counts.alerts} label="Discover" bars={[12,25,18,30,22]} tint="#e66a28" /><MiniStat icon="♥" value={counts.matches} label="Matches" bars={[9,16,22,18,27]} tint="#d96856" /></View>
-    <Pressable onPress={() => Linking.openURL('https://www.baristajobmatch.com/pricing.html')} style={({ pressed }) => [s.blueprintPlan, pressed && s.pressed]}><View style={s.blueprintCrown}><Text style={s.crownText}>♕</Text></View><View style={s.blueprintPlanBody}><Text style={s.planLabel}>SUBSCRIPTION</Text><View style={s.planNameRow}><Text style={s.blueprintPlanTitle}>Pro</Text><View style={s.activePill}><Text style={s.activeText}>Active</Text></View></View><Text style={s.renewText}>Manage your plan and benefits</Text></View><Text style={s.planCup}>☕</Text></Pressable>
+    <View style={s.stats}><MiniStat icon="▣" value={counts.jobs} label="Active jobs" tint="#78954e" /><MiniStat icon="♟" value={counts.candidates} label="Candidates" tint="#e66a28" /><MiniStat icon="♥" value={counts.matches} label="Matches" tint="#d96856" /></View>
+    <View style={s.blueprintPlan}><View style={s.blueprintCrown}><Text style={s.crownText}>✓</Text></View><View style={s.blueprintPlanBody}><Text style={s.planLabel}>CAFÉ ACCESS</Text><View style={s.planNameRow}><Text style={s.blueprintPlanTitle}>Full access</Text><View style={s.activePill}><Text style={s.activeText}>ACTIVE</Text></View></View><Text style={s.renewText}>Payments are paused. You will not be charged.</Text></View><Text style={s.planCup}>☕</Text></View>
     <Pressable onPress={() => router.push('/post-job')} style={({ pressed }) => [s.actionHero, pressed && s.pressed]}><View style={s.actionContent}><Text style={s.actionTitle}>Post a job</Text><Text style={s.actionCopy}>Find your next great barista.</Text><View style={s.primaryButton}><Text style={s.primaryText}>Post a job  →</Text></View></View><Image source={require('../assets/cafe-storefront-icon.png')} resizeMode="contain" style={s.cafeStorefront} /></Pressable>
-    <SectionHeader title="Hiring pulse" action="This week" onPress={() => router.push('/discover')} />
-    <View style={s.chartCard}><View style={s.chart}>{[18,32,24,45,36,52,41].map((height, i) => <View key={i} style={s.chartColumn}><View style={[s.chartBar, { height, backgroundColor: i === 5 ? '#e66a28' : '#78954e' }]} /><Text style={s.day}>{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</Text></View>)}</View></View>
-    <SectionHeader title="Nearby baristas" action="View all" onPress={() => router.push('/discover')} />
-    <Pressable onPress={() => router.push('/discover')} style={({ pressed }) => [s.candidateStrip, pressed && s.pressed]}>{['AM','JT','SK','LP','RB'].map((initials, i) => <View key={initials} style={[s.candidateAvatar,{backgroundColor:['#d8a47f','#8ca36a','#d87c59','#b89a83','#7a9a7b'][i]}]}><Text style={s.candidateInitials}>{initials}</Text><View style={s.candidateOnline}/></View>)}<View style={s.addCandidate}><Text style={s.addCandidateText}>＋</Text></View></Pressable>
+    <Pressable onPress={()=>router.push('/jobs')} style={s.manageJobs}><Text style={s.manageJobsText}>Manage job posts</Text><Text style={s.manageJobsArrow}>›</Text></Pressable>
+    <SectionHeader title="Hiring activity" action="Review candidates" onPress={() => router.push('/candidates')} />
+    <View style={s.quickRow}><Quick icon="♙" title={`${counts.candidates} candidates`} copy="Review interest" onPress={() => router.push('/candidates')} /><Quick icon="✉" title={`${counts.alerts} alerts`} copy="See messages" onPress={() => router.push('/messages')} /></View>
   </>;
 }
 
-function BaristaDashboard({ counts, progress }: { counts: { jobs: number; matches: number; alerts: number }; progress: number }) {
+function BaristaDashboard({ counts, progress }: { counts: DashboardCounts; progress: number }) {
   return <>
     <Pressable onPress={() => router.push('/profile')} style={({ pressed }) => [s.progressCard, pressed && s.pressed]}><View style={s.progressTop}><View><Text style={s.progressLabel}>PROFILE</Text><Text style={s.progressValue}>{progress}% complete</Text></View><View style={s.mountain}><Text style={s.mountainText}>⛰</Text></View></View><View style={s.progressTrack}><View style={[s.progressFill, { width: `${progress}%` }]} /></View><View style={s.checkRow}><Text style={s.check}>✓</Text><Text style={s.checkText}>Add your skills and best experience</Text><Text style={s.chevron}>›</Text></View></Pressable>
-    <View style={s.stats}><MiniStat icon="⌖" value={counts.jobs} label="Nearby jobs" bars={[12,22,17,28,34]} tint="#78954e" /><MiniStat icon="♥" value={counts.matches} label="Matches" bars={[8,14,23,18,27]} tint="#e66a28" /><MiniStat icon="●" value={counts.alerts} label="Messages" bars={[10,18,12,25,20]} tint="#659064" /></View>
-    <Pressable onPress={() => router.push('/discover')} style={({ pressed }) => [s.actionHero, pressed && s.pressed]}><View style={s.actionContent}><Text style={s.actionTitle}>Find my next café</Text><Text style={s.actionCopy}>Explore opportunities hiring near you.</Text><View style={s.primaryButton}><Text style={s.primaryText}>Explore jobs  →</Text></View></View><Image source={require('../assets/barista-latte-pour.png')} resizeMode="contain" style={s.baristaPour} /></Pressable>
-    <SectionHeader title="Top picks near you" action="View all" onPress={() => router.push('/discover')} />
-    <View style={s.jobCard}><View style={s.jobImage}><Text style={s.jobEmoji}>☕</Text></View><View style={s.jobBody}><Text style={s.jobTitle}>Discover local cafés</Text><Text style={s.jobCopy}>Fresh opportunities selected for your profile</Text><View style={s.tags}><Text style={s.tag}>Nearby</Text><Text style={s.tag}>Hiring now</Text></View></View><Text style={s.bookmark}>♡</Text></View>
+    <View style={s.stats}><MiniStat icon="⌖" value={counts.jobs} label="Open jobs" tint="#78954e" /><MiniStat icon="♥" value={counts.matches} label="Matches" tint="#e66a28" /><MiniStat icon="●" value={counts.alerts} label="Alerts" tint="#659064" /></View>
+    <Pressable onPress={() => router.push('/discover')} style={({ pressed }) => [s.actionHero, pressed && s.pressed]}><View style={s.actionContent}><Text style={s.actionTitle}>Find my next café</Text><Text style={s.actionCopy}>Explore jobs in your saved work area.</Text><View style={s.primaryButton}><Text style={s.primaryText}>Explore jobs  →</Text></View></View><Image source={require('../assets/barista-latte-pour.png')} resizeMode="contain" style={s.baristaPour} /></Pressable>
+    <SectionHeader title="Jobs in your area" action="View all" onPress={() => router.push('/discover')} />
+    <View style={s.jobCard}><View style={s.jobImage}><Text style={s.jobEmoji}>☕</Text></View><View style={s.jobBody}><Text style={s.jobTitle}>Discover local cafés</Text><Text style={s.jobCopy}>Open roles matching your saved city or ZIP</Text><View style={s.tags}><Text style={s.tag}>Your area</Text><Text style={s.tag}>Open now</Text></View></View><Text style={s.bookmark}>♡</Text></View>
     <View style={s.quickRow}><Quick icon="♥" title="Matches" copy="See connections" onPress={() => router.push('/matches')} /><Quick icon="✉" title="Messages" copy="Start a chat" onPress={() => router.push('/messages')} /></View>
   </>;
 }
 
-function MiniStat({ icon, value, label, bars, tint }: { icon: string; value: number; label: string; bars: number[]; tint: string }) { return <View style={s.stat}><View style={[s.statIcon, { backgroundColor: `${tint}20` }]}><Text style={[s.statIconText, { color: tint }]}>{icon}</Text></View><Text style={s.statValue}>{value}</Text><Text numberOfLines={1} style={s.statLabel}>{label}</Text><View style={s.miniBars}>{bars.map((height, i) => <View key={i} style={[s.miniBar, { height, backgroundColor: tint }]} />)}</View></View>; }
+function MiniStat({ icon, value, label, tint }: { icon: string; value: number; label: string; tint: string }) { return <View style={s.stat}><View style={[s.statIcon, { backgroundColor: `${tint}20` }]}><Text style={[s.statIconText, { color: tint }]}>{icon}</Text></View><Text style={s.statValue}>{value}</Text><Text numberOfLines={1} style={s.statLabel}>{label}</Text></View>; }
 function SectionHeader({ title, action, onPress }: { title: string; action: string; onPress: () => void }) { return <View style={s.sectionHeader}><Text style={s.sectionTitle}>{title}</Text><Pressable onPress={onPress}><Text style={s.sectionAction}>{action}  →</Text></Pressable></View>; }
 function Quick({ icon, title, copy, onPress }: { icon: string; title: string; copy: string; onPress: () => void }) { return <Pressable onPress={onPress} style={({ pressed }) => [s.quick, pressed && s.pressed]}><Text style={s.quickIcon}>{icon}</Text><View><Text style={s.quickTitle}>{title}</Text><Text style={s.quickCopy}>{copy}</Text></View><Text style={s.quickArrow}>›</Text></Pressable>; }
 
@@ -102,4 +115,5 @@ const s = StyleSheet.create({
   progressCard:{backgroundColor:'#fff',borderWidth:1,borderColor:'#eadccf',borderRadius:21,padding:16,marginBottom:13},progressTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},progressLabel:{fontSize:9,fontWeight:'900',letterSpacing:1.3,color:'#73904e'},progressValue:{fontSize:22,fontWeight:'900',color:'#28170e',marginTop:4},mountain:{width:54,height:54,borderRadius:27,backgroundColor:'#eef3e7',alignItems:'center',justifyContent:'center'},mountainText:{fontSize:28},progressTrack:{height:8,borderRadius:8,backgroundColor:'#e8e1d8',overflow:'hidden',marginTop:13},progressFill:{height:'100%',borderRadius:8,backgroundColor:'#5e8c50'},checkRow:{flexDirection:'row',alignItems:'center',marginTop:14},check:{width:21,height:21,borderRadius:11,backgroundColor:'#5e8c50',color:'#fff',textAlign:'center',fontWeight:'900',lineHeight:21},checkText:{flex:1,fontSize:11,color:'#62564f',paddingHorizontal:9},chevron:{fontSize:22,color:'#9b6a49'},
   jobCard:{flexDirection:'row',alignItems:'center',backgroundColor:'#fff',borderWidth:1,borderColor:'#eadccf',borderRadius:20,padding:12,marginBottom:13},jobImage:{width:62,height:72,borderRadius:15,backgroundColor:'#3b1b0b',alignItems:'center',justifyContent:'center'},jobEmoji:{fontSize:29},jobBody:{flex:1,paddingHorizontal:12},jobTitle:{fontSize:14,fontWeight:'900',color:'#28170e'},jobCopy:{fontSize:10,lineHeight:14,color:'#73665d',marginTop:3},tags:{flexDirection:'row',gap:5,marginTop:8},tag:{fontSize:8,color:'#4f7045',backgroundColor:'#edf3e9',borderRadius:8,paddingHorizontal:7,paddingVertical:4},bookmark:{fontSize:24,color:'#b75a1d'},
   quickRow:{flexDirection:'row',gap:9},quick:{flex:1,minHeight:78,flexDirection:'row',alignItems:'center',backgroundColor:'#fff',borderWidth:1,borderColor:'#eadccf',borderRadius:18,padding:12},quickIcon:{fontSize:22,color:'#c45b1d',marginRight:9},quickTitle:{fontSize:12,fontWeight:'900',color:'#28170e'},quickCopy:{fontSize:9,color:'#81736a',marginTop:2},quickArrow:{marginLeft:'auto',fontSize:20,color:'#b75a1d'},
+  manageJobs:{height:48,marginTop:-10,marginBottom:20,borderWidth:1,borderColor:'#dfcfc2',borderRadius:14,backgroundColor:'#fff',paddingHorizontal:15,flexDirection:'row',alignItems:'center'},manageJobsText:{fontSize:13,fontWeight:'900',color:'#321708'},manageJobsArrow:{marginLeft:'auto',fontSize:24,color:'#b75a1d'},
 });

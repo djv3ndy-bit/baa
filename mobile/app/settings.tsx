@@ -22,7 +22,7 @@ export default function Settings() {
     [p1, setP1] = useState(""),
     [p2, setP2] = useState(""),
     [saving, setSaving] = useState(false),
-    [billing, setBilling] = useState(false);
+    [deleting, setDeleting] = useState(false);
   useEffect(() => {
     load();
   }, []);
@@ -51,16 +51,36 @@ export default function Settings() {
     await supabase.auth.signOut();
     router.replace("/login");
   }
-  async function openBilling() {
-    setBilling(true);
+  function requestAccountDeletion() {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Continue", style: "destructive", onPress: confirmAccountDeletion },
+      ],
+    );
+  }
+  function confirmAccountDeletion() {
+    Alert.alert(
+      "Final confirmation",
+      "Delete your BaristaMatch account and all account data now?",
+      [
+        { text: "Keep my account", style: "cancel" },
+        { text: "Delete permanently", style: "destructive", onPress: deleteAccount },
+      ],
+    );
+  }
+  async function deleteAccount() {
+    setDeleting(true);
     try {
-      const status = await authenticatedApi<{ connectedToBilling: boolean }>("/billing-status", {}, "GET");
-      const path = status.connectedToBilling ? "/create-portal-session" : "/create-checkout-session";
-      const result = await authenticatedApi<{ url: string }>(path, { channel: "mobile" });
-      await Linking.openURL(result.url);
+      await authenticatedApi<{ success: boolean }>("/delete-account", { confirmation: "DELETE" });
+      await unregisterThisDeviceNotifications().catch(() => undefined);
+      await supabase.auth.signOut();
+      router.replace("/login");
     } catch (error) {
-      Alert.alert("Could not open billing", error instanceof Error ? error.message : "Please try again.");
-    } finally { setBilling(false); }
+      Alert.alert("Could not delete account", error instanceof Error ? error.message : "Please try again.");
+    } finally { setDeleting(false); }
   }
   return (
     <SafeAreaView style={s.safe}>
@@ -75,10 +95,8 @@ export default function Settings() {
         <Card title="Account email" copy={email} />
         {role === "cafe_owner_manager" ? (
           <Card
-            title="Subscription management"
-            copy="Review your café plan and free-trial details."
-            action={billing ? "Opening…" : "View subscription"}
-            onPress={billing ? undefined : openBilling}
+            title="Café access"
+            copy="Payments are paused. Your café has full hiring access and will not be charged."
           />
         ) : null}
         <Card
@@ -153,9 +171,12 @@ export default function Settings() {
         </View>
         <View style={s.card}>
           <Text style={s.cardTitle}>Account</Text>
-          <Text style={s.copy}>Sign out securely from this device.</Text>
+          <Text style={s.copy}>Sign out securely or permanently delete your account and data.</Text>
           <Pressable style={s.secondary} onPress={logout}>
             <Text style={s.secondaryText}>Log out</Text>
+          </Pressable>
+          <Pressable disabled={deleting} style={s.danger} onPress={requestAccountDeletion}>
+            <Text style={s.dangerText}>{deleting ? "Deleting…" : "Delete account"}</Text>
           </Pressable>
         </View>
         <Pressable
@@ -259,6 +280,13 @@ const s = StyleSheet.create({
     marginTop: 14,
   },
   secondaryText: { color: "#321708", fontWeight: "900" },
+  danger: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 2,
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  dangerText: { color: "#a32727", fontWeight: "900" },
   help: {
     flexDirection: "row",
     gap: 10,

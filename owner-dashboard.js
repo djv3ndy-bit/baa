@@ -128,7 +128,7 @@ function statusRows(accounts) {
 }
 
 function subscriptionAccounts(rows) {
-  return `<article class="card account-table"><table><thead><tr><th>Café</th><th>Location</th><th>Status</th><th>Trial ends</th><th>Monthly value</th><th>Partner access</th></tr></thead><tbody>${rows.length ? rows.map((row) => { const statusClass = String(row.status || '').replace(/[^a-z_]/gi, ''); return `<tr><td><strong>${esc(row.name)}</strong>${row.complimentary_access ? '<span class="partner-badge">✓ Free partner</span>' : ''}</td><td>${esc(row.location)}</td><td><span class="status-pill ${statusClass}">${esc(row.status)}</span></td><td>${shortDate(row.trial_ends_at)}</td><td><strong>${money(row.monthly_cents)}</strong></td><td><button class="partner-button ${row.complimentary_access ? 'on' : ''}" data-partner-id="${esc(row.user_id)}" data-enabled="${row.complimentary_access ? 'true' : 'false'}">${row.complimentary_access ? 'Turn off free access' : 'Give free partner access'}</button></td></tr>`; }).join('') : '<tr><td colspan="6">No café subscription accounts yet.</td></tr>'}</tbody></table></article>`;
+  return `<article class="card account-table"><table><thead><tr><th>Café</th><th>Location</th><th>Status</th><th>Trial ends</th><th>Monthly value</th><th>Current access</th></tr></thead><tbody>${rows.length ? rows.map((row) => { const statusClass = String(row.status || '').replace(/[^a-z_]/gi, ''); return `<tr><td><strong>${esc(row.name)}</strong><span class="partner-badge">✓ Complimentary</span></td><td>${esc(row.location)}</td><td><span class="status-pill ${statusClass}">${esc(row.status)}</span></td><td>${shortDate(row.trial_ends_at)}</td><td><strong>$0.00</strong></td><td><span class="partner-badge">Billing paused</span></td></tr>`; }).join('') : '<tr><td colspan="6">No café access accounts yet.</td></tr>'}</tbody></table></article>`;
 }
 
 const renderers = {};
@@ -144,7 +144,7 @@ renderers.overview = (data) => {
   ${sectionHead('Weekly momentum', 'A shared view of acquisition and marketplace outcomes')}
   ${lineChart('Platform momentum', data.weekly, [{ key: 'website_views', label: 'Website views', color: '#e86b24' }, { key: 'signups', label: 'Signups', color: '#2d8b57' }, { key: 'matches', label: 'Matches', color: '#7657c8' }])}
   ${sectionHead('Action queue')}
-  <section class="metrics">${metric('Trials ending soon', sm.trials_ending_30d, 'Within the next 30 days', 'gold')}${metric('Past due', sm.past_due, 'Payment needs attention', 'red')}${metric('Open support', m.support_open, 'Needs a response', 'blue')}${metric('Discoverable profiles', m.discoverable, 'Ready to match', 'teal')}</section>
+  <section class="metrics">${metric('Complimentary cafés', sm.complimentary, 'Billing paused · full access', 'gold')}${metric('Past due', sm.past_due, 'Legacy billing records', 'red')}${metric('Open support', m.support_open, 'Needs a response', 'blue')}${metric('Discoverable profiles', m.discoverable, 'Ready to match', 'teal')}</section>
   <article class="privacy-note"><strong>Metric definitions:</strong> Website conversion compares total members with recent 30-day page views and is directional, not cohort-based. Revenue stays at $0 until a successful payment is recorded. All pages use the same protected owner analytics response, so figures reconcile across reports.</article>`;
 };
 
@@ -163,12 +163,12 @@ renderers.growth = (data) => {
 
 renderers.subscriptions = (data) => {
   const s = data.subscriptions || { metrics: {}, accounts: [], weekly_revenue: [] }, sm = s.metrics || {}, accounts = s.accounts || [];
-  return `<div class="finance-note"><strong>Confirmed money only:</strong> Collected revenue stays at $0 until a payment processor records a successful payment. Trial, partner, and projected values are shown separately.</div>
+  return `<div class="finance-note"><strong>Payments are paused:</strong> Café accounts currently have complimentary access, checkout is disabled, and no new charges can start.</div>
   ${sectionHead('Subscription snapshot')}
   <section class="metrics">${metric('Free trials', sm.trialing, `${sm.trials_ending_30d || 0} ending in 30 days`, 'gold')}${metric('Free partners', sm.complimentary, 'Owner-granted access', 'green')}${metric('Paying cafés', sm.active_paid, s.processor_connected ? 'Billing connected' : 'Stripe not connected', 'purple')}${metric('Past due', sm.past_due, 'Payment needs attention', 'red')}${metric('Monthly recurring revenue', money(sm.mrr_cents), 'Projected from active paid plans', 'orange')}${metric('Annual run rate', money(sm.arr_cents), 'Projected MRR × 12', 'blue')}${metric('Confirmed collected', money(sm.collected_cents), 'Successful payments only', 'green')}${metric('Refunded', money(sm.refunded_cents), 'Recorded refunds', 'teal')}</section>
   ${sectionHead('Revenue and account mix')}
   <section class="equal-col">${barChart('Confirmed weekly collections', s.weekly_revenue, 'collected_cents', 'Last 8 weeks', money)}${donutChart('Subscription status', statusRows(accounts), 'Current café accounts')}</section>
-  ${sectionHead('Café subscription accounts', 'Manage complimentary access without mixing controls into other reports')}
+  ${sectionHead('Café access accounts', 'Complimentary access remains enabled while payments are paused')}
   ${subscriptionAccounts(accounts)}`;
 };
 

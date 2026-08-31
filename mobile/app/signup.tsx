@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
@@ -33,14 +33,14 @@ export default function SignupScreen() {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { emailRedirectTo:isCafe?'baristamatch://cafe-trial':'baristamatch://home',data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
+      options: { emailRedirectTo:'baristamatch://home',data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
     });
     if (!error && data.user) {
       await supabase.from('profiles').upsert({ ...profile, id: data.user.id }, { onConflict: 'id' });
     }
     setLoading(false);
     if (error) return Alert.alert('Unable to create account', error.message);
-    if(data.session)return router.replace(isCafe?'/cafe-trial':'/home');
+    if(data.session){if(isCafe)await supabase.rpc('ensure_cafe_subscription');return router.replace('/home')}
     Alert.alert('Check your email', 'Confirm your email to finish creating your BaristaMatch account.', [{ text: 'OK', onPress: () => router.replace('/login') }]);
   }
 
@@ -72,7 +72,8 @@ export default function SignupScreen() {
           <TextInput secureTextEntry value={password} onChangeText={setPassword} style={styles.input} placeholder="At least 10 characters" />
 
           <Pressable onPress={signUp} disabled={loading} style={[styles.primary, loading && styles.disabled]}><Text style={styles.primaryText}>{loading ? 'Creating account…' : 'Create account'}</Text></Pressable>
-          <Text style={styles.legal}>By creating an account, you agree to BaristaMatch Terms and Privacy Policy.</Text>
+          <Text style={styles.legal}>By creating an account, you agree to the following:</Text>
+          <View style={styles.legalLinks}><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/terms.html')}><Text style={styles.legalLink}>Terms of Service</Text></Pressable><Text style={styles.legalSeparator}> · </Text><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/privacy.html')}><Text style={styles.legalLink}>Privacy Policy</Text></Pressable></View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -84,5 +85,5 @@ const styles = StyleSheet.create({
   kicker:{fontSize:12,fontWeight:'800',letterSpacing:2,color:'#a95820'},title:{fontFamily:Platform.OS==='ios'?'Georgia':'serif',fontSize:38,fontWeight:'700',color:'#4a2412',marginTop:10},subtitle:{fontSize:17,color:'#746a61',marginTop:8,marginBottom:24},
   roleRow:{flexDirection:'row',gap:10,marginBottom:12},role:{flex:1,borderWidth:1,borderColor:'#ded7d1',borderRadius:13,padding:15,alignItems:'center',backgroundColor:'#fff'},roleActive:{backgroundColor:'#fff8f2',borderColor:'#a95820'},roleText:{fontWeight:'800',color:'#321708'},roleTextActive:{color:'#a95820'},
   label:{fontSize:14,fontWeight:'800',color:'#321708',marginBottom:8,marginTop:15},input:{backgroundColor:'#fff',borderWidth:1,borderColor:'#ded7d1',borderRadius:10,paddingHorizontal:16,paddingVertical:15,fontSize:17,color:'#17110d'},
-  helper:{fontSize:12,lineHeight:17,color:'#746a61',marginTop:7},primary:{marginTop:26,backgroundColor:'#a9571f',paddingVertical:16,borderRadius:9,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18}
+  helper:{fontSize:12,lineHeight:17,color:'#746a61',marginTop:7},primary:{marginTop:26,backgroundColor:'#a9571f',paddingVertical:16,borderRadius:9,alignItems:'center'},primaryText:{color:'#fff',fontWeight:'800',fontSize:17},disabled:{opacity:.55},legal:{textAlign:'center',fontSize:12,lineHeight:18,color:'#8a7e75',marginTop:18},legalLinks:{flexDirection:'row',justifyContent:'center',alignItems:'baseline'},legalLink:{fontSize:12,lineHeight:18,color:'#a95820',fontWeight:'800',textDecorationLine:'underline'},legalSeparator:{fontSize:12,lineHeight:18,color:'#8a7e75'}
 });
