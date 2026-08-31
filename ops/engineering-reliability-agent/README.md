@@ -64,7 +64,7 @@ PORT=8080 PYTHONPATH=src .venv/bin/python -m era.main serve
 curl --fail http://127.0.0.1:8080/health
 ```
 
-The live `analyze` command requires `OPENAI_API_KEY` in the process environment. The application intentionally does not load `.env` files itself.
+The live `analyze` command requires `OPENAI_API_KEY` in the process environment. The application intentionally does not load `.env` files itself. It defaults to the cost-controlled `gpt-5.4-mini` model; set `ERA_MODEL` only when an owner has approved a different model.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m era.main analyze --input evals/sample-incident.json

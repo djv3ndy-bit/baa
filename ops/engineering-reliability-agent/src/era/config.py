@@ -4,9 +4,12 @@ import os
 from dataclasses import dataclass
 
 
+DEFAULT_MODEL = "gpt-5.4-mini"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentConfig:
-    model: str | None
+    model: str
     environment: str
     allowed_health_hosts: frozenset[str]
 
@@ -18,7 +21,7 @@ class AgentConfig:
             if host.strip()
         }
         return cls(
-            model=os.getenv("ERA_MODEL") or None,
+            model=os.getenv("ERA_MODEL") or DEFAULT_MODEL,
             environment=os.getenv("ERA_ENVIRONMENT", "development"),
             allowed_health_hosts=frozenset(hosts),
         )
