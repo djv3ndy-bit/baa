@@ -68,6 +68,14 @@ class UrlLibJsonTransport:
         try:
             return json.loads(body)
         except (UnicodeDecodeError, json.JSONDecodeError):
+            pass
+
+        try:
+            lines = [line for line in body.splitlines() if line.strip()]
+            if not lines:
+                raise ValueError
+            return [json.loads(line) for line in lines]
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise ProviderReadError("Provider returned invalid JSON") from None
 
     async def get_json(self, url: str, *, headers: Mapping[str, str]) -> Any:

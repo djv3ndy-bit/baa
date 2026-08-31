@@ -210,8 +210,8 @@ class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):
         query = parse_qs(parsed.query)
         select_clause = query["sql"][0].split("from logs", 1)[0]
         self.assertNotIn("event_message", select_clause)
-        self.assertIn("source = 'edge_logs'", query["sql"][0])
-        self.assertNotIn("source in", query["sql"][0].lower())
+        self.assertIn("source_name = 'edge_logs'", query["sql"][0])
+        self.assertNotIn("source_name in", query["sql"][0].lower())
         self.assertIn("severity_text", query["sql"][0])
         self.assertIn("iso_timestamp_start", query)
         self.assertIn("iso_timestamp_end", query)

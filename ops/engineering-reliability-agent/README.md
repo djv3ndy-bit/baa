@@ -57,6 +57,22 @@ Run a fixture through the real deterministic investigation path:
 PYTHONPATH=src .venv/bin/python -m era.main dry-run --input evals/sample-incident.json
 ```
 
+Run an isolated, model-free live collection for the public website and repository:
+
+```bash
+ERA_ALLOWED_HEALTH_HOSTS=www.baristajobmatch.com \
+GITHUB_REPOSITORY=djv3ndy-bit/baa \
+PYTHONPATH=src .venv/bin/python -m era.main collect-live \
+  --environment production \
+  --provider health \
+  --health-url https://www.baristajobmatch.com/ \
+  --provider github \
+  --lookback 1h \
+  --limit 10
+```
+
+`collect-live` never calls a model or performs a provider write. Each selected provider fails closed unless its exact allowlist and read-only configuration are present. Vercel and Supabase activation additionally requires dedicated credentials described below; do not reuse website runtime secrets.
+
 Run the readiness server:
 
 ```bash
@@ -89,6 +105,7 @@ See [Least-privilege integrations](docs/least-privilege-integrations.md) for the
 
 - `dry-run`: deterministic classification and correlation; no model or network call.
 - `analyze`: the same deterministic path plus one model-generated explanation.
+- `collect-live`: bounded, sanitized GET-only evidence collection; no model or write operation.
 - `serve`: readiness endpoint only in this foundation release.
 
-Branch creation, code patching, test execution, draft PR creation, preview verification, and post-deployment observation are intentionally deferred until their dedicated tools and approval checks receive separate review.
+Automated branch creation, code patching, test execution, draft PR creation, preview verification, and post-deployment observation remain disabled until their dedicated tools and approval checks receive separate review.

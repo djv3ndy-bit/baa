@@ -76,7 +76,7 @@ class SupabaseManagementSource:
                 "  log_attributes['request.path'] as route,",
                 "  count() as count",
                 "from logs",
-                f"where source = '{source}'",
+                f"where source_name = '{source}'",
                 "  and (",
                 "    toInt32OrZero(log_attributes['response.status_code']) >= 500",
                 "    or lower(severity_text) in ('error', 'fatal')",

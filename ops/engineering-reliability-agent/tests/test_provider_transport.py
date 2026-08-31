@@ -74,6 +74,17 @@ class ProviderTransportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(raised.exception), "Provider GET failed with HTTP 403")
         self.assertNotIn("sensitive", str(raised.exception))
 
+    async def test_transport_reads_bounded_stream_json(self) -> None:
+        opener = FakeOpener(FakeResponse(b'{"statusCode":500}\n{"statusCode":502}\n'))
+        transport = UrlLibJsonTransport(frozenset({"api.example.com"}))
+
+        with patch("urllib.request.build_opener", return_value=opener):
+            payload = await transport.get_json(
+                "https://api.example.com/events", headers={}
+            )
+
+        self.assertEqual(payload, [{"statusCode": 500}, {"statusCode": 502}])
+
 
 if __name__ == "__main__":
     unittest.main()

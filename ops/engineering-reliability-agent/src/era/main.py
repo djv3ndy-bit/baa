@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .config import AgentConfig
+from .live import build_live_plan, run_live_plan
 from .models import IncidentEvidence, RecentChange
 from .workflows.investigate import investigate
 
@@ -45,6 +46,20 @@ async def _run_investigation(path: str, *, use_model: bool) -> None:
     result = await investigate(
         evidence, changes, use_model=use_model, model=config.model
     )
+    _write_json(result.to_dict())
+
+
+async def _run_live_collection(args: argparse.Namespace) -> None:
+    plan = build_live_plan(
+        provider_names=args.provider,
+        environment_name=args.environment,
+        environment=os.environ,
+        health_urls=args.health_url,
+        supabase_services=args.supabase_service,
+        limit=args.limit,
+        lookback=args.lookback,
+    )
+    result = await run_live_plan(plan)
     _write_json(result.to_dict())
 
 
@@ -132,6 +147,30 @@ def _parser() -> argparse.ArgumentParser:
         subparser.add_argument(
             "--input", required=True, help="Incident fixture JSON path."
         )
+    live = subparsers.add_parser(
+        "collect-live",
+        help="Collect sanitized evidence using read-only provider operations.",
+    )
+    live.add_argument(
+        "--provider",
+        action="append",
+        required=True,
+        choices=("health", "github", "vercel", "supabase"),
+    )
+    live.add_argument(
+        "--environment",
+        required=True,
+        choices=("production", "preview"),
+    )
+    live.add_argument("--health-url", action="append", default=[])
+    live.add_argument(
+        "--supabase-service",
+        action="append",
+        default=[],
+        choices=("api", "postgres", "auth", "storage", "realtime", "edge-function"),
+    )
+    live.add_argument("--lookback", default="1h")
+    live.add_argument("--limit", default=25, type=int)
     subparsers.add_parser("serve", help="Start the readiness-only HTTP service.")
     return parser
 
@@ -149,6 +188,8 @@ def main() -> None:
             asyncio.run(_run_investigation(args.input, use_model=False))
         elif command == "analyze":
             asyncio.run(_run_investigation(args.input, use_model=True))
+        elif command == "collect-live":
+            asyncio.run(_run_live_collection(args))
         else:
             parser.print_help()
     except Exception as error:

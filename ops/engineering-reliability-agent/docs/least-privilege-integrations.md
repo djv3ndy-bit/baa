@@ -2,7 +2,7 @@
 
 The Engineering & Reliability Agent uses dedicated read-only credentials. It must never reuse website runtime credentials, database passwords, Supabase service-role keys, deployment-capable tokens, or an owner's broad personal token.
 
-The provider clients are intentionally not connected to production in this foundation branch. Credential creation, secret storage, runtime configuration, and activation each require an owner-reviewed change.
+The provider clients are disabled by default. `collect-live` activates only the providers named on that invocation and fails closed unless their exact allowlists and read-only configuration are present. Credential creation, secret storage, and recurring runtime activation each require owner review.
 
 ## GitHub
 
@@ -30,6 +30,8 @@ Never provide a service-role key, database connection string, database password,
 
 The client calls only the unified analytics log endpoint. Queries are fixed, query one source at a time, are bounded to at most 24 hours and 100 rows, and return timestamps, status codes, routes, and aggregate counts. Raw event messages, headers, request bodies, response bodies, user identifiers, emails, and IP addresses are not selected.
 
+The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and filters its unified stream with `source_name`. It does not use the deprecated `logs.all` endpoint, which Supabase has scheduled for removal on September 23, 2026.
+
 ## Network and data controls
 
 - HTTPS is mandatory.
@@ -50,3 +52,18 @@ The client calls only the unified analytics log endpoint. Queries are fixed, que
 5. Run a read-only live collection in preview or an isolated operations environment.
 6. Review the sanitized output for personal data or secret leakage.
 7. Approve runtime scheduling separately. Do not deploy, merge, or modify production during activation.
+
+## Isolated activation command
+
+Use one provider at a time first. The command requires an explicit environment, provider, lookback, and bounded limit. Supabase additionally requires at least one explicit service.
+
+```bash
+PYTHONPATH=src .venv/bin/python -m era.main collect-live \
+  --environment production \
+  --provider supabase \
+  --supabase-service api \
+  --lookback 30m \
+  --limit 25
+```
+
+The command returns only sanitized evidence and recent-change metadata. It sets `model_used` and `production_writes_enabled` to `false` in its output. Missing credentials, unsafe health URLs, unsupported environments, redirects, oversized responses, and lookbacks beyond 24 hours stop the collection.
