@@ -75,6 +75,8 @@ if(!mobileHome.includes("supabase.auth.getSession()")) throw new Error('Mobile d
 const mobileLogin=fs.readFileSync('mobile/app/login.tsx','utf8');
 if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mobile login is missing password recovery');
 if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error('Mobile social login can remain stuck after cancellation');
+if(mobileLogin.includes('<ScrollView')) throw new Error('Mobile login must fit without scrolling');
+if(!mobileLogin.includes('height < 900')||!mobileLogin.includes('height < 720')||!mobileLogin.includes('styles.sheetShort')) throw new Error('Mobile login responsive layouts do not cover all supported iPhone heights');
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('Payments are paused')) throw new Error('Mobile payment pause is incomplete');
 if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('Delete account')) throw new Error('Mobile direct account deletion is missing');
