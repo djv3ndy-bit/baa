@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -12,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
@@ -75,6 +76,12 @@ const GENDER_OPTIONS = [
   { value: "another_identity", label: "Another identity" },
   { value: "prefer_not_to_say", label: "Prefer not to say" },
 ];
+type SelectedMedia = {
+  uri: string;
+  name: string;
+  size?: number;
+  mimeType?: string;
+};
 const isFloridaLocation = (value?: string | null) =>
   /(^|,|\s)(fl|florida)(\s|$)/i.test(String(value || "").trim());
 function parseAvailability(value?: string | null) {
@@ -125,12 +132,9 @@ export default function Profile() {
     [openHours, setOpenHours] = useState<OpenHours>({}),
     [availability, setAvailability] = useState<string[]>([]),
     [availabilityNotes, setAvailabilityNotes] = useState(""),
-    [profilePhoto, setProfilePhoto] =
-      useState<DocumentPicker.DocumentPickerAsset | null>(null),
-    [barPicture, setBarPicture] =
-      useState<DocumentPicker.DocumentPickerAsset | null>(null),
-    [coffeeVideo, setCoffeeVideo] =
-      useState<DocumentPicker.DocumentPickerAsset | null>(null);
+    [profilePhoto, setProfilePhoto] = useState<SelectedMedia | null>(null),
+    [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
+    [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
   useEffect(() => {
     load();
   }, []);
@@ -173,30 +177,62 @@ export default function Profile() {
     );
   }
   async function pickMedia(kind: "photo" | "bar" | "video") {
-    const result = await DocumentPicker.getDocumentAsync({
-      type:
-        kind !== "video"
-          ? ["image/jpeg", "image/png", "image/webp"]
-          : ["video/mp4", "video/quicktime", "video/webm"],
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-    if (result.canceled) return;
-    const asset = result.assets[0];
-    const limit = kind !== "video" ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
-    if ((asset.size || 0) > limit)
-      return Alert.alert(
-        `${kind !== "video" ? "Photo" : "Video"} is too large`,
-        kind !== "video"
-          ? "Choose a photo smaller than 5 MB."
-          : "Choose a video smaller than 50 MB.",
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        const buttons: Parameters<typeof Alert.alert>[2] = [
+          { text: "Not now", style: "cancel" },
+        ];
+        if (!permission.canAskAgain)
+          buttons.push({
+            text: "Open Settings",
+            onPress: () => Linking.openSettings(),
+          });
+        Alert.alert(
+          "Photos access required",
+          "Allow BaristaMatch to access your photos and videos so you can add profile media.",
+          buttons,
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: kind === "video" ? "videos" : "images",
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+
+      const picked = result.assets[0];
+      const asset: SelectedMedia = {
+        uri: picked.uri,
+        name:
+          picked.fileName ||
+          `${kind}-${Date.now()}.${kind === "video" ? "mp4" : "jpg"}`,
+        size: picked.fileSize,
+        mimeType: picked.mimeType || undefined,
+      };
+      const limit = kind !== "video" ? 5 * 1024 * 1024 : 50 * 1024 * 1024;
+      if ((asset.size || 0) > limit)
+        return Alert.alert(
+          `${kind !== "video" ? "Photo" : "Video"} is too large`,
+          kind !== "video"
+            ? "Choose a photo smaller than 5 MB."
+            : "Choose a video smaller than 50 MB.",
+        );
+      if (kind === "photo") setProfilePhoto(asset);
+      else if (kind === "bar") setBarPicture(asset);
+      else setCoffeeVideo(asset);
+    } catch (error: any) {
+      Alert.alert(
+        "Could not open Photos",
+        error?.message || "Please try choosing your photo or video again.",
       );
-    if (kind === "photo") setProfilePhoto(asset);
-    else if (kind === "bar") setBarPicture(asset);
-    else setCoffeeVideo(asset);
+    }
   }
   async function uploadAsset(
-    asset: DocumentPicker.DocumentPickerAsset,
+    asset: SelectedMedia,
     bucket: string,
     path: string,
   ) {
