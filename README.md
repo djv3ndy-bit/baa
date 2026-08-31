@@ -17,7 +17,8 @@ Vercel settings:
 
 The website and native app use server-created Stripe Checkout and Customer Portal sessions. Configure these server-side environment variables in Vercel for Preview and Production:
 
-- `STRIPE_RESTRICTED_KEY`: a least-privilege restricted key with read/write access to Customers, Checkout Sessions, Billing Portal Sessions, and Subscriptions
+- `STRIPE_RESTRICTED_KEY`: a least-privilege restricted key with read access to Account and read/write access to Customers, Checkout Sessions, Billing Portal Sessions, and Subscriptions
+- `STRIPE_ACCOUNT_ID`: `acct_1UANO72euSkBN6zq`; the server refuses to use a key from any other Stripe account
 - `STRIPE_MONTHLY_PRICE_ID`: the recurring monthly Price for the café plan
 - `STRIPE_WEBHOOK_SECRET`: the signing secret for the `/api/stripe-webhook` endpoint
 - `PUBLIC_SITE_URL`: `https://www.baristajobmatch.com` in production

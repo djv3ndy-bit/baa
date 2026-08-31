@@ -1,8 +1,23 @@
 import Stripe from "stripe";
 
-export function stripeClient() {
+let verifiedStripeClient;
+
+export async function stripeClient() {
   if (!process.env.STRIPE_RESTRICTED_KEY) throw new Error("Stripe is not configured.");
-  return new Stripe(process.env.STRIPE_RESTRICTED_KEY, { apiVersion: "2026-07-29.dahlia" });
+  if (!process.env.STRIPE_ACCOUNT_ID) throw new Error("The expected Stripe account is not configured.");
+  if (!verifiedStripeClient) {
+    const client = new Stripe(process.env.STRIPE_RESTRICTED_KEY, { apiVersion: "2026-07-29.dahlia" });
+    verifiedStripeClient = client.accounts.retrieve().then((account) => {
+      if (account.id !== process.env.STRIPE_ACCOUNT_ID) {
+        throw new Error(`Stripe account mismatch: expected ${process.env.STRIPE_ACCOUNT_ID}.`);
+      }
+      return client;
+    }).catch((error) => {
+      verifiedStripeClient = undefined;
+      throw error;
+    });
+  }
+  return verifiedStripeClient;
 }
 function adminHeaders(extra = {}) {
   const key = process.env.SUPABASE_SECRET_KEY;

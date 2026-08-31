@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     const billing = await subscriptionFor(user.id);
     if (!billing) return res.status(409).json({ error: "Start your free month before subscribing." });
     if (billing.stripe_subscription_id && ["active","trialing","past_due"].includes(billing.status)) return res.status(409).json({ error: "This café already has a subscription. Open billing management instead." });
-    const stripe = stripeClient();
+    const stripe = await stripeClient();
     let customerId = billing.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({ email:user.email, name:user.profile.cafe_name || user.profile.display_name || undefined, metadata:{cafe_user_id:user.id} }, { idempotencyKey:`baristamatch-customer-${user.id}` });
