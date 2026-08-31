@@ -78,6 +78,15 @@ if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('Payments are paused')) throw new Error('Mobile payment pause is incomplete');
 if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('Delete account')) throw new Error('Mobile direct account deletion is missing');
+const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
+if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');
+const safetyMigration='supabase/migrations/20260831090000_add_member_safety_controls.sql';
+if(!fs.existsSync(safetyMigration)) throw new Error('Mobile safety controls migration is missing');
+const safetySql=fs.readFileSync(safetyMigration,'utf8');
+for(const token of ['user_blocks','user_reports','members_are_blocked','message_is_allowed'])if(!safetySql.includes(token))throw new Error(`Mobile safety migration missing ${token}`);
+const mobileSafety=fs.readFileSync('mobile/lib/safety.ts','utf8');
+for(const token of ['blockUser','reportUser','isMessageAllowed'])if(!mobileSafety.includes(token))throw new Error(`Mobile safety helper missing ${token}`);
+for(const token of ['openSafetyMenu','Report conversation','Block account','isMessageAllowed'])if(!mobileChat.includes(token))throw new Error(`Mobile chat safety flow missing ${token}`);
 const mobileProfile=fs.readFileSync('mobile/app/profile.tsx','utf8');
 if(!mobileProfile.includes('requestMediaLibraryPermissionsAsync')||!mobileProfile.includes('launchImageLibraryAsync'))throw new Error('Mobile profile media does not use the phone photo library');
 const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
