@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
@@ -21,7 +21,7 @@ function readOAuthParams(url: string) {
 
 export default function LoginScreen() {
   const { width, height } = useWindowDimensions();
-  const compact = height < 740 || width < 360;
+  const compact = height < 900 || width < 390;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -122,7 +122,14 @@ export default function LoginScreen() {
             <View style={[styles.accentLine, compact && styles.accentLineCompact]} />
           </View>
 
-          <View style={[styles.sheet, compact && styles.sheetCompact]}>
+          <ScrollView
+            style={[styles.sheet, compact && styles.sheetCompact]}
+            contentContainerStyle={[styles.sheetContent, compact && styles.sheetContentCompact]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
             <View style={[styles.handle, compact && styles.handleCompact]} />
             <Text style={[styles.label, compact && styles.labelCompact]}>Email</Text>
             <View style={[styles.inputShell, compact && styles.inputShellCompact]}>
@@ -157,7 +164,7 @@ export default function LoginScreen() {
               </Pressable>
             </View>
             <Pressable accessibilityRole="link" onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact]}><Text style={styles.createText}>Create an account</Text></Pressable>
-          </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -187,8 +194,10 @@ const styles = StyleSheet.create({
   taglineCompact: { marginTop: 3, fontSize: 14 },
   accentLine: { width: 72, height: 3, borderRadius: 3, backgroundColor: '#b86525', marginTop: 16 },
   accentLineCompact: { width: 68, marginTop: 12 },
-  sheet: { flex: 1, marginTop: -24, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 26, paddingTop: 12, paddingBottom: 12, shadowColor: '#321708', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: -6 } },
-  sheetCompact: { marginTop: -22, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
+  sheet: { flex: 1, marginTop: -24, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#321708', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: -6 } },
+  sheetCompact: { marginTop: -22, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
+  sheetContent: { flexGrow: 1, paddingHorizontal: 26, paddingTop: 12, paddingBottom: 20 },
+  sheetContentCompact: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16 },
   handle: { width: 48, height: 5, borderRadius: 5, alignSelf: 'center', backgroundColor: '#c9c7c5', marginBottom: 14 },
   handleCompact: { width: 44, height: 4, marginBottom: 10 },
   label: { color: '#1e1b19', fontSize: 15, fontWeight: '700', marginBottom: 7, marginTop: 4 },
