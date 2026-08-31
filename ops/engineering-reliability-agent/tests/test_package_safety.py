@@ -23,6 +23,17 @@ class PackageSafetyTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, template)
 
+    def test_provider_clients_do_not_define_mutating_http_methods(self) -> None:
+        provider_root = ROOT / "src" / "era" / "providers"
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(provider_root.glob("*.py"))
+        )
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            with self.subTest(method=method):
+                self.assertNotIn(f'method="{method}"', source)
+        self.assertIn('method="GET"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

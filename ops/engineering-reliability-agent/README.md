@@ -72,7 +72,7 @@ PYTHONPATH=src .venv/bin/python -m era.main analyze --input evals/sample-inciden
 
 ## Integrations
 
-Collectors depend on narrow read-only provider interfaces. Their production adapters will be wired in a later, separately reviewed phase.
+Collectors depend on narrow read-only provider interfaces. GET-only provider clients are implemented under `src/era/providers`, but production credentials and runtime wiring remain disabled until a later, separately reviewed phase.
 
 - GitHub: metadata, commits, changed paths, Actions status, and pull-request reads. No administration, workflows, secrets, deployments, merges, or `main` writes.
 - Vercel: project-scoped deployment, build-log, and bounded runtime-error reads. No deployment token or promotion capability.
@@ -80,6 +80,10 @@ Collectors depend on narrow read-only provider interfaces. Their production adap
 - Health: HTTPS `GET` requests only, exact host allowlist, no credentials, query strings, or redirects.
 
 All provider records pass through field-level and pattern-based redaction before they can be stored, prompted, or included in a pull request.
+
+The shared provider transport enforces HTTPS, exact API-host allowlists, GET-only requests, an eight-second timeout, a one-megabyte response cap, no redirects, and error messages that omit response bodies. Supabase collection uses the analytics log endpoint with fixed ClickHouse queries; it never runs Postgres SQL and does not select raw log messages.
+
+See [Least-privilege integrations](docs/least-privilege-integrations.md) for the required scopes and the owner-approved activation checklist.
 
 ## Runtime modes
 
