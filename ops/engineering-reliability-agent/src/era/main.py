@@ -16,7 +16,9 @@ from .config import AgentConfig
 from .live import LiveCollectionPlan, build_live_plan, run_live_plan
 from .models import IncidentEvidence, RecentChange
 from .monitor import run_monitoring_cycle
+from .providers.vercel import VercelApiSource
 from .response import build_response_package
+from .verification import wait_for_production_revision
 from .workflows.investigate import investigate
 
 
@@ -101,6 +103,24 @@ def _run_prepare_response(args: argparse.Namespace) -> None:
 def _run_notify(args: argparse.Namespace) -> int:
     package = _load_json_object(args.input)
     result = deliver_response_alert(package, os.environ)
+    _write_json(result.to_dict())
+    return result.exit_code
+
+
+async def _run_wait_deployment(args: argparse.Namespace) -> int:
+    token = os.getenv("VERCEL_READ_TOKEN", "").strip()
+    project_id = os.getenv("VERCEL_PROJECT_ID", "").strip()
+    team_id = os.getenv("VERCEL_TEAM_ID", "").strip()
+    if not token or not project_id or not team_id:
+        raise RuntimeError("Read-only Vercel configuration is required")
+    source = VercelApiSource(token, team_id=team_id)
+    result = await wait_for_production_revision(
+        source,
+        project_id,
+        args.commit,
+        attempts=args.attempts,
+        delay_seconds=args.delay,
+    )
     _write_json(result.to_dict())
     return result.exit_code
 
@@ -238,6 +258,13 @@ def _parser() -> argparse.ArgumentParser:
         help="Send an owner-approved P0/P1 email from a response package.",
     )
     notify.add_argument("--input", required=True, help="Response package JSON path.")
+    deployment = subparsers.add_parser(
+        "wait-deployment",
+        help="Wait for the exact reviewed commit to become READY in production.",
+    )
+    deployment.add_argument("--commit", required=True, help="Expected Git commit SHA.")
+    deployment.add_argument("--attempts", type=int, default=60)
+    deployment.add_argument("--delay", type=float, default=10)
     subparsers.add_parser("serve", help="Start the readiness-only HTTP service.")
     return parser
 
@@ -263,6 +290,8 @@ def main() -> None:
             _run_prepare_response(args)
         elif command == "notify":
             raise SystemExit(_run_notify(args))
+        elif command == "wait-deployment":
+            raise SystemExit(asyncio.run(_run_wait_deployment(args)))
         else:
             parser.print_help()
     except Exception as error:

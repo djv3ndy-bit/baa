@@ -20,7 +20,7 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out the reviewed revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,10 +32,44 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Allow the approved production deployment to settle
+      - name: Wait for the exact approved production revision
         if: github.event_name == 'push'
+        id: deployment_revision
         shell: bash
-        run: sleep 30
+        env:
+          VERCEL_PROJECT_ID: ${{ vars.ERA_VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ vars.ERA_VERCEL_TEAM_ID }}
+          VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
+        run: |
+          set -uo pipefail
+          mkdir -p monitoring-artifacts
+          output_path='monitoring-artifacts/deployment-verification.json'
+          configuration_failed=0
+          for variable_name in VERCEL_PROJECT_ID VERCEL_TEAM_ID VERCEL_READ_TOKEN; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              configuration_failed=1
+            fi
+          done
+
+          if [[ "$configuration_failed" -eq 1 ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingReadOnlyVercelConfiguration","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"configuration_failed"}' > "$output_path"
+            verification_exit=3
+          else
+            set +e
+            PYTHONPATH=ops/engineering-reliability-agent/src \
+              python -m era.main wait-deployment \
+              --commit "$GITHUB_SHA" \
+              --attempts 60 \
+              --delay 10 > "$output_path"
+            verification_exit=$?
+            set -e
+          fi
+
+          if [[ ! -s "$output_path" ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingDeploymentVerificationResult","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"collection_failed"}' > "$output_path"
+            verification_exit=3
+          fi
+          echo "exit_code=$verification_exit" >> "$GITHUB_OUTPUT"
 
       - name: Collect public read-only evidence
         id: public_monitor
@@ -164,6 +198,9 @@ jobs:
           if [[ -s monitoring-artifacts/private-provider-result.json ]]; then
             response_inputs+=(--input monitoring-artifacts/private-provider-result.json)
           fi
+          if [[ -s monitoring-artifacts/deployment-verification.json ]]; then
+            response_inputs+=(--input monitoring-artifacts/deployment-verification.json)
+          fi
           PYTHONPATH=ops/engineering-reliability-agent/src \
             python -m era.main prepare-response "${response_inputs[@]}" \
             > monitoring-artifacts/response-package.json
@@ -212,6 +249,9 @@ jobs:
         if: always()
         shell: bash
         run: |
+          if [[ '${{ github.event_name }}' == 'push' && '${{ steps.deployment_revision.outputs.exit_code }}' != '0' ]]; then
+            exit 1
+          fi
           if [[ '${{ steps.public_monitor.outputs.exit_code }}' != '0' ]]; then
             exit 1
           fi

@@ -54,6 +54,8 @@ class PackageSafetyTests(unittest.TestCase):
         self.assertIn("- main", workflow)
         self.assertIn("python -m era.main prepare-response", workflow)
         self.assertIn("python -m era.main notify", workflow)
+        self.assertIn("python -m era.main wait-deployment", workflow)
+        self.assertNotIn("run: sleep 30", workflow)
         self.assertIn(
             "vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED == 'true'", workflow
         )
@@ -61,8 +63,8 @@ class PackageSafetyTests(unittest.TestCase):
         self.assertNotIn("READ_TOKEN", job_header)
         self.assertNotIn("ERA_RESEND_API_KEY", job_header)
         public_steps = workflow.split(
-            "      - name: Collect private-provider read-only evidence", 1
-        )[0]
+            "      - name: Collect public read-only evidence", 1
+        )[1].split("      - name: Collect private-provider read-only evidence", 1)[0]
         self.assertNotIn("VERCEL_READ_TOKEN", public_steps)
         self.assertNotIn("SUPABASE_READ_ONLY_TOKEN", public_steps)
         self.assertIn("if: vars.ERA_PRIVATE_MONITORING_ENABLED == 'true'", workflow)

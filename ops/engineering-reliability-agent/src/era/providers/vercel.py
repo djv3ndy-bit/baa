@@ -11,6 +11,7 @@ from .http import JsonGetTransport, ProviderReadError, UrlLibJsonTransport
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9_.-]{3,160}")
 _SINCE = re.compile(r"([1-9][0-9]*)([mh])")
+_COMMIT_SHA = re.compile(r"[0-9a-fA-F]{7,64}")
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -142,6 +143,37 @@ class VercelApiSource:
                 }
             )
         return failures
+
+    async def get_deployment_state_for_commit(
+        self,
+        project_id: str,
+        *,
+        environment: str,
+        commit_sha: str,
+        limit: int = 25,
+    ) -> Mapping[str, Any]:
+        if not _COMMIT_SHA.fullmatch(commit_sha):
+            raise ValueError("Vercel deployment commit SHA is invalid")
+        deployments = await self._deployments(
+            project_id, environment=environment, limit=limit
+        )
+        for item in deployments:
+            metadata = _mapping(item.get("meta"))
+            deployed_sha = str(metadata.get("githubCommitSha") or "")
+            if deployed_sha.lower() != commit_sha.lower():
+                continue
+            state = str(item.get("state") or item.get("readyState") or "UNKNOWN")
+            deployment_id = str(item.get("uid") or item.get("id") or "unknown")
+            return {
+                "state": state.upper()[:40],
+                "deployment_id": deployment_id[:160],
+                "commit_sha": deployed_sha.lower(),
+            }
+        return {
+            "state": "NOT_FOUND",
+            "deployment_id": "unknown",
+            "commit_sha": commit_sha.lower(),
+        }
 
     @staticmethod
     def _since_milliseconds(value: str) -> int:

@@ -128,6 +128,37 @@ class ResponsePackageTests(unittest.TestCase):
         self.assertEqual(package["severity"], "P2")
         self.assertEqual(package["status"], "review_recommended")
         self.assertFalse(package["alert"]["eligible"])
+        self.assertEqual(
+            package["collection_failures"],
+            [
+                {
+                    "provider": "monitor",
+                    "operation": "configuration_failed",
+                    "error_type": "MissingReadOnlyConfiguration",
+                }
+            ],
+        )
+        self.assertIn("failed closed", package["summary"])
+
+    def test_deployment_timeout_is_preserved_in_response_package(self) -> None:
+        package = build_response_package(
+            [
+                monitoring_payload("P3"),
+                {
+                    "status": "deployment_timeout",
+                    "severity": "P2",
+                    "provider": "vercel",
+                    "operation": "exact_production_revision",
+                    "error_type": "VercelDeploymentTimeout",
+                },
+            ]
+        ).to_dict()
+
+        self.assertEqual(package["severity"], "P2")
+        self.assertEqual(
+            package["collection_failures"][0]["error_type"],
+            "VercelDeploymentTimeout",
+        )
 
 
 if __name__ == "__main__":

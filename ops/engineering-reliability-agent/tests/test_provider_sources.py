@@ -180,6 +180,40 @@ class GitHubApiSourceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_finds_exact_production_commit_state(self) -> None:
+        transport = QueueTransport(
+            [
+                {
+                    "deployments": [
+                        {
+                            "uid": "dpl_other123",
+                            "state": "READY",
+                            "meta": {"githubCommitSha": "1111111111111111"},
+                        },
+                        {
+                            "uid": "dpl_target123",
+                            "state": "BUILDING",
+                            "meta": {"githubCommitSha": "abcdef1234567890"},
+                        },
+                    ]
+                }
+            ]
+        )
+        source = VercelApiSource(
+            "vercel-read-token", team_id="team_example", transport=transport
+        )
+
+        state = await source.get_deployment_state_for_commit(
+            "prj_example",
+            environment="production",
+            commit_sha="abcdef1234567890",
+        )
+
+        self.assertEqual(state["state"], "BUILDING")
+        self.assertEqual(state["deployment_id"], "dpl_target123")
+        query = parse_qs(urlsplit(transport.requests[0][0]).query)
+        self.assertEqual(query["target"], ["production"])
+
     async def test_reads_failed_deployments(self) -> None:
         created = int(datetime.now(UTC).timestamp() * 1_000)
         transport = QueueTransport(
