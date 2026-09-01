@@ -52,6 +52,12 @@ supportForm.browser_info.value=navigator.userAgent;
 const supportParams=new URLSearchParams(location.search);
 const requestedType=supportParams.get('type');
 if(requestedType&&supportForm.issue_type.querySelector(`option[value="${CSS.escape(requestedType)}"]`)){supportForm.issue_type.value=requestedType}
+const supportLanding={
+  barista:{eyebrow:'Barista Resources',heading:'Help for your coffee career',copy:'Get help with your profile, nearby jobs, applications, matches, or anything else you need as a barista.'},
+  cafe:{eyebrow:'Café Hiring Resources',heading:'Help building your café team',copy:'Get help with your café profile, job posts, candidates, matches, or any part of the hiring process.'}
+};
+const landing=supportLanding[requestedType];
+if(landing){document.querySelector('.hero .eyebrow').textContent=landing.eyebrow;document.querySelector('.hero h1').textContent=landing.heading;document.querySelector('.hero p').textContent=landing.copy}
 if(requestedType==='question'){supportForm.subject.placeholder='Example: How does matching work?';supportForm.description.placeholder='What would you like help with?'}
 
 
