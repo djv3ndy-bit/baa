@@ -2,7 +2,7 @@ import { adminRows, authenticatedCafe, json, origin, stripeClient, subscriptionF
 
 export const config = { api: { bodyParser: false } };
 const BILLING_PAUSED = true;
-const BILLING_PAUSED_MESSAGE = "Payments are paused. Café accounts currently have full complimentary access.";
+const BILLING_PAUSED_MESSAGE = "Billing is not active. Café accounts will not be charged during the plan preview.";
 
 async function rawBody(req) {
   const chunks = [];
@@ -30,25 +30,42 @@ async function billingStatus(req, res) {
     const user = await authenticatedCafe(req);
     if (!user) return res.status(401).json({ error: "Please log in with a café account." });
     const subscription = await subscriptionFor(user.id);
-    if (!subscription) return res.status(200).json({
-      status: "complimentary",
-      trialEndsAt: null,
-      currentPeriodEnd: null,
-      cancelAtPeriodEnd: false,
-      complimentaryAccess: true,
-      connectedToBilling: false,
+    const connectedToBilling = Boolean(subscription?.stripe_subscription_id);
+    const paidStatus = connectedToBilling && ["active", "trialing", "past_due", "unpaid"].includes(subscription?.status);
+    if (BILLING_PAUSED) return res.status(200).json({
+      status: subscription?.status || "free",
+      currentPeriodEnd: subscription?.current_period_end || null,
+      cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end),
+      complimentaryAccess: Boolean(subscription?.complimentary_access ?? true),
+      connectedToBilling,
       billingPaused: true,
+      plan: paidStatus ? "pro" : "free",
+      monthlyPriceCents: 999,
+      maxActiveJobs: 3,
       message: BILLING_PAUSED_MESSAGE
     });
-    return res.status(200).json({
-      status: "complimentary",
-      trialEndsAt: null,
+    if (!subscription) return res.status(200).json({
+      status: "free",
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
-      complimentaryAccess: true,
+      complimentaryAccess: false,
       connectedToBilling: false,
-      billingPaused: true,
-      message: BILLING_PAUSED_MESSAGE
+      billingPaused: false,
+      plan: "free",
+      monthlyPriceCents: 999,
+      maxActiveJobs: 3
+    });
+    const hasBillingCustomer = Boolean(subscription.stripe_customer_id);
+    return res.status(200).json({
+      status: subscription.status || "free",
+      currentPeriodEnd: subscription.current_period_end,
+      cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+      complimentaryAccess: Boolean(subscription.complimentary_access),
+      connectedToBilling: hasBillingCustomer,
+      billingPaused: false,
+      plan: hasBillingCustomer && ["active", "trialing", "past_due", "unpaid"].includes(subscription.status) ? "pro" : "free",
+      monthlyPriceCents: 999,
+      maxActiveJobs: 3
     });
   } catch (error) {
     console.error("Billing status failed", error?.message || error);
@@ -66,7 +83,7 @@ async function createCheckout(req, res) {
     const user = await authenticatedCafe(req);
     if (!user) return res.status(401).json({ error: "Please log in with a café account." });
     const billing = await subscriptionFor(user.id);
-    if (!billing) return res.status(409).json({ error: "Start your free month before subscribing." });
+    if (!billing) return res.status(409).json({ error: "Open your Free café plan before subscribing." });
     if (billing.stripe_subscription_id && ["active", "trialing", "past_due"].includes(billing.status)) {
       return res.status(409).json({ error: "This café already has a subscription. Open billing management instead." });
     }
@@ -83,9 +100,7 @@ async function createCheckout(req, res) {
     }
     const site = origin(req);
     const mobile = payload.channel === "mobile";
-    const trialEnd = Math.floor(new Date(billing.trial_ends_at || 0).getTime() / 1000);
     const subscriptionData = { metadata: { cafe_user_id: user.id } };
-    if (trialEnd > Math.floor(Date.now() / 1000) + 48 * 60 * 60) subscriptionData.trial_end = trialEnd;
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
@@ -108,7 +123,6 @@ async function createCheckout(req, res) {
 async function createPortal(req, res) {
   json(res);
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).json({ error: "Method not allowed." }); }
-  if (BILLING_PAUSED) return res.status(503).json({ error: BILLING_PAUSED_MESSAGE, billingPaused: true });
   try {
     const payload = await requestBody(req);
     const user = await authenticatedCafe(req);
@@ -170,7 +184,6 @@ async function recordInvoicePayment(invoice, status) {
 
 async function stripeWebhook(req, res) {
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).send("Method not allowed"); }
-  if (BILLING_PAUSED) return res.status(200).json({ received: true, billingPaused: true });
   try {
     const stripe = await stripeClient();
     const event = stripe.webhooks.constructEvent(await rawBody(req), req.headers["stripe-signature"], process.env.STRIPE_WEBHOOK_SECRET);

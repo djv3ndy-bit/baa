@@ -11,10 +11,21 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi } from "@/lib/api";
+
+type BillingStatus = {
+  status: string;
+  plan: "free" | "pro";
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  connectedToBilling: boolean;
+  billingPaused: boolean;
+};
+
 export default function Settings() {
   const [role, setRole] = useState<AppRole>("barista"),
     [email, setEmail] = useState(""),
@@ -22,7 +33,10 @@ export default function Settings() {
     [p1, setP1] = useState(""),
     [p2, setP2] = useState(""),
     [saving, setSaving] = useState(false),
-    [deleting, setDeleting] = useState(false);
+    [deleting, setDeleting] = useState(false),
+    [billing, setBilling] = useState<BillingStatus | null>(null),
+    [billingError, setBillingError] = useState(""),
+    [openingBilling, setOpeningBilling] = useState(false);
   useEffect(() => {
     load();
   }, []);
@@ -31,6 +45,28 @@ export default function Settings() {
     if (!user) return router.replace("/login");
     setEmail(user.email || "");
     setRole(r || "barista");
+    if (r === "cafe_owner_manager") {
+      setBillingError("");
+      try {
+        setBilling(await authenticatedApi<BillingStatus>("/billing-status", {}, "GET"));
+      } catch (error) {
+        setBillingError(error instanceof Error ? error.message : "Subscription status is unavailable.");
+      }
+    }
+  }
+
+  async function manageSubscription() {
+    if (!billing?.connectedToBilling) return router.push("/subscription");
+    setOpeningBilling(true);
+    try {
+      const result = await authenticatedApi<{ url: string }>("/create-portal-session", { channel: "mobile" });
+      await WebBrowser.openBrowserAsync(result.url);
+      await load();
+    } catch (error) {
+      Alert.alert("Could not open subscription management", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setOpeningBilling(false);
+    }
   }
   async function changePassword() {
     if (p1 !== p2) return Alert.alert("Passwords do not match");
@@ -93,12 +129,7 @@ export default function Settings() {
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
         <Card title="Account email" copy={email} />
-        {role === "cafe_owner_manager" ? (
-          <Card
-            title="Café access"
-            copy="Payments are paused. Your café has full hiring access and will not be charged."
-          />
-        ) : null}
+        {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling} onPress={manageSubscription} /> : null}
         <Card
           title="Notifications"
           copy="Message and match alerts are connected to your BaristaMatch account."
@@ -191,6 +222,25 @@ export default function Settings() {
     </SafeAreaView>
   );
 }
+
+function SubscriptionCard({ billing, error, opening, onPress }: { billing: BillingStatus | null; error: string; opening: boolean; onPress: () => void }) {
+  const paying = billing?.plan === "pro" && billing.connectedToBilling;
+  const date = billing?.currentPeriodEnd ? new Date(billing.currentPeriodEnd).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "";
+  const statusLabel = String(billing?.status || "").replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase());
+  let detail = "Checking your café plan…";
+  if (error) detail = error;
+  else if (paying && billing?.cancelAtPeriodEnd && date) detail = `Canceled · Pro access ends ${date}`;
+  else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
+  else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
+  else if (paying) detail = "Your Pro subscription is connected to Stripe.";
+  else if (billing) detail = "Your first job and first hire are included. No upcoming charge.";
+  const action = billing?.connectedToBilling ? "Manage subscription" : "View Free and Pro plans";
+  return <View style={s.card}>
+    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
+    <Pressable disabled={!billing || opening} onPress={onPress} style={[s.secondary, (!billing || opening) && s.disabled]}><Text style={s.secondaryText}>{opening ? "Opening…" : action}</Text></Pressable>
+  </View>;
+}
+
 function Card({
   title,
   copy,
@@ -295,4 +345,11 @@ const s = StyleSheet.create({
   },
   advanced: { padding: 16, alignItems: "center" },
   advancedText: { color: "#8b7769", fontWeight: "700", fontSize: 13 },
+  subscriptionHead: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  subscriptionIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "#f3e6dc", alignItems: "center", justifyContent: "center" },
+  subscriptionIconText: { fontSize: 20, fontWeight: "900", color: "#321708" },
+  subscriptionCopy: { flex: 1 },
+  subscriptionPlan: { marginTop: 6, fontSize: 13, lineHeight: 19, fontWeight: "900", color: "#321708" },
+  errorText: { color: "#a32727" },
+  disabled: { opacity: 0.55 },
 });

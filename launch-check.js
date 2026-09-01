@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
+const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','pricing.html','cafe-trial.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
 for(const file of requiredHtml){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
   const src=fs.readFileSync(file,'utf8');
@@ -23,7 +23,11 @@ const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 if(!stripeCheckout.includes('const BILLING_PAUSED = true')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing pause is not enforced');
-if(dashboard.includes("views.cafe_owner_manager.menu.push('Subscription')")) throw new Error('Website exposes billing while payments are paused');
+if(dashboard.includes("views.cafe_owner_manager.menu.push('Subscription')")) throw new Error('Subscription management must live inside café Account Settings');
+for(const token of ["currentRole==='cafe_owner_manager'?`<article",'<h3>Subscription</h3>','Next billing date:','Manage subscription',"name==='Account Settings'&&role==='cafe_owner_manager'"]){
+  if(!dashboard.includes(token))throw new Error(`Website café-only subscription management is missing ${token}`);
+}
+if((dashboard.match(/id="billing-summary"/g)||[]).length!==1)throw new Error('Website has duplicate subscription-management surfaces');
 const pauseMigration='supabase/migrations/20260831140330_pause_billing_and_restore_push_service_access.sql';
 if(!fs.existsSync(pauseMigration)) throw new Error('Missing billing pause and push access migration');
 const pauseSql=fs.readFileSync(pauseMigration,'utf8');
@@ -56,6 +60,7 @@ for(const token of ['barista-image-field','preferred_city','preferred_state','pr
 if(dashboard.includes(".wow-stat:nth-child(4) .profile-info{font-size:12px;color:#a95820;vertical-align:1px}.wow-stat-label{color:#dbcbbc}")) throw new Error('Dashboard has global wow-stat label color bleed');
 const homepage=fs.readFileSync('index.html','utf8');
 if(!homepage.includes('href="/support.html">Help Center</a>')||!homepage.includes('href="/support.html">Contact Us</a>')) throw new Error('Homepage support links are not routed to support page');
+if(!homepage.includes('href="/pricing.html">Pricing</a>')||!homepage.includes('Your first job and first hire are free.'))throw new Error('Homepage café pricing entry points are out of sync');
 
 // Mobile interaction regressions.
 const mobileHome=fs.readFileSync('mobile/app/home.tsx','utf8');
@@ -78,7 +83,8 @@ if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error
 if(mobileLogin.includes('<ScrollView')) throw new Error('Mobile login must fit without scrolling');
 if(!mobileLogin.includes('height < 900')||!mobileLogin.includes('height < 720')||!mobileLogin.includes('styles.sheetShort')) throw new Error('Mobile login responsive layouts do not cover all supported iPhone heights');
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
-if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('Payments are paused')) throw new Error('Mobile payment pause is incomplete');
+if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
+for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
 if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('Delete account')) throw new Error('Mobile direct account deletion is missing');
 const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
 if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');
@@ -95,5 +101,26 @@ const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
 if(!mobileJobs.includes("pathname:'/post-job'")||!mobileJobs.includes("update({active:false})"))throw new Error('Mobile job management is incomplete');
 const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
 if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API cannot target a Stripe-enabled preview deployment');
+
+// Café pricing synchronization. Historical SQL migrations may retain old trial
+// language, but every current customer-facing surface must use this offer.
+const pricingFiles=['pricing.html','cafe-trial.html','mobile/app/subscription.tsx','mobile/app/cafe-trial.tsx','PRICING-DECISION.md'];
+const pricingTokens=['$9.99','3 active jobs','first job','first hire','founder price'];
+for(const file of pricingFiles){
+  const source=fs.readFileSync(file,'utf8').toLowerCase();
+  for(const token of pricingTokens)if(!source.includes(token.toLowerCase()))throw new Error(`${file}: pricing is missing ${token}`);
+  for(const stale of ['1 month free','30-day free','30 days'])if(source.includes(stale))throw new Error(`${file}: stale trial copy remains (${stale})`);
+}
+for(const file of ['mobile/app/home.tsx','mobile/app/settings.tsx']){
+  const source=fs.readFileSync(file,'utf8').toLowerCase();
+  if(!source.includes('first job')||!source.includes('first hire'))throw new Error(`${file}: Free plan summary is out of sync`);
+}
+if(!stripeCheckout.includes('monthlyPriceCents: 999')||!stripeCheckout.includes('maxActiveJobs: 3'))throw new Error('Billing status metadata is out of sync with the Founder plan');
+if(!stripeCheckout.includes('currentPeriodEnd: subscription?.current_period_end')||!stripeCheckout.includes('connectedToBilling'))throw new Error('Billing status omits paying-café renewal details');
+if(/async function createPortal[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeCheckout)||/async function stripeWebhook[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeWebhook))throw new Error('Billing pause blocks existing customers from managing or canceling subscriptions');
+if(!fs.readFileSync('pricing.html','utf8').includes('Founder checkout is not active yet'))throw new Error('Public pricing preview can start a charge while billing is paused');
+if(ownerDashboardScript.includes("metric('Free trials'")||!ownerDashboardScript.includes('Free and Pro plan displays are synchronized'))throw new Error('Private subscription analytics uses stale launch-plan labels');
+const mobileSubscription=fs.readFileSync('mobile/app/subscription.tsx','utf8');
+if(!mobileSubscription.includes("role !== 'cafe_owner_manager'")||!mobileSubscription.includes("router.replace('/home')"))throw new Error('Mobile subscription route is not protected from barista accounts');
 
 console.log('BaristaMatch launch readiness static checks passed');

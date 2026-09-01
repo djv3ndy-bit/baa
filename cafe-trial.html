@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Open your complimentary BaristaMatch café access.">
+  <meta name="description" content="Start your first BaristaMatch café hire free.">
   <link rel="icon" href="/assets/favicon-32-v2.png">
   <title>Café access — BaristaMatch</title>
   <style>
@@ -15,21 +15,21 @@
     <div class="brand"><img src="/assets/favicon-transparent-v2.png" alt=""><span>Barista<b>Match</b></span></div>
     <section class="plan">
       <div class="glow"></div>
-      <div class="head"><div class="crown">✓</div><div><div class="kicker">CAFÉ ACCESS</div><h1>Keep hiring<br>with confidence.</h1></div></div>
-      <div class="free">Payments are paused</div>
-      <div class="price">Your café has <span>full access</span></div>
-      <p class="copy">Discover local baristas, publish jobs, create mutual matches, and message your connections. You will not be charged.</p>
-      <div class="benefits"><span class="benefit">No payment required</span><span class="benefit">Full hiring access</span><span class="benefit">Private messaging</span><span class="benefit">Notice before billing starts</span></div>
-      <button class="start" id="start" type="button">Open hiring workspace →</button>
+      <div class="head"><div class="crown">1</div><div><div class="kicker">FREE CAFÉ PLAN</div><h1>Make your first<br>hire free.</h1></div></div>
+      <div class="free">$0 · no credit card required</div>
+      <div class="price">Your first job and first hire are <span>on us</span></div>
+      <p class="copy">Post your first role, view applicants and full profiles, message your matches, and hire your first barista.</p>
+      <div class="benefits"><span class="benefit">First job free</span><span class="benefit">Full applicant profiles</span><span class="benefit">Private match messaging</span><span class="benefit">First hire included</span></div>
+      <button class="start" id="start" type="button">Start hiring free →</button>
     </section>
-    <p class="note">Stripe checkout is disabled until further notice.</p>
+    <p class="note">Upgrade later to Pro Founder Price for $9.99/month and up to 3 active jobs.</p>
     <p class="status" id="status" role="status"></p>
   </main>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
   <script>
     let client;
     async function boot(){try{const response=await fetch('/api/config',{cache:'no-store'}),config=await response.json();if(!response.ok)throw new Error('Account service unavailable.');client=supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);const {data:{session}}=await client.auth.getSession();if(!session)return location.replace('/login.html');const {data:profile,error}=await client.from('profiles').select('role').eq('id',session.user.id).maybeSingle();if(error)throw error;if(profile?.role!=='cafe_owner_manager')location.replace('/dashboard.html')}catch(error){document.getElementById('status').textContent=error.message||'We could not open your café access.'}}
-    document.getElementById('start').onclick=async event=>{const button=event.currentTarget,status=document.getElementById('status');button.disabled=true;button.textContent='Opening your workspace…';status.textContent='';try{const {error}=await client.rpc('ensure_cafe_subscription');if(error)throw error;location.replace('/dashboard.html')}catch(error){status.textContent=error.message||'We could not open your hiring workspace. Please try again.';button.disabled=false;button.textContent='Open hiring workspace →'}};
+    document.getElementById('start').onclick=async event=>{const button=event.currentTarget,status=document.getElementById('status');button.disabled=true;button.textContent='Opening your workspace…';status.textContent='';try{const {error}=await client.rpc('ensure_cafe_subscription');if(error)throw error;location.replace('/dashboard.html')}catch(error){status.textContent=error.message||'We could not open your hiring workspace. Please try again.';button.disabled=false;button.textContent='Start hiring free →'}};
     boot();
   </script>
 </body>
