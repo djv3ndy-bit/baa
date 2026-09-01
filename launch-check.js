@@ -24,6 +24,11 @@ if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== \"true\"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
 if(stripeWebhook.includes('return res.status(200).json({ received: true, billingPaused: true })')) throw new Error('Stripe webhook ingestion must remain active while checkout is paused');
+const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
+const subscriptionSyncEnd=stripeWebhook.indexOf('async function recordInvoicePayment');
+if(subscriptionSyncStart<0||subscriptionSyncEnd<=subscriptionSyncStart) throw new Error('Stripe subscription sync structure is missing');
+const subscriptionSyncSource=stripeWebhook.slice(subscriptionSyncStart,subscriptionSyncEnd);
+if(subscriptionSyncSource.includes('complimentary_access')) throw new Error('Stripe webhook sync must not mutate platform access grants');
 if(dashboard.includes("views.cafe_owner_manager.menu.push('Subscription')")) throw new Error('Website exposes billing while payments are paused');
 const pauseMigration='supabase/migrations/20260831140330_pause_billing_and_restore_push_service_access.sql';
 if(!fs.existsSync(pauseMigration)) throw new Error('Missing billing pause and push access migration');
