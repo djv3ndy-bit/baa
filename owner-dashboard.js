@@ -16,6 +16,7 @@ const pages = {
   subscriptions: { title: 'Subscriptions & Revenue', heading: 'Subscriptions and revenue', description: 'Monitor trials, partner access, paid accounts, and confirmed collections.' },
   marketplace: { title: 'Marketplace Health', heading: 'Marketplace and engagement', description: 'Track jobs, interest, matches, messaging, and marketplace conversion.' },
   audience: { title: 'Audience Insights', heading: 'Audience and member insights', description: 'Review member mix, devices, and optional private demographic totals.' },
+  reliability: { title: 'Reliability Office', heading: 'Engineering and reliability', description: 'Monitor the agent, review incidents, and open owner-approved response tools.' },
 };
 
 const navigation = [
@@ -24,6 +25,12 @@ const navigation = [
   ['subscriptions', '/owner-subscriptions', '$', 'Subscriptions'],
   ['marketplace', '/owner-marketplace', '⇄', 'Marketplace'],
   ['audience', '/owner-audience', '◉', 'Audience'],
+];
+
+const operationsNavigation = [
+  ['reliability', '/owner-reliability', '◆', 'Reliability office'],
+  ['support', '/support-admin', '?', 'Support desk'],
+  ['platform', '/dashboard', '☕', 'Platform'],
 ];
 
 function mountShell(page) {
@@ -35,7 +42,7 @@ function mountShell(page) {
       <div class="nav-label">Analytics</div>
       <nav class="owner-nav">${navigation.map(([key, href, icon, label]) => `<a class="${page === key ? 'active' : ''}" href="${href}" ${page === key ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join('')}</nav>
       <div class="nav-label">Operations</div>
-      <nav class="owner-nav"><a href="/support-admin"><span class="nav-icon" aria-hidden="true">?</span>Support desk</a><a href="/dashboard"><span class="nav-icon" aria-hidden="true">☕</span>Platform</a></nav>
+      <nav class="owner-nav">${operationsNavigation.map(([key, href, icon, label]) => `<a class="${page === key ? 'active' : ''}" href="${href}" ${page === key ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join('')}</nav>
     </aside>
     <button class="mobile-backdrop" id="mobile-backdrop" aria-label="Close menu"></button>
     <main class="owner-main">
@@ -140,7 +147,7 @@ renderers.overview = (data) => {
   ${sectionHead('Platform pulse', 'Highest-signal measures across the business')}
   <section class="metrics">${metric('Total members', m.signups, `${m.signups_7d || 0} joined this week`, 'orange')}${metric('Website · 7 days', m.website_7d, `${growth(m.website_7d || 0, m.website_prev_7d || 0)} versus prior week`, 'blue')}${metric('Mutual matches', m.matches, `${matchRate}% interest-to-match`, 'purple')}${metric('Monthly recurring revenue', money(sm.mrr_cents), 'Projected from active paid plans', 'green')}</section>
   ${sectionHead('Open a focused report', 'Each section has its own page, charts, and supporting detail')}
-  <section class="quick-grid">${quickCard('/owner-growth', '↗', 'Growth & marketing', 'Traffic, signup conversion, channels, pages, and acquisition trends.', 'View growth')}${quickCard('/owner-subscriptions', '$', 'Subscriptions', 'Trials, paid cafés, partner access, revenue, and account controls.', 'View subscriptions')}${quickCard('/owner-marketplace', '⇄', 'Marketplace', 'Jobs, applications, profile interest, matches, and conversations.', 'View marketplace')}${quickCard('/owner-audience', '◉', 'Audience', 'Member roles, devices, demographic totals, and data completion.', 'View audience')}</section>
+  <section class="quick-grid">${quickCard('/owner-growth', '↗', 'Growth & marketing', 'Traffic, signup conversion, channels, pages, and acquisition trends.', 'View growth')}${quickCard('/owner-subscriptions', '$', 'Subscriptions', 'Trials, paid cafés, partner access, revenue, and account controls.', 'View subscriptions')}${quickCard('/owner-marketplace', '⇄', 'Marketplace', 'Jobs, applications, profile interest, matches, and conversations.', 'View marketplace')}${quickCard('/owner-audience', '◉', 'Audience', 'Member roles, devices, demographic totals, and data completion.', 'View audience')}${quickCard('/owner-reliability', '◆', 'Reliability office', 'Live website checks, agent runs, alert readiness, and safe response links.', 'Manage reliability')}</section>
   ${sectionHead('Weekly momentum', 'A shared view of acquisition and marketplace outcomes')}
   ${lineChart('Platform momentum', data.weekly, [{ key: 'website_views', label: 'Website views', color: '#e86b24' }, { key: 'signups', label: 'Signups', color: '#2d8b57' }, { key: 'matches', label: 'Matches', color: '#7657c8' }])}
   ${sectionHead('Action queue')}
@@ -198,6 +205,80 @@ renderers.audience = (data) => {
   <article class="privacy-note"><strong>Privacy and appropriate use:</strong> Age range and gender are optional, stored separately from public profiles, and reported only as platform totals. They must not be used to screen, rank, or make employment decisions about an individual member.</article>`;
 };
 
+function relativeTime(value) {
+  const timestamp = Date.parse(value || '');
+  if (!Number.isFinite(timestamp)) return 'Unavailable';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
+function timeLabel(value) {
+  const timestamp = Date.parse(value || '');
+  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unavailable';
+}
+
+function durationLabel(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value < 60) return `${Math.round(value)}s`;
+  return `${Math.floor(value / 60)}m ${Math.round(value % 60)}s`;
+}
+
+function officePill(status, label = '') {
+  const allowed = ['healthy', 'running', 'review', 'down', 'inactive', 'unavailable', 'overdue'];
+  const tone = allowed.includes(status) ? status : 'unavailable';
+  const shown = label || ({ healthy: 'Healthy', running: 'Running', review: 'Review', down: 'Down', inactive: 'Inactive', unavailable: 'Unavailable', overdue: 'Overdue' }[tone]);
+  return `<span class="office-pill ${tone}">${esc(shown)}</span>`;
+}
+
+function integrationCard(item) {
+  const icons = { website: '◎', public_config: '{}', github_actions: '⌘', private_providers: '◇', owner_email: '✉', deployment_verification: '✓' };
+  const detail = item.latency_ms != null ? `${item.detail} · ${fmt.format(item.latency_ms)} ms` : item.detail;
+  return `<article class="card integration-card"><div class="integration-top"><div class="integration-name"><span class="integration-icon" aria-hidden="true">${esc(icons[item.id] || '•')}</span>${esc(item.label)}</div>${officePill(item.status)}</div><p>${esc(detail)}</p><small>Read-only status · no provider write access</small></article>`;
+}
+
+function officeAction(href, icon, title, description, action) {
+  return `<a class="card office-action" href="${href}" target="_blank" rel="noopener noreferrer"><span class="office-action-icon" aria-hidden="true">${icon}</span><h4>${esc(title)}</h4><p>${esc(description)}</p><b>${esc(action)} →</b></a>`;
+}
+
+function runOutcome(run) {
+  if (run.status !== 'completed') return officePill('running', 'Running');
+  if (run.conclusion === 'success') return officePill('healthy', 'P3 · Healthy');
+  if (run.conclusion === 'cancelled') return officePill('overdue', 'Cancelled');
+  return officePill('review', 'P0–P2 · Review');
+}
+
+renderers.reliability = (data) => {
+  const status = data.status || { status: 'data_unavailable', severity: 'Unavailable', label: 'Reliability data unavailable' };
+  const statusClass = ['healthy', 'running', 'review_required', 'overdue', 'data_unavailable'].includes(status.status) ? status.status : 'data_unavailable';
+  const latest = data.latest_run || {};
+  const metrics = data.metrics || {};
+  const integrations = Array.isArray(data.integrations) ? data.integrations : [];
+  const runs = Array.isArray(data.runs) ? data.runs : [];
+  const policy = data.policy || {};
+  const successRate = metrics.success_rate == null ? '—' : `${metrics.success_rate}%`;
+  const latestRunLabel = latest.number ? `Run #${fmt.format(latest.number)}` : 'Unavailable';
+  const latestRunHref = latest.url || 'https://github.com/djv3ndy-bit/baa/actions/workflows/engineering-reliability-monitor.yml';
+  return `<section class="reliability-hero"><article class="card agent-status ${statusClass}"><div class="status-kicker"><span class="status-light"></span>Engineering & Reliability Agent</div><h3>${esc(status.severity)} · ${esc(status.label)}</h3><p>The office combines the hourly GitHub monitor with fresh website and public API checks. Failed workflows are marked for review without guessing an unsupported exact severity.</p><div class="status-meta"><span>${esc(latestRunLabel)}</span><span>${esc(latest.event || 'No recent trigger')}</span><span>Model-free monitoring</span><span>No production writes</span></div></article><article class="card next-check"><div><small>Next scheduled check</small><strong>${esc(timeLabel(data.next_scheduled_check_at))}</strong><p>Runs hourly at minute 17 UTC and after every approved push to main.</p></div><a class="run-link" href="${latestRunHref}" target="_blank" rel="noopener noreferrer">Open latest run →</a></article></section>
+  <section class="office-metrics"><article class="card office-metric"><span>Latest run</span><strong>${esc(latestRunLabel)}</strong><small>${esc(relativeTime(latest.started_at))}</small></article><article class="card office-metric"><span>Recent success rate</span><strong>${esc(successRate)}</strong><small>${fmt.format(metrics.successful_runs || 0)} of ${fmt.format(metrics.runs_reviewed || 0)} completed runs</small></article><article class="card office-metric"><span>Consecutive failures</span><strong>${fmt.format(metrics.consecutive_failures || 0)}</strong><small>Completed runs requiring review</small></article><article class="card office-metric"><span>Incident email</span><strong>P0 / P1</strong><small>Owner-approved alert channel only</small></article></section>
+  ${sectionHead('System checks', 'Live probes and the latest completed workflow steps')}
+  <section class="integration-grid">${integrations.map(integrationCard).join('')}</section>
+  ${sectionHead('Owner controls', 'Every action opens its official review surface; this office has no deployment or provider-write credential')}
+  <section class="office-actions">${officeAction('https://github.com/djv3ndy-bit/baa/actions/workflows/engineering-reliability-monitor.yml', '▶', 'Run or inspect monitor', 'Start a manual read-only check or review scheduled runs in GitHub Actions.', 'Open workflow')}${officeAction(latestRunHref, '⌕', 'Investigate latest run', 'Review the job summary, sanitized evidence artifact, and failed steps.', 'Open run')}${officeAction('https://github.com/djv3ndy-bit/baa/pulls', '↗', 'Review prepared fixes', 'Approve or reject agent-created pull requests before anything reaches main.', 'Open pull requests')}${officeAction('https://github.com/djv3ndy-bit/baa/settings/secrets/actions', '⚙', 'Agent configuration', 'Manage repository secrets and approval variables. Credential changes remain owner-only.', 'Open settings')}${officeAction('https://vercel.com/dashboard', '▲', 'Vercel deployments', 'Inspect production and preview deployments. Promotion remains owner-only.', 'Open Vercel')}${officeAction('https://supabase.com/dashboard/projects', '⚡', 'Supabase status', 'Inspect provider logs with your account. Database and security changes stay blocked.', 'Open Supabase')}${officeAction('https://resend.com/emails', '✉', 'Alert delivery', 'Review operational email delivery without exposing the API credential.', 'Open Resend')}${officeAction('https://platform.openai.com/settings/organization/usage', 'AI', 'OpenAI usage', 'Review optional analysis spending. Recurring health monitoring remains model-free.', 'Open usage')}</section>
+  ${sectionHead('Recent monitor runs', 'Workflow results on main; exact P0/P1/P2 detail stays in the sanitized run artifact')}
+  <article class="card run-table">${runs.length ? `<table><thead><tr><th>Run</th><th>Status</th><th>Trigger</th><th>Commit</th><th>Started</th><th>Duration</th></tr></thead><tbody>${runs.map((run) => `<tr><td><a class="run-link run-title" href="${run.url}" target="_blank" rel="noopener noreferrer">#${fmt.format(run.number || 0)} · ${esc(run.title)}</a></td><td>${runOutcome(run)}</td><td>${esc(run.event || 'Unknown')}</td><td><span class="sha">${esc(run.sha || '—')}</span></td><td>${esc(timeLabel(run.started_at))}</td><td>${esc(durationLabel(run.duration_seconds))}</td></tr>`).join('')}</tbody></table>` : '<div class="office-empty">No workflow history is available.</div>'}</article>
+  ${sectionHead('Incident response path', 'The agent prepares evidence and reviewable work; the owner controls merge and production')}
+  <section class="response-flow"><article class="card flow-step"><span class="flow-number">1</span><h4>Detect</h4><p>Check website, APIs, deployments, GitHub, and private providers.</p></article><article class="card flow-step"><span class="flow-number">2</span><h4>Classify</h4><p>Apply deterministic P0, P1, P2, or P3 incident rules.</p></article><article class="card flow-step"><span class="flow-number">3</span><h4>Investigate</h4><p>Correlate failures with endpoints, deployments, and recent changes.</p></article><article class="card flow-step"><span class="flow-number">4</span><h4>Prepare</h4><p>Create a separate incident branch, minimal fix, and test evidence.</p></article><article class="card flow-step"><span class="flow-number">5</span><h4>Review</h4><p>Open a pull request. The owner approves merge and deployment.</p></article><article class="card flow-step"><span class="flow-number">6</span><h4>Verify</h4><p>Confirm the exact approved revision is healthy after deployment.</p></article></section>
+  ${sectionHead('Safety controls')}
+  <section class="guardrail-grid"><article class="card guardrail"><h3>Owner approval required</h3><ul><li>Merge a prepared pull request</li><li>Deploy or promote a production revision</li><li>Change provider credentials or access</li><li>Approve a high-risk remediation</li></ul></article><article class="card guardrail prohibited"><h3>Agent never allowed</h3><ul><li>Push directly to main</li><li>Delete production data or run destructive SQL</li><li>Modify Supabase RLS, Auth, or security policy</li><li>Expose secrets in the office, logs, or artifacts</li></ul></article></section>
+  <article class="office-note"><strong>Operating policy:</strong> ${esc(policy.cadence || 'Hourly monitoring')} · ${esc(policy.alert_rule || 'P0/P1 owner alerts')} · sanitized artifacts retained for ${fmt.format(policy.artifact_retention_days || 14)} days · recurring checks use no AI model and hold no production-write capability.</article>`;
+};
+
 async function updatePartnerAccess(button) {
   const enabled = button.dataset.enabled === 'true';
   const next = !enabled;
@@ -224,11 +305,12 @@ async function load() {
   view.className = 'loading';
   view.textContent = 'Refreshing private analytics…';
   try {
-    const response = await fetch('/api/analytics', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' });
+    const page = document.body.dataset.page || 'overview';
+    const endpoint = page === 'reliability' ? '/api/reliability' : '/api/analytics';
+    const response = await fetch(endpoint, { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Could not load analytics');
     dataCache = data;
-    const page = document.body.dataset.page || 'overview';
     view.className = '';
     view.innerHTML = (renderers[page] || renderers.overview)(data);
     document.getElementById('fresh').textContent = `Updated ${new Date(data.generated_at).toLocaleString()}`;
