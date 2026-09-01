@@ -21,6 +21,7 @@ export async function stripeClient() {
         price.id !== priceId ||
         price.livemode ||
         price.metadata?.application !== "baristamatch" ||
+        price.metadata?.plan !== "cafe_monthly" ||
         price.metadata?.stripe_account_id !== expectedAccountId
       ) {
         throw new Error("Stripe restricted key does not match the configured sandbox plan and account.");
