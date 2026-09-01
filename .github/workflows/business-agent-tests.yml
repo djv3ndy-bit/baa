@@ -1,0 +1,18 @@
+name: Business Agent Tests
+on:
+  pull_request:
+    paths: ['api/_business-agents.js','tests/business-agents.test.mjs','package.json','.github/workflows/business-agent-tests.yml']
+  push:
+    branches: [main]
+    paths: ['api/_business-agents.js','tests/business-agents.test.mjs','package.json']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm test
