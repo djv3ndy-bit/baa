@@ -1,0 +1,27 @@
+{
+  "evidence": [
+    {
+      "id": "vercel-runtime-1",
+      "source": "vercel",
+      "occurred_at": "2026-08-31T12:15:00Z",
+      "summary": "Message push notification failed with a database 403",
+      "environment": "production",
+      "route": "/api/send-message",
+      "status_code": 500,
+      "commit_sha": "abcdef123456",
+      "metadata": {
+        "degraded": true,
+        "error_count": 8,
+        "duration_minutes": 4
+      }
+    }
+  ],
+  "changes": [
+    {
+      "sha": "abcdef1234567890",
+      "committed_at": "2026-08-31T11:55:00Z",
+      "title": "Update message notifications",
+      "files": ["api/send-message.js", "api/_push.js"]
+    }
+  ]
+}

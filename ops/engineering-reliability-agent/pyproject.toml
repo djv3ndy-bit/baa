@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baristamatch-engineering-reliability-agent"
+version = "0.2.0"
+description = "Safety-first incident investigation and owner-controlled response agent for BaristaMatch."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "openai-agents==0.22.0",
+]
+
+[project.scripts]
+era = "era.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+era = ["prompt.md"]

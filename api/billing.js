@@ -1,7 +1,7 @@
 import { adminRows, authenticatedCafe, json, origin, stripeClient, subscriptionFor, updateSubscription } from "./_billing.js";
 
 export const config = { api: { bodyParser: false } };
-const BILLING_PAUSED = true;
+const BILLING_PAUSED = process.env.BILLING_ENABLED !== "true";
 const BILLING_PAUSED_MESSAGE = "Billing is not active. Café accounts will not be charged during the plan preview.";
 
 async function rawBody(req) {
@@ -55,15 +55,14 @@ async function billingStatus(req, res) {
       monthlyPriceCents: 999,
       maxActiveJobs: 3
     });
-    const hasBillingCustomer = Boolean(subscription.stripe_customer_id);
     return res.status(200).json({
       status: subscription.status || "free",
       currentPeriodEnd: subscription.current_period_end,
       cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
       complimentaryAccess: Boolean(subscription.complimentary_access),
-      connectedToBilling: hasBillingCustomer,
+      connectedToBilling,
       billingPaused: false,
-      plan: hasBillingCustomer && ["active", "trialing", "past_due", "unpaid"].includes(subscription.status) ? "pro" : "free",
+      plan: paidStatus ? "pro" : "free",
       monthlyPriceCents: 999,
       maxActiveJobs: 3
     });
@@ -150,10 +149,13 @@ function periodEnd(subscription) {
 async function syncSubscription(subscription) {
   const userId = subscription.metadata?.cafe_user_id;
   if (!userId) throw new Error("Subscription is missing cafe_user_id metadata.");
+  const status = ["active", "trialing", "canceled"].includes(subscription.status)
+    ? subscription.status
+    : ["past_due", "unpaid", "incomplete"].includes(subscription.status) ? "past_due" : "expired";
   await updateSubscription(userId, {
     stripe_customer_id: String(subscription.customer),
     stripe_subscription_id: subscription.id,
-    status: subscription.status === "unpaid" ? "past_due" : subscription.status,
+    status,
     current_period_end: periodEnd(subscription),
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end)
   });
@@ -182,6 +184,27 @@ async function recordInvoicePayment(invoice, status) {
   });
 }
 
+async function recordRefund(charge) {
+  const customerId = typeof charge.customer === "string" ? charge.customer : charge.customer?.id;
+  if (!customerId) return;
+  const subscriptions = await adminRows(`cafe_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=user_id&limit=1`);
+  const userId = subscriptions[0]?.user_id;
+  if (!userId) return;
+  await adminRows("subscription_payments?on_conflict=provider_payment_id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({
+      cafe_user_id: userId,
+      provider: "stripe",
+      provider_payment_id: `refund:${charge.id}`,
+      amount_cents: charge.amount_refunded || 0,
+      currency: charge.currency || "usd",
+      status: "refunded",
+      paid_at: new Date((charge.created || Math.floor(Date.now() / 1000)) * 1000).toISOString()
+    })
+  });
+}
+
 async function stripeWebhook(req, res) {
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).send("Method not allowed"); }
   try {
@@ -192,6 +215,7 @@ async function stripeWebhook(req, res) {
     if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) await syncSubscription(event.data.object);
     if (event.type === "invoice.paid") await recordInvoicePayment(event.data.object, "succeeded");
     if (event.type === "invoice.payment_failed") await recordInvoicePayment(event.data.object, "failed");
+    if (event.type === "charge.refunded") await recordRefund(event.data.object);
     await adminRows("stripe_webhook_events", { method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ event_id: event.id, event_type: event.type }) });
     return res.status(200).json({ received: true });
   } catch (error) {

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+evals/results/*.json
+!evals/results/.gitignore
+.env
+.env.*
+!.env.example

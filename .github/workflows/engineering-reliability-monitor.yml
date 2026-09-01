@@ -1,0 +1,260 @@
+name: Engineering reliability monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  actions: read
+  contents: read
+  checks: read
+
+concurrency:
+  group: engineering-reliability-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Wait for the exact approved production revision
+        if: github.event_name == 'push'
+        id: deployment_revision
+        shell: bash
+        env:
+          VERCEL_PROJECT_ID: ${{ vars.ERA_VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ vars.ERA_VERCEL_TEAM_ID }}
+          VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
+        run: |
+          set -uo pipefail
+          mkdir -p monitoring-artifacts
+          output_path='monitoring-artifacts/deployment-verification.json'
+          configuration_failed=0
+          for variable_name in VERCEL_PROJECT_ID VERCEL_TEAM_ID VERCEL_READ_TOKEN; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              configuration_failed=1
+            fi
+          done
+
+          if [[ "$configuration_failed" -eq 1 ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingReadOnlyVercelConfiguration","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"configuration_failed"}' > "$output_path"
+            verification_exit=3
+          else
+            set +e
+            PYTHONPATH=ops/engineering-reliability-agent/src \
+              python -m era.main wait-deployment \
+              --commit "$GITHUB_SHA" \
+              --attempts 60 \
+              --delay 10 > "$output_path"
+            verification_exit=$?
+            set -e
+          fi
+
+          if [[ ! -s "$output_path" ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingDeploymentVerificationResult","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"collection_failed"}' > "$output_path"
+            verification_exit=3
+          fi
+          echo "exit_code=$verification_exit" >> "$GITHUB_OUTPUT"
+
+      - name: Collect public read-only evidence
+        id: public_monitor
+        shell: bash
+        env:
+          ERA_ALLOWED_HEALTH_HOSTS: www.baristajobmatch.com
+          GITHUB_REPOSITORY: djv3ndy-bit/baa
+          GITHUB_READ_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          mkdir -p monitoring-artifacts
+          output_path='monitoring-artifacts/public-result.json'
+          set +e
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.main monitor \
+            --environment production \
+            --provider health \
+            --health-url https://www.baristajobmatch.com/ \
+            --health-url https://www.baristajobmatch.com/api/public-config \
+            --provider github \
+            --lookback 1h \
+            --limit 10 > "$output_path"
+          monitor_exit=$?
+          set -e
+
+          if [[ ! -s "$output_path" ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingMonitorResult","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"collection_failed"}' > "$output_path"
+            monitor_exit=3
+          fi
+
+          echo "exit_code=$monitor_exit" >> "$GITHUB_OUTPUT"
+          OUTPUT_PATH="$output_path" python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          with open(os.environ["OUTPUT_PATH"], encoding="utf-8") as handle:
+              result = json.load(handle)
+          severity = result.get("investigation", {}).get("decision", {}).get("severity", "unavailable")
+          failures = len(result.get("collection", {}).get("collection_failures", []))
+          print("## Engineering reliability monitor: public checks")
+          print(f"- Status: {result.get('status', 'unknown')}")
+          print(f"- Severity: {severity}")
+          print(f"- Collection failures: {failures}")
+          print("- Model used: false")
+          print("- Production writes enabled: false")
+          PY
+
+      - name: Collect private-provider read-only evidence
+        id: private_monitor
+        if: vars.ERA_PRIVATE_MONITORING_ENABLED == 'true'
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: djv3ndy-bit/baa
+          GITHUB_READ_TOKEN: ${{ github.token }}
+          VERCEL_PROJECT_ID: ${{ vars.ERA_VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ vars.ERA_VERCEL_TEAM_ID }}
+          VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.ERA_SUPABASE_PROJECT_REF }}
+          SUPABASE_READ_ONLY_TOKEN: ${{ secrets.ERA_SUPABASE_READ_ONLY_TOKEN }}
+        run: |
+          set -uo pipefail
+          mkdir -p monitoring-artifacts
+          output_path='monitoring-artifacts/private-provider-result.json'
+          configuration_failed=0
+          for variable_name in VERCEL_PROJECT_ID VERCEL_TEAM_ID VERCEL_READ_TOKEN SUPABASE_PROJECT_REF SUPABASE_READ_ONLY_TOKEN; do
+            if [[ -z "${!variable_name:-}" ]]; then
+              configuration_failed=1
+            fi
+          done
+
+          if [[ "$configuration_failed" -eq 1 ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingReadOnlyConfiguration","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"configuration_failed"}' > "$output_path"
+            monitor_exit=3
+          else
+            set +e
+            PYTHONPATH=ops/engineering-reliability-agent/src \
+              python -m era.main monitor \
+              --environment production \
+              --provider github \
+              --provider vercel \
+              --provider supabase \
+              --supabase-service api \
+              --supabase-service postgres \
+              --supabase-service auth \
+              --supabase-service storage \
+              --supabase-service realtime \
+              --supabase-service edge-function \
+              --lookback 1h \
+              --limit 10 > "$output_path"
+            monitor_exit=$?
+            set -e
+          fi
+
+          if [[ ! -s "$output_path" ]]; then
+            printf '%s\n' '{"alert_required":true,"error_type":"MissingMonitorResult","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"collection_failed"}' > "$output_path"
+            monitor_exit=3
+          fi
+
+          echo "exit_code=$monitor_exit" >> "$GITHUB_OUTPUT"
+          OUTPUT_PATH="$output_path" python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          with open(os.environ["OUTPUT_PATH"], encoding="utf-8") as handle:
+              result = json.load(handle)
+          severity = result.get("investigation", {}).get("decision", {}).get("severity", "unavailable")
+          failures = len(result.get("collection", {}).get("collection_failures", []))
+          print("## Engineering reliability monitor: private providers")
+          print(f"- Status: {result.get('status', 'unknown')}")
+          print(f"- Severity: {severity}")
+          print(f"- Collection failures: {failures}")
+          print("- Model used: false")
+          print("- Production writes enabled: false")
+          PY
+
+      - name: Prepare the sanitized incident response package
+        if: always()
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          response_inputs=(--input monitoring-artifacts/public-result.json)
+          if [[ -s monitoring-artifacts/private-provider-result.json ]]; then
+            response_inputs+=(--input monitoring-artifacts/private-provider-result.json)
+          fi
+          if [[ -s monitoring-artifacts/deployment-verification.json ]]; then
+            response_inputs+=(--input monitoring-artifacts/deployment-verification.json)
+          fi
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.main prepare-response "${response_inputs[@]}" \
+            > monitoring-artifacts/response-package.json
+
+      - name: Send the owner-approved P0/P1 email alert
+        if: always() && vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED == 'true'
+        id: owner_alert
+        shell: bash
+        env:
+          ERA_P0_P1_EMAIL_ALERTS_APPROVED: ${{ vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED }}
+          ERA_ALERT_EMAIL: ${{ secrets.ERA_ALERT_EMAIL }}
+          ERA_RESEND_API_KEY: ${{ secrets.ERA_RESEND_API_KEY }}
+        run: |
+          set +e
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.main notify \
+            --input monitoring-artifacts/response-package.json \
+            > monitoring-artifacts/alert-delivery.json
+          alert_exit=$?
+          set -e
+
+          ALERT_PATH=monitoring-artifacts/alert-delivery.json python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          with open(os.environ["ALERT_PATH"], encoding="utf-8") as handle:
+              result = json.load(handle)
+          print("## Owner email alert")
+          print(f"- Status: {result.get('status', 'unknown')}")
+          print(f"- Attempted: {str(result.get('attempted', False)).lower()}")
+          print(f"- Delivered: {str(result.get('delivered', False)).lower()}")
+          print("- Recipient and credentials: never written to logs or artifacts")
+          PY
+          exit "$alert_exit"
+
+      - name: Preserve sanitized incident artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: engineering-reliability-result-${{ github.run_id }}
+          path: monitoring-artifacts/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Raise the review-only alert
+        if: always()
+        shell: bash
+        run: |
+          if [[ '${{ github.event_name }}' == 'push' && '${{ steps.deployment_revision.outputs.exit_code }}' != '0' ]]; then
+            exit 1
+          fi
+          if [[ '${{ steps.public_monitor.outputs.exit_code }}' != '0' ]]; then
+            exit 1
+          fi
+          if [[ '${{ vars.ERA_PRIVATE_MONITORING_ENABLED }}' == 'true' && '${{ steps.private_monitor.outputs.exit_code }}' != '0' ]]; then
+            exit 1
+          fi

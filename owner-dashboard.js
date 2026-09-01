@@ -16,6 +16,7 @@ const pages = {
   subscriptions: { title: 'Subscriptions & Revenue', heading: 'Subscriptions and revenue', description: 'Monitor Free and Pro café accounts, billing readiness, and confirmed collections.' },
   marketplace: { title: 'Marketplace Health', heading: 'Marketplace and engagement', description: 'Track jobs, interest, matches, messaging, and marketplace conversion.' },
   audience: { title: 'Audience Insights', heading: 'Audience and member insights', description: 'Review member mix, devices, and optional private demographic totals.' },
+  accounts: { title: 'Member Accounts', heading: 'Barista and café accounts', description: 'Review account creation dates, city or ZIP, and complimentary café access.' },
 };
 
 const navigation = [
@@ -24,6 +25,7 @@ const navigation = [
   ['subscriptions', '/owner-subscriptions', '$', 'Subscriptions'],
   ['marketplace', '/owner-marketplace', '⇄', 'Marketplace'],
   ['audience', '/owner-audience', '◉', 'Audience'],
+  ['accounts', '/owner-accounts', '☷', 'Accounts'],
 ];
 
 function mountShell(page) {
@@ -34,8 +36,6 @@ function mountShell(page) {
       <a class="owner-brand" href="/owner-dashboard"><img src="/assets/favicon-32-v2.png" alt=""><span>BaristaMatch</span></a>
       <div class="nav-label">Analytics</div>
       <nav class="owner-nav">${navigation.map(([key, href, icon, label]) => `<a class="${page === key ? 'active' : ''}" href="${href}" ${page === key ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span>${label}</a>`).join('')}</nav>
-      <div class="nav-label">Operations</div>
-      <nav class="owner-nav"><a href="/support-admin"><span class="nav-icon" aria-hidden="true">?</span>Support desk</a><a href="/dashboard"><span class="nav-icon" aria-hidden="true">☕</span>Platform</a></nav>
     </aside>
     <button class="mobile-backdrop" id="mobile-backdrop" aria-label="Close menu"></button>
     <main class="owner-main">
@@ -48,8 +48,15 @@ function mountShell(page) {
   document.getElementById('refresh').onclick = () => load();
   document.getElementById('logout').onclick = logout;
   document.getElementById('view').onclick = (event) => {
-    const button = event.target.closest('[data-partner-id]');
-    if (button) updatePartnerAccess(button);
+    const button = event.target.closest('[data-subscription-account]');
+    if (button) updateSubscriptionAccess(button);
+  };
+  document.getElementById('view').oninput = (event) => {
+    if (!event.target.matches('[data-account-search]')) return;
+    const query = event.target.value.trim().toLowerCase();
+    document.querySelectorAll('[data-account-row]').forEach((row) => {
+      row.hidden = Boolean(query && !row.dataset.search.includes(query));
+    });
   };
 }
 
@@ -128,7 +135,29 @@ function statusRows(accounts) {
 }
 
 function subscriptionAccounts(rows) {
-  return `<article class="card account-table"><table><thead><tr><th>Café</th><th>Location</th><th>Plan</th><th>Billing status</th><th>Monthly value</th><th>Current access</th></tr></thead><tbody>${rows.length ? rows.map((row) => { const paid=Number(row.monthly_cents||0)>0&&row.connected_to_billing,statusClass=String(row.status||'').replace(/[^a-z_]/gi,'');return `<tr><td><strong>${esc(row.name)}</strong><span class="partner-badge">${paid?'Pro':'Free'} café</span></td><td>${esc(row.location)}</td><td><strong>${paid?'Pro · $9.99':'Free · $0'}</strong></td><td><span class="status-pill ${statusClass}">${esc(paid?row.status:'preview')}</span></td><td><strong>${money(paid?row.monthly_cents:0)}</strong></td><td><span class="partner-badge">${paid?'Subscription access':'Plan preview access'}</span></td></tr>`; }).join('') : '<tr><td colspan="6">No café plan accounts yet.</td></tr>'}</tbody></table></article>`;
+  return `<article class="card account-table"><table><thead><tr><th>Café</th><th>Location</th><th>Plan</th><th>Billing status</th><th>Monthly value</th><th>Current access</th></tr></thead><tbody>${rows.length ? rows.map((row) => { const paid = Number(row.monthly_cents || 0) > 0 && row.connected_to_billing, paused = Boolean(row.owner_paused_at), status = paused ? 'paused' : paid ? row.status : 'preview', statusClass = String(status || '').replace(/[^a-z_]/gi, ''); return `<tr><td><strong>${esc(row.name)}</strong>${paused ? '<span class="paused-badge">Paused by owner</span>' : `<span class="partner-badge">${paid ? 'Pro' : 'Free'} café</span>`}</td><td>${esc(row.location)}</td><td><strong>${paid ? 'Pro · $9.99' : 'Free · $0'}</strong></td><td><span class="status-pill ${statusClass}">${esc(status)}</span></td><td><strong>${money(paid ? row.monthly_cents : 0)}</strong></td><td><span class="${paused ? 'paused-badge' : 'partner-badge'}">${paused ? 'Platform access paused' : paid ? 'Subscription access' : 'Plan preview access'}</span></td></tr>`; }).join('') : '<tr><td colspan="6">No café plan accounts yet.</td></tr>'}</tbody></table></article>`;
+}
+
+function accountLocation(account) {
+  return [account.city, account.state].filter(Boolean).join(', ') || 'Not provided';
+}
+
+function accountDirectoryTable(title, rows, cafe = false) {
+  return `<article class="card account-directory-table"><div class="account-directory-heading"><h3>${esc(title)}</h3><span>${fmt.format(rows.length)} accounts</span></div><div class="account-table"><table><thead><tr><th>Account</th><th>Created</th><th>City</th><th>ZIP code</th>${cafe ? '<th>Subscription</th><th>Action</th>' : ''}</tr></thead><tbody>${rows.length ? rows.map((row) => {
+    const subscription = row.subscription || {}, paused = Boolean(subscription.owner_paused_at), enabled = subscription.exists && subscription.complimentary_access && !paused;
+    const searchable = [row.name, accountLocation(row), row.postal_code, subscription.status, paused ? 'paused' : 'active'].join(' ').toLowerCase();
+    const status = !subscription.exists ? 'Not started' : paused ? 'Paused' : subscription.connected_to_billing ? 'Stripe billing' : subscription.complimentary_access ? 'Complimentary' : subscription.status;
+    const action = !cafe ? '' : subscription.connected_to_billing
+      ? '<span class="directory-hint">Manage paid billing separately</span>'
+      : !subscription.exists
+        ? '<button class="partner-button" disabled>No subscription</button>'
+        : !subscription.pause_supported
+          ? '<button class="partner-button" disabled>Setup required</button>'
+          : !enabled && !paused
+            ? '<button class="partner-button" disabled>No complimentary access</button>'
+            : `<button class="partner-button ${enabled ? 'on' : ''}" data-subscription-account="${esc(row.user_id)}" data-enabled="${enabled}">${enabled ? 'Pause subscription' : 'Resume subscription'}</button>`;
+    return `<tr data-account-row data-search="${esc(searchable)}"><td><strong>${esc(row.name)}</strong><span class="account-role">${cafe ? 'Café account' : 'Barista account'}</span></td><td>${shortDate(row.created_at)}</td><td>${esc(accountLocation(row))}</td><td>${esc(row.postal_code || '—')}</td>${cafe ? `<td><span class="status-pill ${paused ? 'paused' : ''}">${esc(status)}</span></td><td>${action}</td>` : ''}</tr>`;
+  }).join('') : `<tr><td colspan="${cafe ? 6 : 4}">No ${cafe ? 'café' : 'barista'} accounts yet.</td></tr>`}</tbody></table></div></article>`;
 }
 
 const renderers = {};
@@ -140,7 +169,7 @@ renderers.overview = (data) => {
   ${sectionHead('Platform pulse', 'Highest-signal measures across the business')}
   <section class="metrics">${metric('Total members', m.signups, `${m.signups_7d || 0} joined this week`, 'orange')}${metric('Website · 7 days', m.website_7d, `${growth(m.website_7d || 0, m.website_prev_7d || 0)} versus prior week`, 'blue')}${metric('Mutual matches', m.matches, `${matchRate}% interest-to-match`, 'purple')}${metric('Monthly recurring revenue', money(sm.mrr_cents), 'Projected from active paid plans', 'green')}</section>
   ${sectionHead('Open a focused report', 'Each section has its own page, charts, and supporting detail')}
-  <section class="quick-grid">${quickCard('/owner-growth', '↗', 'Growth & marketing', 'Traffic, signup conversion, channels, pages, and acquisition trends.', 'View growth')}${quickCard('/owner-subscriptions', '$', 'Subscriptions', 'Free and Pro cafés, billing readiness, revenue, and account controls.', 'View subscriptions')}${quickCard('/owner-marketplace', '⇄', 'Marketplace', 'Jobs, applications, profile interest, matches, and conversations.', 'View marketplace')}${quickCard('/owner-audience', '◉', 'Audience', 'Member roles, devices, demographic totals, and data completion.', 'View audience')}</section>
+  <section class="quick-grid">${quickCard('/owner-growth', '↗', 'Growth & marketing', 'Traffic, signup conversion, channels, pages, and acquisition trends.', 'View growth')}${quickCard('/owner-subscriptions', '$', 'Subscriptions', 'Free and Pro cafés, billing readiness, revenue, and account controls.', 'View subscriptions')}${quickCard('/owner-marketplace', '⇄', 'Marketplace', 'Jobs, applications, profile interest, matches, and conversations.', 'View marketplace')}${quickCard('/owner-audience', '◉', 'Audience', 'Member roles, devices, demographic totals, and data completion.', 'View audience')}${quickCard('/owner-accounts', '☷', 'Member accounts', 'Barista and café accounts, creation dates, locations, and café access.', 'View accounts')}</section>
   ${sectionHead('Weekly momentum', 'A shared view of acquisition and marketplace outcomes')}
   ${lineChart('Platform momentum', data.weekly, [{ key: 'website_views', label: 'Website views', color: '#e86b24' }, { key: 'signups', label: 'Signups', color: '#2d8b57' }, { key: 'matches', label: 'Matches', color: '#7657c8' }])}
   ${sectionHead('Action queue')}
@@ -198,22 +227,40 @@ renderers.audience = (data) => {
   <article class="privacy-note"><strong>Privacy and appropriate use:</strong> Age range and gender are optional, stored separately from public profiles, and reported only as platform totals. They must not be used to screen, rank, or make employment decisions about an individual member.</article>`;
 };
 
-async function updatePartnerAccess(button) {
+renderers.accounts = (data) => {
+  const rows = Array.isArray(data.account_directory) ? data.account_directory : [];
+  const baristas = rows.filter((row) => row.role === 'barista');
+  const cafes = rows.filter((row) => row.role === 'cafe_owner_manager');
+  const paused = cafes.filter((row) => row.subscription?.owner_paused_at).length;
+  return `<div class="account-privacy-note"><strong>Private owner directory:</strong> This page shows only the member name, account type, creation date, city, ZIP code, and café subscription state. Email addresses, street addresses, demographics, and authentication details are not included.</div>
+  <section class="metrics">${metric('All accounts', rows.length, 'Baristas and cafés', 'orange')}${metric('Barista accounts', baristas.length, 'Newest first', 'green')}${metric('Café accounts', cafes.length, 'Newest first', 'blue')}${metric('Paused cafés', paused, 'Owner-confirmed access pauses', 'red')}</section>
+  <label class="account-search-label" for="account-search">Search accounts</label><input class="account-search" id="account-search" data-account-search placeholder="Search name, city, ZIP, or subscription status" autocomplete="off">
+  <div class="finance-note"><strong>Subscription control:</strong> Payments are globally paused. “Pause subscription” disables a complimentary café’s hiring access after confirmation; it does not call Stripe or alter invoices. Stripe-connected subscriptions are blocked from this control.</div>
+  <section class="account-directory-grid">${accountDirectoryTable('Café accounts', cafes, true)}${accountDirectoryTable('Barista accounts', baristas)}</section>`;
+};
+
+async function updateSubscriptionAccess(button) {
   const enabled = button.dataset.enabled === 'true';
   const next = !enabled;
-  const action = next ? 'give this café free partner access' : 'turn off this café’s free partner access';
-  if (!confirm(`Are you sure you want to ${action}?`)) return;
+  const message = next
+    ? 'Resume this café subscription? Complimentary hiring access will be restored.'
+    : 'Pause this café subscription? The café will be unable to perform hiring actions or send new messages. This does not change Stripe because payments are globally paused.';
+  if (!confirm(message)) return;
   button.disabled = true;
-  button.textContent = 'Updating…';
+  button.textContent = next ? 'Resuming…' : 'Pausing…';
   try {
-    const response = await fetch('/api/analytics', { method: 'PATCH', headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: button.dataset.partnerId, enabled: next }) });
+    const response = await fetch('/api/analytics', {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_cafe_subscription_access', user_id: button.dataset.subscriptionAccount, enabled: next }),
+    });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'Could not update access');
+    if (!response.ok) throw new Error(result.error || 'Could not update this café subscription.');
     await load();
   } catch (error) {
     button.disabled = false;
-    button.textContent = enabled ? 'Turn off free access' : 'Give free partner access';
-    alert(error.message || 'Could not update partner access');
+    button.textContent = enabled ? 'Pause subscription' : 'Resume subscription';
+    alert(error.message || 'Could not update this café subscription.');
   }
 }
 
@@ -224,11 +271,11 @@ async function load() {
   view.className = 'loading';
   view.textContent = 'Refreshing private analytics…';
   try {
+    const page = document.body.dataset.page || 'overview';
     const response = await fetch('/api/analytics', { headers: { Authorization: `Bearer ${session.access_token}` }, cache: 'no-store' });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || 'Could not load analytics');
     dataCache = data;
-    const page = document.body.dataset.page || 'overview';
     view.className = '';
     view.innerHTML = (renderers[page] || renderers.overview)(data);
     document.getElementById('fresh').textContent = `Updated ${new Date(data.generated_at).toLocaleString()}`;

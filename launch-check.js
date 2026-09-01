@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','pricing.html','cafe-trial.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
+const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','pricing.html','cafe-trial.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html','owner-accounts.html'];
 for(const file of requiredHtml){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
   const src=fs.readFileSync(file,'utf8');
@@ -22,7 +22,7 @@ const stripeCheckout=fs.readFileSync('api/billing.js','utf8');
 const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
-if(!stripeCheckout.includes('const BILLING_PAUSED = true')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing pause is not enforced');
+if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not enforced');
 if(dashboard.includes("views.cafe_owner_manager.menu.push('Subscription')")) throw new Error('Subscription management must live inside café Account Settings');
 for(const token of ["currentRole==='cafe_owner_manager'?`<article",'<h3>Subscription</h3>','Next billing date:','Manage subscription',"name==='Account Settings'&&role==='cafe_owner_manager'"]){
   if(!dashboard.includes(token))throw new Error(`Website café-only subscription management is missing ${token}`);
@@ -43,8 +43,24 @@ if(!fs.existsSync(demographicMigration)) throw new Error('Missing private profil
 const demographicSql=fs.readFileSync(demographicMigration,'utf8');
 if(!demographicSql.includes('alter table public.profile_demographics enable row level security')||!demographicSql.includes('owner_demographic_analytics')) throw new Error('Private profile demographics migration is incomplete');
 const ownerDashboardScript=fs.readFileSync('owner-dashboard.js','utf8');
-for(const page of ['overview','growth','subscriptions','marketplace','audience'])if(!ownerDashboardScript.includes(`renderers.${page}`))throw new Error(`Owner dashboard renderer missing ${page}`);
+for(const page of ['overview','growth','subscriptions','marketplace','audience','accounts'])if(!ownerDashboardScript.includes(`renderers.${page}`))throw new Error(`Owner dashboard renderer missing ${page}`);
 if(!ownerDashboardScript.includes('lineChart')||!ownerDashboardScript.includes('donutChart'))throw new Error('Owner dashboard charts are incomplete');
+for(const token of ['renderers.reliability','Reliability office','Operations','/owner-reliability','/support-admin'])if(ownerDashboardScript.includes(token))throw new Error(`Owner dashboard must contain statistics only; found ${token}`);
+for(const file of ['owner-reliability.html','owner-reliability.css'])if(fs.existsSync(file))throw new Error(`Retired Reliability Office UI still exists: ${file}`);
+const vercelConfig=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+const reliabilityRedirect=(vercelConfig.redirects||[]).find((item)=>item.source==='/owner-reliability');
+if(!reliabilityRedirect||reliabilityRedirect.destination!=='/owner-dashboard'||reliabilityRedirect.permanent!==false)throw new Error('Retired Reliability Office route must redirect to owner statistics');
+if(!dashboard.includes("method:'HEAD'")||!dashboard.includes("location.replace('/owner-dashboard')"))throw new Error('Authenticated owner routing is incomplete');
+for(const file of ['api/reliability.js','tests/reliability-api.test.js'])if(!fs.existsSync(file))throw new Error(`Reliability monitor backend missing ${file}`);
+const reliabilityApi=fs.readFileSync('api/reliability.js','utf8');
+for(const token of ['Owner access required','production_writes_enabled: false','model_used_for_monitoring: false','P0–P2'])if(!reliabilityApi.includes(token))throw new Error(`Reliability monitor safety contract missing ${token}`);
+if(reliabilityApi.includes('SUPABASE_READ_ONLY_TOKEN')||reliabilityApi.includes('VERCEL_READ_TOKEN')||reliabilityApi.includes('ERA_RESEND_API_KEY'))throw new Error('Reliability monitor API must not receive provider credentials');
+const subscriptionPauseMigration='supabase/migrations/20260901062356_add_owner_subscription_pause.sql';
+if(!fs.existsSync(subscriptionPauseMigration))throw new Error('Missing owner subscription-pause migration');
+const subscriptionPauseSql=fs.readFileSync(subscriptionPauseMigration,'utf8');
+for(const token of ['owner_paused_at','grant select (owner_id, city, state, postal_code, created_at) on table public.jobs to service_role','s.owner_paused_at is null','on conflict (user_id) do update'])if(!subscriptionPauseSql.includes(token))throw new Error(`Subscription-pause migration missing ${token}`);
+if(/alter\s+policy|create\s+policy|drop\s+policy/i.test(subscriptionPauseSql))throw new Error('Subscription-pause migration must not modify RLS policies');
+for(const token of ['account_directory','set_cafe_subscription_access','stripe_subscription_id','owner_paused_at'])if(!fs.readFileSync('api/analytics.js','utf8').includes(token))throw new Error(`Owner account API missing ${token}`);
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
 if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
