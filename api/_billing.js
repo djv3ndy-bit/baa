@@ -1,19 +1,37 @@
 import Stripe from "stripe";
 
-let cachedStripeClient;
+let stripeClientPromise;
 
 export async function stripeClient() {
   const key = process.env.STRIPE_RESTRICTED_KEY;
   const expectedAccountId = process.env.STRIPE_ACCOUNT_ID;
+  const priceId = process.env.STRIPE_MONTHLY_PRICE_ID;
   if (!key) throw new Error("Stripe is not configured.");
   if (!expectedAccountId?.startsWith("acct_")) throw new Error("The expected Stripe account is not configured.");
+  if (!priceId?.startsWith("price_")) throw new Error("The Stripe monthly Price is not configured.");
   if (!key.startsWith("rk_test_")) throw new Error("Stripe sandbox requires a restricted test key.");
-  if (!cachedStripeClient) {
-    // Restricted keys are account-bound. Avoid requiring Accounts Read solely
-    // to rediscover the account that issued this least-privileged sandbox key.
-    cachedStripeClient = new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
+  if (!stripeClientPromise) {
+    stripeClientPromise = (async () => {
+      const client = new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
+      // A Price can only be retrieved with a key from its Stripe account. Its
+      // metadata binds that account-specific resource to our explicit account
+      // configuration without granting the key Accounts Read permission.
+      const price = await client.prices.retrieve(priceId);
+      if (
+        price.id !== priceId ||
+        price.livemode ||
+        price.metadata?.application !== "baristamatch" ||
+        price.metadata?.stripe_account_id !== expectedAccountId
+      ) {
+        throw new Error("Stripe restricted key does not match the configured sandbox plan and account.");
+      }
+      return client;
+    })().catch((error) => {
+      stripeClientPromise = undefined;
+      throw error;
+    });
   }
-  return cachedStripeClient;
+  return stripeClientPromise;
 }
 function adminHeaders(extra = {}) {
   const key = process.env.SUPABASE_SECRET_KEY;
