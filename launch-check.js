@@ -23,7 +23,7 @@ const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 const stripeSupport=fs.readFileSync('api/_billing.js','utf8');
-if(!stripeSupport.includes('rk_test_')||!stripeSupport.includes('client.prices.retrieve(priceId)')||!stripeSupport.includes('price.metadata?.stripe_account_id !== expectedAccountId')||stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe sandbox key validation is incomplete or requires excessive permissions');
+if(!stripeSupport.includes('rk_test_')||!stripeSupport.includes('client.prices.retrieve(priceId)')||!stripeSupport.includes('price.metadata?.plan !== "cafe_monthly"')||!stripeSupport.includes('price.metadata?.stripe_account_id !== expectedAccountId')||stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe sandbox key validation is incomplete or requires excessive permissions');
 if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== \"true\"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
 if(stripeWebhook.includes('return res.status(200).json({ received: true, billingPaused: true })')) throw new Error('Stripe webhook ingestion must remain active while checkout is paused');
 const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
