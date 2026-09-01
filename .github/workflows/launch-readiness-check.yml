@@ -9,9 +9,14 @@ on:
       - 'reset-password.html'
       - 'support.html'
       - 'support-admin.html'
+      - 'owner-*.html'
+      - 'owner-dashboard.js'
+      - 'owner-dashboard.css'
       - 'terms.html'
       - 'privacy.html'
       - 'api/**'
+      - 'tests/**'
+      - 'vercel.json'
       - 'launch-check.js'
       - '.github/workflows/launch-readiness-check.yml'
   workflow_dispatch:
@@ -21,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: node launch-check.js
+      - run: node --test tests/*.test.js
       - run: |
+          node --check api/analytics.js
           node --check api/send-message.js
           node --check api/apply-job.js
           node --check api/match-application.js
@@ -29,3 +36,4 @@ jobs:
           node --check api/support.js
           node --check api/support-admin.js
           node --check api/delete-account.js
+          node --check owner-dashboard.js

@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html','owner-reliability.html'];
+const requiredHtml=['index.html','signup.html','login.html','reset-password.html','dashboard.html','support.html','support-admin.html','terms.html','privacy.html','owner-dashboard.html','owner-growth.html','owner-subscriptions.html','owner-marketplace.html','owner-audience.html'];
 for(const file of requiredHtml){
   if(!fs.existsSync(file)) throw new Error(`Missing ${file}`);
   const src=fs.readFileSync(file,'utf8');
@@ -39,12 +39,18 @@ if(!fs.existsSync(demographicMigration)) throw new Error('Missing private profil
 const demographicSql=fs.readFileSync(demographicMigration,'utf8');
 if(!demographicSql.includes('alter table public.profile_demographics enable row level security')||!demographicSql.includes('owner_demographic_analytics')) throw new Error('Private profile demographics migration is incomplete');
 const ownerDashboardScript=fs.readFileSync('owner-dashboard.js','utf8');
-for(const page of ['overview','growth','subscriptions','marketplace','audience','reliability'])if(!ownerDashboardScript.includes(`renderers.${page}`))throw new Error(`Owner dashboard renderer missing ${page}`);
+for(const page of ['overview','growth','subscriptions','marketplace','audience'])if(!ownerDashboardScript.includes(`renderers.${page}`))throw new Error(`Owner dashboard renderer missing ${page}`);
 if(!ownerDashboardScript.includes('lineChart')||!ownerDashboardScript.includes('donutChart'))throw new Error('Owner dashboard charts are incomplete');
-for(const file of ['owner-reliability.css','api/reliability.js','tests/reliability-api.test.js'])if(!fs.existsSync(file))throw new Error(`Reliability Office missing ${file}`);
+for(const token of ['renderers.reliability','Reliability office','Operations','/owner-reliability','/support-admin'])if(ownerDashboardScript.includes(token))throw new Error(`Owner dashboard must contain statistics only; found ${token}`);
+for(const file of ['owner-reliability.html','owner-reliability.css'])if(fs.existsSync(file))throw new Error(`Retired Reliability Office UI still exists: ${file}`);
+const vercelConfig=JSON.parse(fs.readFileSync('vercel.json','utf8'));
+const reliabilityRedirect=(vercelConfig.redirects||[]).find((item)=>item.source==='/owner-reliability');
+if(!reliabilityRedirect||reliabilityRedirect.destination!=='/owner-dashboard'||reliabilityRedirect.permanent!==false)throw new Error('Retired Reliability Office route must redirect to owner statistics');
+if(!dashboard.includes("method:'HEAD'")||!dashboard.includes("location.replace('/owner-dashboard')"))throw new Error('Authenticated owner routing is incomplete');
+for(const file of ['api/reliability.js','tests/reliability-api.test.js'])if(!fs.existsSync(file))throw new Error(`Reliability monitor backend missing ${file}`);
 const reliabilityApi=fs.readFileSync('api/reliability.js','utf8');
-for(const token of ['Owner access required','production_writes_enabled: false','model_used_for_monitoring: false','P0–P2'])if(!reliabilityApi.includes(token))throw new Error(`Reliability Office safety contract missing ${token}`);
-if(reliabilityApi.includes('SUPABASE_READ_ONLY_TOKEN')||reliabilityApi.includes('VERCEL_READ_TOKEN')||reliabilityApi.includes('ERA_RESEND_API_KEY'))throw new Error('Reliability Office must not receive provider credentials');
+for(const token of ['Owner access required','production_writes_enabled: false','model_used_for_monitoring: false','P0–P2'])if(!reliabilityApi.includes(token))throw new Error(`Reliability monitor safety contract missing ${token}`);
+if(reliabilityApi.includes('SUPABASE_READ_ONLY_TOKEN')||reliabilityApi.includes('VERCEL_READ_TOKEN')||reliabilityApi.includes('ERA_RESEND_API_KEY'))throw new Error('Reliability monitor API must not receive provider credentials');
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
 if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
