@@ -22,7 +22,15 @@ const stripeCheckout=fs.readFileSync('api/billing.js','utf8');
 const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
-if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not enforced');
+const stripeSupport=fs.readFileSync('api/_billing.js','utf8');
+if(!stripeSupport.includes('rk_test_')||!stripeSupport.includes('client.prices.retrieve(priceId)')||!stripeSupport.includes('price.metadata?.plan !== "cafe_monthly"')||!stripeSupport.includes('price.metadata?.stripe_account_id !== expectedAccountId')||stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe sandbox key validation is incomplete or requires excessive permissions');
+if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
+if(stripeWebhook.includes('return res.status(200).json({ received: true, billingPaused: true })')) throw new Error('Stripe webhook ingestion must remain active while checkout is paused');
+const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
+const subscriptionSyncEnd=stripeWebhook.indexOf('async function recordInvoicePayment');
+if(subscriptionSyncStart<0||subscriptionSyncEnd<=subscriptionSyncStart) throw new Error('Stripe subscription sync structure is missing');
+const subscriptionSyncSource=stripeWebhook.slice(subscriptionSyncStart,subscriptionSyncEnd);
+if(subscriptionSyncSource.includes('complimentary_access')) throw new Error('Stripe webhook sync must not mutate platform access grants');
 if(dashboard.includes("views.cafe_owner_manager.menu.push('Subscription')")) throw new Error('Subscription management must live inside café Account Settings');
 for(const token of ["currentRole==='cafe_owner_manager'?`<article",'<h3>Subscription</h3>','Next billing date:','Manage subscription',"name==='Account Settings'&&role==='cafe_owner_manager'"]){
   if(!dashboard.includes(token))throw new Error(`Website café-only subscription management is missing ${token}`);
