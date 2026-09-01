@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveOfficeStatus, integrationFromStep, normalizeRun } from '../api/reliability.js';
+import handler, { deriveOfficeStatus, integrationFromStep, normalizeRun } from '../api/reliability.js';
 
 const now = Date.parse('2026-09-01T06:00:00Z');
 
@@ -51,4 +51,18 @@ test('reports skipped approval-gated steps as inactive', () => {
   const value = integrationFromStep('email', 'Email', { status: 'completed', conclusion: 'skipped' }, 'Enabled', 'Disabled');
   assert.equal(value.status, 'inactive');
   assert.equal(value.detail, 'Disabled');
+});
+
+test('rejects unauthenticated Reliability Office API requests', async () => {
+  const response = {
+    statusCode: null,
+    body: null,
+    setHeader() {},
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+    end() { return this; },
+  };
+  await handler({ method: 'GET', headers: {} }, response);
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.body, { error: 'Owner access required' });
 });
