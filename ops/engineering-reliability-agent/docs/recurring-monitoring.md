@@ -1,6 +1,6 @@
 # Recurring monitoring
 
-The GitHub Actions monitor runs once per hour and after every owner-approved push to `main`. It can also be started manually. Post-merge runs wait for a bounded deployment-settle window, then execute the same read-only checks against the reviewed commit.
+The GitHub Actions monitor runs once per hour and after every owner-approved push to `main`. It can also be started manually. Post-merge runs use the read-only Vercel deployment API for up to ten minutes and do not begin health checks until the exact `github.sha` production deployment reports `READY`. An `ERROR`, missing read-only configuration, or timeout fails closed as a sanitized P2 verification incident; the workflow never treats a probe of the previous production revision as proof that the approved commit is healthy.
 
 ## Default coverage
 

@@ -142,4 +142,4 @@ See [Least-privilege integrations](docs/least-privilege-integrations.md) for the
 - `notify`: send a P0/P1 owner email only when the repository approval variable and dedicated alert secrets are present. P2/P3 never send email.
 - `serve`: readiness endpoint only in this foundation release.
 
-The hourly and post-merge workflows do not create branches or edit code. A response package may be handed to an owner-approved Codex task, which can prepare a separate incident branch, run allowlisted tests, and open a draft pull request. Merge and production deployment remain owner-only. Every approved merge triggers a model-free post-deployment monitoring run.
+The hourly and post-merge workflows do not create branches or edit code. A response package may be handed to an owner-approved Codex task, which can prepare a separate incident branch, run allowlisted tests, and open a draft pull request. Merge and production deployment remain owner-only. Every approved merge triggers a model-free post-deployment run that first confirms the exact reviewed commit is `READY` through the read-only Vercel API.

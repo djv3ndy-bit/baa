@@ -24,7 +24,7 @@ deployment, or merge permission.
 
 Preferred credential: the connected Vercel read application. A dedicated, expiring access token for the smallest applicable team is an acceptable runtime fallback when the connected application cannot be used by the service.
 
-The configured project ID is an application-level allowlist. The client only lists that project's deployments and reads bounded deployment events. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
+The configured project ID is an application-level allowlist. The client only lists that project's deployments, reads bounded deployment events, and confirms whether an exact reviewed Git commit is `READY` in production. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
 
 ## Supabase
 

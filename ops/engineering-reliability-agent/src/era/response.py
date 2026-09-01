@@ -48,7 +48,16 @@ class ResponsePackage:
     source: dict[str, str]
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        value = asdict(self)
+        for key in (
+            "evidence_ids",
+            "affected_routes",
+            "change_correlations",
+            "collection_failures",
+            "recommended_actions",
+        ):
+            value[key] = list(value[key])
+        return value
 
 
 def _severity(value: Any, *, fallback: Severity = Severity.P2) -> Severity:
@@ -61,6 +70,9 @@ def _severity(value: Any, *, fallback: Severity = Severity.P2) -> Severity:
 def _highest_severity(payloads: Sequence[Mapping[str, Any]]) -> Severity:
     values: list[Severity] = []
     for payload in payloads:
+        if payload.get("severity") is not None:
+            values.append(_severity(payload.get("severity")))
+            continue
         investigation = payload.get("investigation")
         if isinstance(investigation, Mapping):
             decision = investigation.get("decision")
@@ -160,24 +172,41 @@ def _collection_failures(
     output: list[dict[str, str]] = []
     for payload in payloads:
         collection = payload.get("collection")
-        if not isinstance(collection, Mapping):
-            continue
-        items = collection.get("collection_failures")
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if not isinstance(item, Mapping):
-                continue
+        if isinstance(collection, Mapping):
+            items = collection.get("collection_failures")
+            for item in items if isinstance(items, list) else []:
+                if not isinstance(item, Mapping):
+                    continue
+                output.append(
+                    {
+                        "provider": sanitize_identifier(
+                            str(item.get("provider", "unknown"))
+                        ),
+                        "operation": sanitize_identifier(
+                            str(item.get("operation", "unknown"))
+                        ),
+                        "error_type": sanitize_identifier(
+                            str(item.get("error_type", "unknown"))
+                        ),
+                    }
+                )
+        status = str(payload.get("status", ""))
+        if status in {
+            "collection_failed",
+            "configuration_failed",
+            "deployment_failed",
+            "deployment_timeout",
+        }:
             output.append(
                 {
                     "provider": sanitize_identifier(
-                        str(item.get("provider", "unknown"))
+                        str(payload.get("provider") or "monitor")
                     ),
                     "operation": sanitize_identifier(
-                        str(item.get("operation", "unknown"))
+                        str(payload.get("operation") or status)
                     ),
                     "error_type": sanitize_identifier(
-                        str(item.get("error_type", "unknown"))
+                        str(payload.get("error_type") or status)
                     ),
                 }
             )
@@ -271,7 +300,7 @@ def build_response_package(
         str(
             assessment.get("summary")
             or (
-                "A monitoring integration failed closed."
+                "A required monitoring or deployment-verification operation failed closed."
                 if failures
                 else "No actionable incident was detected."
             )
