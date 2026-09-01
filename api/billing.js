@@ -147,7 +147,7 @@ async function syncSubscription(subscription) {
     stripe_customer_id: String(subscription.customer),
     stripe_subscription_id: subscription.id,
     status,
-    complimentary_access: false,
+    complimentary_access: BILLING_PAUSED,
     current_period_end: periodEnd(subscription),
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end)
   });
