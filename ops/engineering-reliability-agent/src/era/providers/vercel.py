@@ -33,6 +33,16 @@ def _timestamp(value: Any) -> str:
     return datetime.fromtimestamp(raw, UTC).isoformat()
 
 
+def _timestamp_milliseconds(value: Any) -> int | None:
+    try:
+        raw = float(value)
+    except (TypeError, ValueError):
+        return None
+    if raw <= 10_000_000_000:
+        raw *= 1_000
+    return int(raw)
+
+
 def _status_code(value: Any) -> int | None:
     try:
         status = int(value)
@@ -104,24 +114,27 @@ class VercelApiSource:
         return [item for item in deployments if isinstance(item, Mapping)][:limit]
 
     async def list_failed_deployments(
-        self, project_id: str, *, environment: str, limit: int
+        self, project_id: str, *, environment: str, since: str, limit: int
     ) -> list[Mapping[str, Any]]:
         deployments = await self._deployments(
             project_id, environment=environment, limit=limit
         )
+        since_ms = self._since_milliseconds(since)
         failures: list[Mapping[str, Any]] = []
         for item in deployments:
             state = str(item.get("state") or item.get("readyState") or "").upper()
             if state != "ERROR":
+                continue
+            created = item.get("created") or item.get("createdAt")
+            created_ms = _timestamp_milliseconds(created)
+            if created_ms is None or created_ms < since_ms:
                 continue
             deployment_id = str(item.get("uid") or item.get("id") or "")
             metadata = _mapping(item.get("meta"))
             failures.append(
                 {
                     "id": f"vercel-deployment-{deployment_id or len(failures)}",
-                    "occurred_at": _timestamp(
-                        item.get("created") or item.get("createdAt")
-                    ),
+                    "occurred_at": _timestamp(created),
                     "summary": "Vercel deployment failed",
                     "deployment_id": deployment_id or None,
                     "commit_sha": metadata.get("githubCommitSha"),

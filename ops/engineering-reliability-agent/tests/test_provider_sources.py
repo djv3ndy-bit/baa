@@ -1,5 +1,6 @@
 import unittest
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -98,6 +99,7 @@ class GitHubApiSourceTests(unittest.IsolatedAsyncioTestCase):
 
 class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_reads_failed_deployments(self) -> None:
+        created = int(datetime.now(UTC).timestamp() * 1_000)
         transport = QueueTransport(
             [
                 {
@@ -105,7 +107,7 @@ class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
                         {
                             "uid": "dpl_failed123",
                             "state": "ERROR",
-                            "created": 1_788_177_600_000,
+                            "created": created,
                             "meta": {"githubCommitSha": "abcdef1234567890"},
                         },
                         {"uid": "dpl_ready123", "state": "READY"},
@@ -118,7 +120,7 @@ class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         failures = await source.list_failed_deployments(
-            "prj_example", environment="production", limit=10
+            "prj_example", environment="production", since="1h", limit=10
         )
 
         self.assertEqual(len(failures), 1)
@@ -126,6 +128,40 @@ class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
         query = parse_qs(urlsplit(transport.requests[0][0]).query)
         self.assertEqual(query["target"], ["production"])
         self.assertEqual(query["teamId"], ["team_example"])
+
+    async def test_ignores_failed_deployments_outside_the_lookback(self) -> None:
+        now = datetime.now(UTC)
+        transport = QueueTransport(
+            [
+                {
+                    "deployments": [
+                        {
+                            "uid": "dpl_stale123",
+                            "state": "ERROR",
+                            "created": int(
+                                (now - timedelta(hours=2)).timestamp() * 1_000
+                            ),
+                        },
+                        {
+                            "uid": "dpl_recent123",
+                            "state": "ERROR",
+                            "created": int(
+                                (now - timedelta(minutes=10)).timestamp() * 1_000
+                            ),
+                        },
+                    ]
+                }
+            ]
+        )
+        source = VercelApiSource("vercel-read-token", transport=transport)
+
+        failures = await source.list_failed_deployments(
+            "prj_example", environment="production", since="1h", limit=10
+        )
+
+        self.assertEqual(
+            [item["deployment_id"] for item in failures], ["dpl_recent123"]
+        )
 
     async def test_runtime_errors_are_grouped_without_raw_log_text(self) -> None:
         transport = QueueTransport(
@@ -212,8 +248,8 @@ class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):
         query = parse_qs(parsed.query)
         select_clause = query["sql"][0].split("from logs", 1)[0]
         self.assertNotIn("event_message", select_clause)
-        self.assertIn("source_name = 'edge_logs'", query["sql"][0])
-        self.assertNotIn("source_name in", query["sql"][0].lower())
+        self.assertIn("source = 'edge_logs'", query["sql"][0])
+        self.assertNotIn("source in", query["sql"][0].lower())
         self.assertIn("severity_text", query["sql"][0])
         self.assertIn("iso_timestamp_start", query)
         self.assertIn("iso_timestamp_end", query)

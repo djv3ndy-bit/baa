@@ -26,7 +26,9 @@ class FakeGitHub:
 
 
 class FakeVercel:
-    async def list_failed_deployments(self, project_id, *, environment, limit):
+    async def list_failed_deployments(
+        self, project_id, *, environment, since, limit
+    ):
         return []
 
     async def list_runtime_errors(self, project_id, *, environment, since, limit):

@@ -9,7 +9,7 @@ from era.models import Environment, EvidenceSource, IncidentEvidence
 
 class VercelReadSource(Protocol):
     async def list_failed_deployments(
-        self, project_id: str, *, environment: str, limit: int
+        self, project_id: str, *, environment: str, since: str, limit: int
     ) -> Sequence[Mapping[str, Any]]: ...
 
     async def list_runtime_errors(
@@ -39,6 +39,7 @@ class VercelCollector:
         deployments = await self._source.list_failed_deployments(
             self._project_id,
             environment=self._environment.value,
+            since=self._since,
             limit=self._limit,
         )
         errors = await self._source.list_runtime_errors(

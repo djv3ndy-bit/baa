@@ -30,7 +30,7 @@ Never provide a service-role key, database connection string, database password,
 
 The client calls only the unified analytics log endpoint. Queries are fixed, query one source at a time, are bounded to at most 24 hours and 100 rows, and return timestamps, status codes, routes, and aggregate counts. Raw event messages, headers, request bodies, response bodies, user identifiers, emails, and IP addresses are not selected.
 
-The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and filters its unified stream with `source_name`. It does not use the deprecated `logs.all` endpoint, which Supabase has scheduled for removal on September 23, 2026.
+The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and filters its unified stream with the current `source` column. It does not use the deprecated `logs.all` endpoint, which Supabase has scheduled for removal on September 23, 2026.
 
 ## Network and data controls
 
