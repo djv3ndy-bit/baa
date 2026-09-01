@@ -17,7 +17,7 @@ Vercel settings:
 
 The website and native app use server-created Stripe Checkout and Customer Portal sessions. Configure these server-side environment variables in Vercel for Preview and Production:
 
-- `STRIPE_RESTRICTED_KEY`: a least-privilege sandbox restricted key with Products and Prices read access plus the minimum write access needed for Customers, Checkout Sessions, Billing Portal Sessions, and Subscriptions; Accounts Read is not required
+- `STRIPE_RESTRICTED_KEY`: a least-privilege sandbox restricted key with Prices read access plus the minimum write access needed for Customers, Checkout Sessions, Billing Portal Sessions, and Subscriptions; Accounts Read is not required
 - `STRIPE_ACCOUNT_ID`: the expected Stripe sandbox account ID; the server verifies that the configured Price is bound to this account through protected Price metadata
 - `STRIPE_MONTHLY_PRICE_ID`: the recurring monthly sandbox Price for the café plan; the restricted key must be able to retrieve it
 - `STRIPE_WEBHOOK_SECRET`: the signing secret for the `/api/stripe-webhook` endpoint
