@@ -1,6 +1,6 @@
 # Recurring monitoring
 
-The proposed GitHub Actions monitor runs once per hour after an owner reviews and merges its workflow to the default branch. A scheduled workflow on this development branch is inactive. The workflow can also be started manually after it exists on the default branch.
+The GitHub Actions monitor runs once per hour and after every owner-approved push to `main`. It can also be started manually. Post-merge runs wait for a bounded deployment-settle window, then execute the same read-only checks against the reviewed commit.
 
 ## Default coverage
 
@@ -13,7 +13,22 @@ The default cycle requires no long-lived provider secret. It uses the job's shor
   it only when the workflow path is this reliability monitor, preventing an alert from
   re-ingesting its own previous failure while preserving same-named failures elsewhere.
 
-Each run produces a sanitized JSON artifact retained for 14 days. P0, P1, and P2 findings fail the workflow so GitHub displays a review-only alert. P3 findings pass. The workflow does not call an OpenAI model, create an issue, modify code, open or merge a pull request, deploy, send email, or make a provider write.
+Each run produces a sanitized JSON artifact retained for 14 days. The artifact includes the public and optional private monitoring results plus a response package with an incident fingerprint, affected routes, ranked change correlations, safe repair steps, and permanent prohibitions. P0, P1, and P2 findings fail the workflow so GitHub displays a review-only alert. P3 findings pass. The workflow does not call an OpenAI model, create an issue, modify code, open or merge a pull request, deploy, or make a provider write.
+
+## Owner-approved P0/P1 email alerts
+
+Email is disabled by default. P2 and P3 never send email. A P0 or P1 may send one idempotent Resend message only after the owner provides all three settings below.
+
+Repository variable:
+
+- `ERA_P0_P1_EMAIL_ALERTS_APPROVED=true`: explicit owner approval for the external communication step.
+
+GitHub Actions secrets:
+
+- `ERA_ALERT_EMAIL`: the single owner-controlled destination. It is never printed or written to an artifact.
+- `ERA_RESEND_API_KEY`: a dedicated Resend key with sending access only. Do not reuse a broad account-management key or expose the website runtime key.
+
+The message contains only the sanitized severity, incident fingerprint, assessment, recommended review steps, and a link to the GitHub Actions run. The transport connects only to `api.resend.com`, does not follow redirects, times out after eight seconds, and never returns the recipient, credential, or provider response body in logs or artifacts. Repeated sends for the same incident fingerprint use the same idempotency key.
 
 ## Optional private-provider coverage
 
@@ -35,3 +50,5 @@ The agent must not create, read back, print, or rotate these secrets. The owner 
 ## Activation boundary
 
 Merging `.github/workflows/engineering-reliability-monitor.yml` activates the hourly schedule and therefore requires explicit owner review. Private-provider monitoring requires a second, separate owner action: saving the scoped credentials and enabling the repository variable. Neither approval permits production deployment, SQL, RLS/Auth changes, data deletion, secret disclosure, or direct writes to `main`.
+
+P0/P1 email activation is a third, separate owner action because it sends an external communication. Saving the dedicated Resend key and owner destination does not authorize any application, database, GitHub, Vercel, or Supabase write.

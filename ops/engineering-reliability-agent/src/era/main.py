@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from .alerts import deliver_response_alert
 from .config import AgentConfig
 from .live import LiveCollectionPlan, build_live_plan, run_live_plan
 from .models import IncidentEvidence, RecentChange
 from .monitor import run_monitoring_cycle
+from .response import build_response_package
 from .workflows.investigate import investigate
 
 
@@ -33,6 +35,16 @@ def _load_payload(path_value: str) -> tuple[list[IncidentEvidence], list[RecentC
     ]
     changes = [RecentChange.from_mapping(item) for item in payload.get("changes") or []]
     return evidence, changes
+
+
+def _load_json_object(path_value: str) -> dict[str, Any]:
+    path = Path(path_value).resolve(strict=True)
+    if not path.is_file() or path.stat().st_size > MAX_INPUT_BYTES:
+        raise ValueError("Input must be a JSON file no larger than 2 MB")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Input JSON must be an object")
+    return payload
 
 
 def _write_json(value: Any) -> None:
@@ -75,8 +87,26 @@ async def _run_monitoring(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _run_prepare_response(args: argparse.Namespace) -> None:
+    payloads = [_load_json_object(path) for path in args.input]
+    package = build_response_package(
+        payloads,
+        repository=os.getenv("GITHUB_REPOSITORY", "unknown/unknown"),
+        run_id=os.getenv("GITHUB_RUN_ID", "unknown"),
+        source_sha=os.getenv("GITHUB_SHA", "unknown"),
+    )
+    _write_json(package.to_dict())
+
+
+def _run_notify(args: argparse.Namespace) -> int:
+    package = _load_json_object(args.input)
+    result = deliver_response_alert(package, os.environ)
+    _write_json(result.to_dict())
+    return result.exit_code
+
+
 class _HealthHandler(BaseHTTPRequestHandler):
-    server_version = "BaristaMatchERA/0.1"
+    server_version = "BaristaMatchERA/0.2"
 
     def do_GET(self) -> None:  # noqa: N802
         if urlsplit(self.path).path != "/health":
@@ -87,7 +117,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
             {
                 "status": "ok",
                 "service": "engineering-reliability-agent",
-                "version": "0.1.0",
+                "version": "0.2.0",
                 "production_writes_enabled": False,
             },
         )
@@ -193,6 +223,21 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     _add_live_arguments(monitor)
+    response = subparsers.add_parser(
+        "prepare-response",
+        help="Build a sanitized owner-review response package from monitor results.",
+    )
+    response.add_argument(
+        "--input",
+        action="append",
+        required=True,
+        help="Monitoring result JSON path. May be supplied more than once.",
+    )
+    notify = subparsers.add_parser(
+        "notify",
+        help="Send an owner-approved P0/P1 email from a response package.",
+    )
+    notify.add_argument("--input", required=True, help="Response package JSON path.")
     subparsers.add_parser("serve", help="Start the readiness-only HTTP service.")
     return parser
 
@@ -214,6 +259,10 @@ def main() -> None:
             asyncio.run(_run_live_collection(args))
         elif command == "monitor":
             raise SystemExit(asyncio.run(_run_monitoring(args)))
+        elif command == "prepare-response":
+            _run_prepare_response(args)
+        elif command == "notify":
+            raise SystemExit(_run_notify(args))
         else:
             parser.print_help()
     except Exception as error:

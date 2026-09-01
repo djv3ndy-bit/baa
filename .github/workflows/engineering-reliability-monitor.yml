@@ -2,6 +2,9 @@ name: Engineering reliability monitor
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '17 * * * *'
 
@@ -28,6 +31,11 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+
+      - name: Allow the approved production deployment to settle
+        if: github.event_name == 'push'
+        shell: bash
+        run: sleep 30
 
       - name: Collect public read-only evidence
         id: public_monitor
@@ -142,6 +150,54 @@ jobs:
           print("- Model used: false")
           print("- Production writes enabled: false")
           PY
+
+      - name: Prepare the sanitized incident response package
+        if: always()
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          response_inputs=(--input monitoring-artifacts/public-result.json)
+          if [[ -s monitoring-artifacts/private-provider-result.json ]]; then
+            response_inputs+=(--input monitoring-artifacts/private-provider-result.json)
+          fi
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.main prepare-response "${response_inputs[@]}" \
+            > monitoring-artifacts/response-package.json
+
+      - name: Send the owner-approved P0/P1 email alert
+        if: always() && vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED == 'true'
+        id: owner_alert
+        shell: bash
+        env:
+          ERA_P0_P1_EMAIL_ALERTS_APPROVED: ${{ vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED }}
+          ERA_ALERT_EMAIL: ${{ secrets.ERA_ALERT_EMAIL }}
+          ERA_RESEND_API_KEY: ${{ secrets.ERA_RESEND_API_KEY }}
+        run: |
+          set +e
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.main notify \
+            --input monitoring-artifacts/response-package.json \
+            > monitoring-artifacts/alert-delivery.json
+          alert_exit=$?
+          set -e
+
+          ALERT_PATH=monitoring-artifacts/alert-delivery.json python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          with open(os.environ["ALERT_PATH"], encoding="utf-8") as handle:
+              result = json.load(handle)
+          print("## Owner email alert")
+          print(f"- Status: {result.get('status', 'unknown')}")
+          print(f"- Attempted: {str(result.get('attempted', False)).lower()}")
+          print(f"- Delivered: {str(result.get('delivered', False)).lower()}")
+          print("- Recipient and credentials: never written to logs or artifacts")
+          PY
+          exit "$alert_exit"
 
       - name: Preserve sanitized incident artifact
         if: always()

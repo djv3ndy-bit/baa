@@ -36,12 +36,18 @@ The client calls only the unified analytics log endpoint. Queries are fixed, que
 
 The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and filters its unified stream with the current `source` column. It does not use the deprecated `logs.all` endpoint, which Supabase has scheduled for removal on September 23, 2026.
 
+## Resend owner alerts
+
+Resend is disabled by default and is not a monitoring provider. The owner must separately approve P0/P1 email alerts and store a dedicated sending-only key in the `ERA_RESEND_API_KEY` GitHub Actions secret. The single destination is stored in `ERA_ALERT_EMAIL`; neither value is available to public or provider-collection steps.
+
+The alert transport supports exactly one operation: `POST https://api.resend.com/emails`. It cannot list contacts, domains, API keys, audiences, broadcasts, webhooks, or historical messages. It rejects missing approval or configuration before opening a connection, does not follow redirects, and does not include the recipient, credential, or response body in its result.
+
 ## Network and data controls
 
 - HTTPS is mandatory.
-- Provider hosts are exact allowlists: `api.github.com`, `api.vercel.com`, and `api.supabase.com`.
+- Read-provider hosts are exact allowlists: `api.github.com`, `api.vercel.com`, and `api.supabase.com`. The separately approved alert transport is fixed to `api.resend.com`.
 - Redirects are rejected.
-- The only supported HTTP method is `GET`.
+- Read-provider clients support only `GET`. The isolated alert transport supports only the single Resend `POST` described above.
 - Requests time out after eight seconds.
 - Responses are capped at one megabyte.
 - Provider error bodies are never included in application errors.

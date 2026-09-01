@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "baristamatch-engineering-reliability-agent"
-version = "0.1.0"
-description = "Safety-first incident investigation agent for BaristaMatch."
+version = "0.2.0"
+description = "Safety-first incident investigation and owner-controlled response agent for BaristaMatch."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [

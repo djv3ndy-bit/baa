@@ -1,6 +1,6 @@
 # Engineering & Reliability Agent
 
-This package is the safety-first control plane for BaristaMatch incident investigation. The foundation release accepts sanitized evidence, applies deterministic incident rules, correlates failures with recent changes, and optionally asks one OpenAI Agents SDK agent to explain the likely cause and next steps.
+This package is the safety-first control plane for BaristaMatch incident investigation and owner-controlled response. It accepts sanitized evidence, applies deterministic incident rules, correlates failures with recent changes, builds a review-only response package, and can send an explicitly owner-approved P0/P1 alert. One optional OpenAI Agents SDK analysis may explain the likely cause and next steps, but recurring monitoring and alerting remain model-free.
 
 It does **not** connect to production by default and exposes no tool that can merge code, deploy, execute SQL, change authentication, change RLS, delete data, or read secrets.
 
@@ -18,6 +18,7 @@ Outputs:
 - Suppression of declared expected conditions such as paused billing.
 - Sanitized evidence and ranked change correlations.
 - A constrained incident assessment and owner-approval flag.
+- A sanitized response package with an incident fingerprint, affected routes, ranked change correlations, a suggested incident branch, review-gated repair steps, and permanent prohibitions.
 
 The deterministic classifier is authoritative. Model output may improve the explanation but cannot lower the computed severity or unlock a prohibited action.
 
@@ -90,6 +91,19 @@ PYTHONPATH=src .venv/bin/python -m era.main monitor \
 
 The command exits with status `2` for a P0/P1/P2 alert and `0` for P3. Provider collection failures become sanitized P2 degradation evidence, so a broken monitoring integration cannot silently report a healthy cycle. See [Recurring monitoring](docs/recurring-monitoring.md) for the inactive review-gated schedule and credential activation boundary.
 
+Build a deterministic response package from one or more monitoring results:
+
+```bash
+GITHUB_REPOSITORY=djv3ndy-bit/baa \
+GITHUB_RUN_ID=12345 \
+GITHUB_SHA=2cbaa93f47f2e386c6ca4f069590bd6cf79cbe0e \
+PYTHONPATH=src .venv/bin/python -m era.main prepare-response \
+  --input public-result.json \
+  --input private-provider-result.json
+```
+
+The package never edits code. It identifies the allowed next steps—incident branch, preview reproduction, minimal fix preparation, allowlisted tests, and a draft pull request—and explicitly disables direct `main` writes and production deployment.
+
 Run the readiness server:
 
 ```bash
@@ -124,6 +138,8 @@ See [Least-privilege integrations](docs/least-privilege-integrations.md) for the
 - `analyze`: the same deterministic path plus one model-generated explanation.
 - `collect-live`: bounded, sanitized GET-only evidence collection; no model or write operation.
 - `monitor`: collection plus deterministic correlation and P0-P3 classification; no model or write operation.
+- `prepare-response`: combine sanitized monitor results into an owner-review response package; no model or network operation.
+- `notify`: send a P0/P1 owner email only when the repository approval variable and dedicated alert secrets are present. P2/P3 never send email.
 - `serve`: readiness endpoint only in this foundation release.
 
-Automated branch creation, code patching, test execution, draft PR creation, preview verification, and post-deployment observation remain disabled until their dedicated tools and approval checks receive separate review.
+The hourly and post-merge workflows do not create branches or edit code. A response package may be handed to an owner-approved Codex task, which can prepare a separate incident branch, run allowlisted tests, and open a draft pull request. Merge and production deployment remain owner-only. Every approved merge triggers a model-free post-deployment monitoring run.
