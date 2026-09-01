@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 from era.redaction import sanitize_text
 
@@ -14,6 +14,8 @@ _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _FAILED_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
 )
+_SELF_MONITOR_CHECK_NAMES = frozenset({"monitor"})
+_SELF_MONITOR_WORKFLOW_PATH = ".github/workflows/engineering-reliability-monitor.yml"
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -137,6 +139,10 @@ class GitHubApiSource:
                 name = sanitize_text(
                     str(check.get("name") or "unnamed check"), max_length=120
                 )
+                if await self._is_self_monitor_check(
+                    repository, repository_path, check, name
+                ):
+                    continue
                 failures.append(
                     {
                         "id": f"github-check-{check.get('id') or len(failures)}",
@@ -151,3 +157,47 @@ class GitHubApiSource:
                 if len(failures) >= limit:
                     return failures
         return failures
+
+    async def _is_self_monitor_check(
+        self,
+        repository: str,
+        repository_path: str,
+        check: Mapping[str, Any],
+        name: str,
+    ) -> bool:
+        if name.lower() not in _SELF_MONITOR_CHECK_NAMES:
+            return False
+
+        details_url = str(check.get("details_url") or "")
+        parsed = urlsplit(details_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "github.com"
+            or parsed.username
+            or parsed.password
+        ):
+            return False
+
+        owner, repo = repository.split("/", 1)
+        segments = parsed.path.strip("/").split("/")
+        if len(segments) < 5 or [item.lower() for item in segments[:4]] != [
+            owner.lower(),
+            repo.lower(),
+            "actions",
+            "runs",
+        ]:
+            return False
+        run_id = segments[4]
+        if not run_id.isdigit():
+            return False
+
+        try:
+            workflow_run = _mapping(
+                await self._get(
+                    f"/repos/{repository_path}/actions/runs/{quote(run_id)}"
+                )
+            )
+        except ProviderReadError:
+            return False
+        workflow_path = str(workflow_run.get("path") or "").split("@", 1)[0]
+        return workflow_path == _SELF_MONITOR_WORKFLOW_PATH

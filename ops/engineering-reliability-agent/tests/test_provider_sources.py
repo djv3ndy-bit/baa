@@ -96,6 +96,88 @@ class GitHubApiSourceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(failures[0]["conclusion"], "failure")
         self.assertNotIn("secret body", str(failures))
 
+    async def test_ignores_only_the_agents_own_failed_workflow(self) -> None:
+        transport = QueueTransport(
+            [
+                [
+                    {
+                        "sha": "abcdef1234567890",
+                        "commit": {
+                            "message": "Change",
+                            "committer": {"date": "2026-08-31T12:00:00Z"},
+                        },
+                    }
+                ],
+                {
+                    "check_runs": [
+                        {
+                            "id": 7,
+                            "name": "monitor",
+                            "conclusion": "failure",
+                            "completed_at": "2026-08-31T12:05:00Z",
+                            "details_url": (
+                                "https://github.com/djv3ndy-bit/baa/"
+                                "actions/runs/123/job/456"
+                            ),
+                        },
+                        {
+                            "id": 8,
+                            "name": "unit",
+                            "conclusion": "failure",
+                            "completed_at": "2026-08-31T12:04:00Z",
+                        },
+                    ]
+                },
+                {
+                    "path": (
+                        ".github/workflows/engineering-reliability-monitor.yml@"
+                        "refs/heads/main"
+                    )
+                },
+            ]
+        )
+        source = GitHubApiSource("github-read-token", transport=transport)
+
+        failures = await source.list_failed_checks("djv3ndy-bit/baa", limit=5)
+
+        self.assertEqual([failure["id"] for failure in failures], ["github-check-8"])
+        self.assertTrue(transport.requests[2][0].endswith("/actions/runs/123"))
+
+    async def test_keeps_same_named_check_from_another_workflow(self) -> None:
+        transport = QueueTransport(
+            [
+                [
+                    {
+                        "sha": "abcdef1234567890",
+                        "commit": {
+                            "message": "Change",
+                            "committer": {"date": "2026-08-31T12:00:00Z"},
+                        },
+                    }
+                ],
+                {
+                    "check_runs": [
+                        {
+                            "id": 9,
+                            "name": "monitor",
+                            "conclusion": "failure",
+                            "completed_at": "2026-08-31T12:05:00Z",
+                            "details_url": (
+                                "https://github.com/djv3ndy-bit/baa/"
+                                "actions/runs/789/job/1011"
+                            ),
+                        }
+                    ]
+                },
+                {"path": ".github/workflows/another-monitor.yml"},
+            ]
+        )
+        source = GitHubApiSource("github-read-token", transport=transport)
+
+        failures = await source.list_failed_checks("djv3ndy-bit/baa", limit=5)
+
+        self.assertEqual([failure["id"] for failure in failures], ["github-check-9"])
+
 
 class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
     async def test_reads_failed_deployments(self) -> None:

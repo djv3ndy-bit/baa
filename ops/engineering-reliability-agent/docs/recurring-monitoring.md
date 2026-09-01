@@ -8,7 +8,10 @@ The default cycle requires no long-lived provider secret. It uses the job's shor
 
 - `https://www.baristajobmatch.com/` for website availability.
 - `https://www.baristajobmatch.com/api/public-config` for Vercel Function routing and public Supabase Auth configuration readiness. The response body is discarded and never included in an artifact.
-- Recent repository commits and failed GitHub checks for change correlation.
+- Recent repository commits and failed GitHub checks for change correlation. The
+  collector resolves GitHub Actions metadata for a check named `monitor` and excludes
+  it only when the workflow path is this reliability monitor, preventing an alert from
+  re-ingesting its own previous failure while preserving same-named failures elsewhere.
 
 Each run produces a sanitized JSON artifact retained for 14 days. P0, P1, and P2 findings fail the workflow so GitHub displays a review-only alert. P3 findings pass. The workflow does not call an OpenAI model, create an issue, modify code, open or merge a pull request, deploy, send email, or make a provider write.
 
