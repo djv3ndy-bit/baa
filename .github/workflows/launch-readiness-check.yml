@@ -16,6 +16,7 @@ on:
       - 'privacy.html'
       - 'api/**'
       - 'tests/**'
+      - 'supabase/migrations/**'
       - 'vercel.json'
       - 'launch-check.js'
       - '.github/workflows/launch-readiness-check.yml'
