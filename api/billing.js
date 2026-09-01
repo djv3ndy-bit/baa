@@ -40,7 +40,10 @@ async function billingStatus(req, res) {
       billingPaused: true,
       message: BILLING_PAUSED_MESSAGE
     });
-    const complimentaryAccess = Boolean(subscription?.complimentary_access);
+    // The database flag is the temporary blanket grant used while billing is
+    // paused. Once the explicit launch switch is on, expose the real trial or
+    // subscription state so the supported UI can open sandbox Checkout.
+    const complimentaryAccess = false;
     return res.status(200).json({
       status: complimentaryAccess ? "complimentary" : (subscription?.status || "not_started"),
       trialEndsAt: subscription?.trial_ends_at || null,
@@ -144,6 +147,7 @@ async function syncSubscription(subscription) {
     stripe_customer_id: String(subscription.customer),
     stripe_subscription_id: subscription.id,
     status,
+    complimentary_access: false,
     current_period_end: periodEnd(subscription),
     cancel_at_period_end: Boolean(subscription.cancel_at_period_end)
   });
@@ -195,7 +199,6 @@ async function recordRefund(charge) {
 
 async function stripeWebhook(req, res) {
   if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).send("Method not allowed"); }
-  if (BILLING_PAUSED) return res.status(200).json({ received: true, billingPaused: true });
   try {
     const stripe = await stripeClient();
     const event = stripe.webhooks.constructEvent(await rawBody(req), req.headers["stripe-signature"], process.env.STRIPE_WEBHOOK_SECRET);
