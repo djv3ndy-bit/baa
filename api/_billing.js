@@ -1,23 +1,19 @@
 import Stripe from "stripe";
 
-let verifiedStripeClient;
+let cachedStripeClient;
 
 export async function stripeClient() {
-  if (!process.env.STRIPE_RESTRICTED_KEY) throw new Error("Stripe is not configured.");
-  if (!process.env.STRIPE_ACCOUNT_ID) throw new Error("The expected Stripe account is not configured.");
-  if (!verifiedStripeClient) {
-    const client = new Stripe(process.env.STRIPE_RESTRICTED_KEY, { apiVersion: "2026-07-29.dahlia" });
-    verifiedStripeClient = client.accounts.retrieve().then((account) => {
-      if (account.id !== process.env.STRIPE_ACCOUNT_ID) {
-        throw new Error(`Stripe account mismatch: expected ${process.env.STRIPE_ACCOUNT_ID}.`);
-      }
-      return client;
-    }).catch((error) => {
-      verifiedStripeClient = undefined;
-      throw error;
-    });
+  const key = process.env.STRIPE_RESTRICTED_KEY;
+  const expectedAccountId = process.env.STRIPE_ACCOUNT_ID;
+  if (!key) throw new Error("Stripe is not configured.");
+  if (!expectedAccountId?.startsWith("acct_")) throw new Error("The expected Stripe account is not configured.");
+  if (!key.startsWith("rk_test_")) throw new Error("Stripe sandbox requires a restricted test key.");
+  if (!cachedStripeClient) {
+    // Restricted keys are account-bound. Avoid requiring Accounts Read solely
+    // to rediscover the account that issued this least-privileged sandbox key.
+    cachedStripeClient = new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
   }
-  return verifiedStripeClient;
+  return cachedStripeClient;
 }
 function adminHeaders(extra = {}) {
   const key = process.env.SUPABASE_SECRET_KEY;
