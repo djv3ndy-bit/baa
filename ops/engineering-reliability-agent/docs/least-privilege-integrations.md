@@ -11,10 +11,14 @@ Preferred credential: a GitHub App installation token limited to `djv3ndy-bit/ba
 Required repository permissions:
 
 - Metadata: read
+- Actions: read
 - Contents: read
 - Checks: read
 
-The client only reads recent commits, individual commit metadata and changed paths, and completed check runs. It has no contents-write, pull-request-write, Actions-write, administration, secrets, deployment, or merge permission.
+The client only reads recent commits, individual commit metadata and changed paths,
+completed check runs, and the workflow path for a candidate self-monitoring check. It
+has no contents-write, pull-request-write, Actions-write, administration, secrets,
+deployment, or merge permission.
 
 ## Vercel
 

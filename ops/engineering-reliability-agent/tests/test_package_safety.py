@@ -44,6 +44,7 @@ class PackageSafetyTests(unittest.TestCase):
             / "engineering-reliability-monitor.yml"
         ).read_text(encoding="utf-8")
 
+        self.assertIn("actions: read", workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("checks: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
