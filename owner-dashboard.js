@@ -219,7 +219,7 @@ renderers.audience = (data) => {
   ${sectionHead('Member snapshot')}
   <section class="metrics">${metric('Members', dm.members, 'All accounts', 'orange')}${metric('Demographics started', dm.profiles_with_demographics, 'At least one optional answer', 'green')}${metric('Age provided', dm.age_provided, 'Excludes “prefer not to say”', 'blue')}${metric('Gender provided', dm.gender_provided, 'Excludes “prefer not to say”', 'purple')}</section>
   ${sectionHead('Optional demographic totals', 'Private aggregate reporting only')}
-  <section class="equal-col">${barChart('Age ranges', d.age_ranges, 'value', 'Includes not provided and prefer not to say')}${donutChart('Gender', d.gender_mix, 'Includes not provided and prefer not to say')}</section>
+  <section class="equal-col">${barChart('Private barista age ranges', d.age_ranges, 'value', 'Calculated from private dates of birth')}${donutChart('Private barista gender', d.gender_mix, 'Private aggregate reporting only')}</section>
   ${sectionHead('Audience composition')}
   <section class="equal-col">${donutChart('Member roles', data.role_mix, 'All members')}${donutChart('Device mix', data.devices, 'Website and app activity · last 30 days')}</section>
   ${sectionHead('Data completion by role')}
