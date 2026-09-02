@@ -30,6 +30,7 @@ export default function Settings() {
   const [role, setRole] = useState<AppRole>("barista"),
     [email, setEmail] = useState(""),
     [showPassword, setShowPassword] = useState(false),
+    [showAdvanced, setShowAdvanced] = useState(false),
     [p1, setP1] = useState(""),
     [p2, setP2] = useState(""),
     [saving, setSaving] = useState(false),
@@ -202,12 +203,9 @@ export default function Settings() {
         </View>
         <View style={s.card}>
           <Text style={s.cardTitle}>Account</Text>
-          <Text style={s.copy}>Sign out securely or permanently delete your account and data.</Text>
+          <Text style={s.copy}>Sign out of BaristaMatch on this device.</Text>
           <Pressable style={s.secondary} onPress={logout}>
             <Text style={s.secondaryText}>Log out</Text>
-          </Pressable>
-          <Pressable disabled={deleting} style={s.danger} onPress={requestAccountDeletion}>
-            <Text style={s.dangerText}>{deleting ? "Deleting…" : "Delete account"}</Text>
           </Pressable>
         </View>
         <Pressable
@@ -224,6 +222,36 @@ export default function Settings() {
         >
           <Text style={s.advancedText}>Terms of Service</Text>
         </Pressable>
+        <View style={s.card}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showAdvanced }}
+            style={s.row}
+            onPress={() => setShowAdvanced((value) => !value)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={s.cardTitle}>Advanced settings</Text>
+              <Text style={s.copy}>Sensitive account controls.</Text>
+            </View>
+            <Text style={s.chev}>{showAdvanced ? "⌄" : "›"}</Text>
+          </Pressable>
+          {showAdvanced ? (
+            <View style={s.dangerZone}>
+              <Text style={s.dangerTitle}>Delete my account</Text>
+              <Text style={s.copy}>
+                Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                disabled={deleting}
+                style={[s.dangerButton, deleting && s.disabled]}
+                onPress={requestAccountDeletion}
+              >
+                <Text style={s.dangerButtonText}>{deleting ? "Deleting…" : "Delete my account"}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
         <Text style={s.legalOperator}>Operated by BaristaMatch LLC</Text>
       </ScrollView>
     </SafeAreaView>
@@ -337,13 +365,10 @@ const s = StyleSheet.create({
     marginTop: 14,
   },
   secondaryText: { color: "#321708", fontWeight: "900" },
-  danger: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 2,
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  dangerText: { color: "#a32727", fontWeight: "900" },
+  dangerZone: { borderTopWidth: 1, borderTopColor: "#f0d4d4", marginTop: 16, paddingTop: 16 },
+  dangerTitle: { color: "#8f2020", fontSize: 15, fontWeight: "900" },
+  dangerButton: { alignSelf: "flex-start", borderWidth: 1, borderColor: "#b43b3b", backgroundColor: "#fff7f7", borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11, marginTop: 14 },
+  dangerButtonText: { color: "#9c2626", fontWeight: "900" },
   help: {
     flexDirection: "row",
     gap: 10,

@@ -113,7 +113,8 @@ for(const token of ['ageConfirmed','at least 16','parent or legal guardian','/te
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
 for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
-if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('Delete account')) throw new Error('Mobile direct account deletion is missing');
+if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('showAdvanced')||!mobileSettings.includes('Delete my account')) throw new Error('Mobile Advanced settings account deletion is missing');
+if(mobileSettings.indexOf('Delete my account')<mobileSettings.indexOf('Log out')) throw new Error('Mobile account deletion must remain separated from Log out');
 for(const token of ['/terms.html','/privacy.html','BaristaMatch LLC'])if(!mobileSettings.includes(token))throw new Error(`Mobile settings legal access is missing ${token}`);
 const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
 if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');

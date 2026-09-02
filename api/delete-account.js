@@ -1,6 +1,38 @@
 const jsonHeaders = { "Cache-Control": "no-store", "Content-Type": "application/json" };
 const DELETE_CONFIRMATION = "DELETE";
 
+function ownedObjectPath(value, userId) {
+  const path = String(value || "").trim();
+  if (!path.startsWith(`${userId}/`)) return null;
+  const parts = path.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) return null;
+  return path;
+}
+
+export function storedObjectsForProfile(profile, userId, supabaseUrl) {
+  const objects = new Map();
+  const add = (bucket, path) => {
+    const ownedPath = ownedObjectPath(path, userId);
+    if (ownedPath) objects.set(`${bucket}:${ownedPath}`, [bucket, ownedPath]);
+  };
+
+  add("coffee-videos", profile?.video_path);
+  for (const imageUrl of [profile?.avatar_url, profile?.bar_picture_url]) {
+    if (!imageUrl) continue;
+    try {
+      const parsed = new URL(imageUrl);
+      if (parsed.origin !== new URL(supabaseUrl).origin) continue;
+      const marker = "/storage/v1/object/public/cafe-images/";
+      const markerIndex = parsed.pathname.indexOf(marker);
+      if (markerIndex === -1) continue;
+      add("cafe-images", decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length)));
+    } catch {
+      // Invalid or non-Supabase URLs are not trusted as storage deletion targets.
+    }
+  }
+  return [...objects.values()];
+}
+
 export default async function handler(req, res) {
   Object.entries(jsonHeaders).forEach(([name, value]) => res.setHeader(name, value));
   if (req.method !== "POST") {
@@ -35,26 +67,13 @@ export default async function handler(req, res) {
     const adminHeaders = { apikey: secretKey };
     if (!secretKey.startsWith("sb_secret_")) adminHeaders.Authorization = `Bearer ${secretKey}`;
 
-    const profileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=video_path,avatar_url`, {
+    const profileResponse = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=video_path,avatar_url,bar_picture_url`, {
       headers: adminHeaders,
       signal: AbortSignal.timeout(10000)
     });
     if (profileResponse.ok) {
       const profiles = await profileResponse.json();
-      const videoPath = profiles?.[0]?.video_path;
-      const avatarUrl = profiles?.[0]?.avatar_url;
-      const storedObjects = [];
-      if (videoPath) storedObjects.push(["coffee-videos", String(videoPath)]);
-      if (avatarUrl) {
-        try {
-          const marker = "/storage/v1/object/public/cafe-images/";
-          const pathname = new URL(avatarUrl).pathname;
-          const markerIndex = pathname.indexOf(marker);
-          if (markerIndex !== -1) storedObjects.push(["cafe-images", decodeURIComponent(pathname.slice(markerIndex + marker.length))]);
-        } catch {
-          console.warn("Could not parse the stored cafe image URL for account deletion.");
-        }
-      }
+      const storedObjects = storedObjectsForProfile(profiles?.[0], user.id, supabaseUrl);
       for (const [bucket, objectPath] of storedObjects) {
         const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
         const storageResponse = await fetch(`${supabaseUrl}/storage/v1/object/${bucket}/${encodedPath}`, {

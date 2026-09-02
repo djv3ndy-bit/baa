@@ -29,7 +29,32 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
-  async function routeSignedIn(userId:string,knownRole?:string|null){const role=knownRole||(await supabase.from('profiles').select('role').eq('id',userId).maybeSingle()).data?.role;if(role==='cafe_owner_manager')await supabase.rpc('ensure_cafe_subscription');router.replace('/home')}
+  async function routeSignedIn(user:any, knownRole?:string|null) {
+    let role = knownRole;
+    if (!role) {
+      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+      if (profileError) return Alert.alert('Could not open your account', 'Check your connection and try again.');
+      role = existingProfile?.role;
+    }
+    if (role !== 'barista' && role !== 'cafe_owner_manager') {
+      const metadataRole = user.user_metadata?.role;
+      const fullName = String(user.user_metadata?.full_name || user.user_metadata?.name || '').trim();
+      if (metadataRole === 'barista' || metadataRole === 'cafe_owner_manager') {
+        const storedName = String(metadataRole === 'barista' ? user.user_metadata?.display_name : user.user_metadata?.cafe_name).trim();
+        return createSocialProfile(user.id, metadataRole, storedName || fullName, String(user.user_metadata?.location || '').trim());
+      }
+      return Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
+        { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
+        { text: 'I am a barista', onPress: () => createSocialProfile(user.id, 'barista', fullName) },
+        { text: 'I manage a café', onPress: () => createSocialProfile(user.id, 'cafe_owner_manager', fullName) },
+      ]);
+    }
+    if (role === 'cafe_owner_manager') {
+      const { error } = await supabase.rpc('ensure_cafe_subscription');
+      if (error) return Alert.alert('Could not prepare your café account', 'Please try logging in again.');
+    }
+    router.replace('/home');
+  }
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', ({ url }) => handleOAuth(url));
@@ -57,7 +82,7 @@ export default function LoginScreen() {
     if (!data.user) return;
     const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id,role').eq('id', data.user.id).maybeSingle();
     if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
-    if (existingProfile) return routeSignedIn(data.user.id,existingProfile.role);
+    if (existingProfile) return routeSignedIn(data.user,existingProfile.role);
     const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
     Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
       { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
@@ -66,13 +91,14 @@ export default function LoginScreen() {
     ]);
   }
 
-  async function createSocialProfile(userId: string, role: 'barista' | 'cafe_owner_manager', name: string) {
+  async function createSocialProfile(userId: string, role: 'barista' | 'cafe_owner_manager', name: string, location = '') {
     const isCafe = role === 'cafe_owner_manager';
     const { error } = await supabase.from('profiles').upsert({
       id: userId,
       role,
       display_name: isCafe ? null : (name || null),
       cafe_name: isCafe ? (name || null) : null,
+      location: location || null,
     }, { onConflict: 'id' });
     if (error) return Alert.alert('Could not finish your profile', error.message);
     if(isCafe)await supabase.rpc('ensure_cafe_subscription');
@@ -85,7 +111,7 @@ export default function LoginScreen() {
     try {
       const { data,error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
       if (error) return Alert.alert('Unable to log in', error.message === 'Invalid login credentials' ? 'The email or password is incorrect.' : error.message);
-      if(data.user)await routeSignedIn(data.user.id);
+      if(data.user)await routeSignedIn(data.user);
     } catch {
       Alert.alert('Connection problem', 'Check your internet connection and try again.');
     } finally {
