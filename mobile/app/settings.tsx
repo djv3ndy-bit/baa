@@ -218,6 +218,13 @@ export default function Settings() {
         >
           <Text style={s.advancedText}>Privacy & account data</Text>
         </Pressable>
+        <Pressable
+          style={s.advanced}
+          onPress={() => Linking.openURL("https://www.baristajobmatch.com/terms.html")}
+        >
+          <Text style={s.advancedText}>Terms of Service</Text>
+        </Pressable>
+        <Text style={s.legalOperator}>Operated by BaristaMatch LLC</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -345,6 +352,7 @@ const s = StyleSheet.create({
   },
   advanced: { padding: 16, alignItems: "center" },
   advancedText: { color: "#8b7769", fontWeight: "700", fontSize: 13 },
+  legalOperator: { textAlign: "center", color: "#8a7e75", fontSize: 12, marginTop: 8 },
   subscriptionHead: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   subscriptionIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: "#f3e6dc", alignItems: "center", justifyContent: "center" },
   subscriptionIconText: { fontSize: 20, fontWeight: "900", color: "#321708" },

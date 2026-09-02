@@ -59,7 +59,8 @@ export default function LoginScreen() {
     if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
     if (existingProfile) return routeSignedIn(data.user.id,existingProfile.role);
     const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
-    Alert.alert('How will you use BaristaMatch?', 'Choose your account type to finish setting up your profile.', [
+    Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
+      { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
       { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
       { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
     ]);

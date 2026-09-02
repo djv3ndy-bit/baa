@@ -5,6 +5,7 @@
     "description": "Connect with local cafés and baristas, discover opportunities, match, and message securely.",
     "scheme": "baristamatch",
     "version": "1.0.3",
+    "primaryColor": "#b75a1d",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -17,6 +18,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.baristajobmatch.app",
       "buildNumber": "4",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
