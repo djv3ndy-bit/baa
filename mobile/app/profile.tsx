@@ -194,6 +194,10 @@ export default function Profile() {
         mediaTypes: kind === "video" ? "videos" : "images",
         allowsEditing: false,
         quality: 1,
+        preferredAssetRepresentationMode:
+          kind === "video"
+            ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
+            : ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
       if (result.canceled) return;
 
@@ -283,8 +287,9 @@ export default function Profile() {
         const ext = (profilePhoto.name.split(".").pop() || "jpg").toLowerCase();
         const path = `${user.id}/${role === "barista" ? "avatar" : "profile"}.${ext}`;
         await uploadAsset(profilePhoto, "cafe-images", path);
-        avatarUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
+        const publicUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
           .data.publicUrl;
+        avatarUrl = `${publicUrl}?v=${Date.now()}`;
       }
       if (role === "cafe_owner_manager" && barPicture) {
         const ext = (barPicture.name.split(".").pop() || "jpg").toLowerCase();
@@ -392,6 +397,12 @@ export default function Profile() {
     setBarPicture(null);
     setCoffeeVideo(null);
     setEditing(false);
+    Alert.alert(
+      "Profile saved",
+      profilePhoto
+        ? "Your profile picture and profile details are now updated."
+        : "Your profile details are now updated.",
+    );
   }
   if (loading)
     return (
@@ -405,6 +416,7 @@ export default function Profile() {
     name = isBarista
       ? profile.display_name || "Your profile"
       : profile.cafe_name || "Your café";
+  const previewAvatarUri = profilePhoto?.uri || profile.avatar_url || null;
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
@@ -422,9 +434,9 @@ export default function Profile() {
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
         <View style={s.hero}>
-          {profile.avatar_url ? (
+          {previewAvatarUri ? (
             <Image
-              source={{ uri: profile.avatar_url }}
+              source={{ uri: previewAvatarUri }}
               style={s.profilePhoto}
             />
           ) : !isBarista && profile.bar_picture_url ? (
@@ -472,7 +484,11 @@ export default function Profile() {
                   : "Choose picture"
               }
               onPress={() => pickMedia("photo")}
-              help="Up to 5 MB · JPG, PNG, or WebP"
+              help={
+                profilePhoto
+                  ? "Preview ready · Tap Save profile below to upload"
+                  : "Up to 5 MB · JPG, PNG, or WebP"
+              }
             />
             <Field
               label="Florida city"
