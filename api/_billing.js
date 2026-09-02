@@ -2,14 +2,43 @@ import Stripe from "stripe";
 
 let stripeClientPromise;
 
+export function stripeMode(environment = process.env) {
+  return environment.STRIPE_LIVEMODE === "true" ? "live" : "test";
+}
+
+export function validateConfiguredPrice(price, { accountId, priceId, mode }) {
+  const liveMode = mode === "live";
+  return Boolean(
+    price &&
+    price.id === priceId &&
+    price.active === true &&
+    price.livemode === liveMode &&
+    price.currency === "usd" &&
+    price.unit_amount === 999 &&
+    price.type === "recurring" &&
+    price.recurring?.interval === "month" &&
+    price.recurring?.interval_count === 1 &&
+    price.metadata?.application === "baristamatch" &&
+    price.metadata?.plan === "cafe_monthly" &&
+    price.metadata?.stripe_account_id === accountId
+  );
+}
+
+export function subscriptionUsesConfiguredPrice(subscription, priceId) {
+  return Boolean(subscription?.items?.data?.some((item) => item?.price?.id === priceId));
+}
+
 export async function stripeClient() {
   const key = process.env.STRIPE_RESTRICTED_KEY;
   const expectedAccountId = process.env.STRIPE_ACCOUNT_ID;
   const priceId = process.env.STRIPE_MONTHLY_PRICE_ID;
+  const mode = stripeMode();
   if (!key) throw new Error("Stripe is not configured.");
   if (!expectedAccountId?.startsWith("acct_")) throw new Error("The expected Stripe account is not configured.");
   if (!priceId?.startsWith("price_")) throw new Error("The Stripe monthly Price is not configured.");
-  if (!key.startsWith("rk_test_")) throw new Error("Stripe sandbox requires a restricted test key.");
+  if (!key.startsWith(mode === "live" ? "rk_live_" : "rk_test_")) {
+    throw new Error(`Stripe ${mode} mode requires a matching restricted key.`);
+  }
   if (!stripeClientPromise) {
     stripeClientPromise = (async () => {
       const client = new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
@@ -17,14 +46,8 @@ export async function stripeClient() {
       // metadata binds that account-specific resource to our explicit account
       // configuration without granting the key Accounts Read permission.
       const price = await client.prices.retrieve(priceId);
-      if (
-        price.id !== priceId ||
-        price.livemode ||
-        price.metadata?.application !== "baristamatch" ||
-        price.metadata?.plan !== "cafe_monthly" ||
-        price.metadata?.stripe_account_id !== expectedAccountId
-      ) {
-        throw new Error("Stripe restricted key does not match the configured sandbox plan and account.");
+      if (!validateConfiguredPrice(price, { accountId: expectedAccountId, priceId, mode })) {
+        throw new Error(`Stripe restricted key does not match the configured ${mode} plan and account.`);
       }
       return client;
     })().catch((error) => {

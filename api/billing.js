@@ -1,4 +1,4 @@
-import { adminRows, authenticatedCafe, json, origin, stripeClient, subscriptionFor, updateSubscription } from "./_billing.js";
+import { adminRows, authenticatedCafe, json, origin, stripeClient, subscriptionFor, subscriptionUsesConfiguredPrice, updateSubscription } from "./_billing.js";
 
 export const config = { api: { bodyParser: false } };
 const BILLING_PAUSED = process.env.BILLING_ENABLED !== "true";
@@ -105,7 +105,7 @@ async function createCheckout(req, res) {
       customer: customerId,
       client_reference_id: user.id,
       line_items: [{ price: process.env.STRIPE_MONTHLY_PRICE_ID, quantity: 1 }],
-      success_url: mobile ? `${site}/mobile-billing-return.html?billing=success` : `${site}/dashboard.html?billing=success`,
+      success_url: mobile ? `${site}/mobile-billing-return.html?billing=success&session_id={CHECKOUT_SESSION_ID}` : `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: mobile ? `${site}/mobile-billing-return.html?billing=canceled` : `${site}/dashboard.html?billing=canceled`,
       integration_identifier: mobile ? "baristamatch_app_yhvkqjpw" : "baristamatch_web_qtmzjvka",
       metadata: { cafe_user_id: user.id },
@@ -149,6 +149,9 @@ function periodEnd(subscription) {
 async function syncSubscription(subscription) {
   const userId = subscription.metadata?.cafe_user_id;
   if (!userId) throw new Error("Subscription is missing cafe_user_id metadata.");
+  if (!subscriptionUsesConfiguredPrice(subscription, process.env.STRIPE_MONTHLY_PRICE_ID)) {
+    throw new Error("Subscription does not contain the configured BaristaMatch café Price.");
+  }
   const status = ["active", "trialing", "canceled"].includes(subscription.status)
     ? subscription.status
     : ["past_due", "unpaid", "incomplete"].includes(subscription.status) ? "past_due" : "expired";
@@ -161,12 +164,22 @@ async function syncSubscription(subscription) {
   });
 }
 
+async function syncCheckoutSession(session) {
+  const source = session.subscription;
+  const subscriptionId = typeof source === "string" ? source : source?.id;
+  if (!subscriptionId) throw new Error("Completed Checkout Session is missing a subscription.");
+  const stripe = await stripeClient();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  await syncSubscription(subscription);
+}
+
 async function recordInvoicePayment(invoice, status) {
   const source = invoice.subscription || invoice.parent?.subscription_details?.subscription;
   const subscriptionId = typeof source === "string" ? source : source?.id;
   if (!subscriptionId) return;
   const stripe = await stripeClient();
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  if (!subscriptionUsesConfiguredPrice(subscription, process.env.STRIPE_MONTHLY_PRICE_ID)) return;
   const userId = subscription.metadata?.cafe_user_id;
   if (!userId) return;
   await adminRows("subscription_payments?on_conflict=provider_payment_id", {
@@ -212,6 +225,7 @@ async function stripeWebhook(req, res) {
     const event = stripe.webhooks.constructEvent(await rawBody(req), req.headers["stripe-signature"], process.env.STRIPE_WEBHOOK_SECRET);
     const previous = await adminRows(`stripe_webhook_events?event_id=eq.${encodeURIComponent(event.id)}&select=event_id&limit=1`);
     if (previous.length) return res.status(200).json({ received: true, duplicate: true });
+    if (event.type === "checkout.session.completed") await syncCheckoutSession(event.data.object);
     if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) await syncSubscription(event.data.object);
     if (event.type === "invoice.paid") await recordInvoicePayment(event.data.object, "succeeded");
     if (event.type === "invoice.payment_failed") await recordInvoicePayment(event.data.object, "failed");

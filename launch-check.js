@@ -23,9 +23,12 @@ const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
 if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 const stripeSupport=fs.readFileSync('api/_billing.js','utf8');
-if(!stripeSupport.includes('rk_test_')||!stripeSupport.includes('client.prices.retrieve(priceId)')||!stripeSupport.includes('price.metadata?.plan !== "cafe_monthly"')||!stripeSupport.includes('price.metadata?.stripe_account_id !== expectedAccountId')||stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe sandbox key validation is incomplete or requires excessive permissions');
+for(const token of ['rk_test_','rk_live_','STRIPE_LIVEMODE','client.prices.retrieve(priceId)','validateConfiguredPrice','subscriptionUsesConfiguredPrice'])if(!stripeSupport.includes(token))throw new Error(`Stripe mode and Price validation is missing ${token}`);
+if(stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe runtime key requires excessive Accounts Read permission');
 if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
 if(stripeWebhook.includes('return res.status(200).json({ received: true, billingPaused: true })')) throw new Error('Stripe webhook ingestion must remain active while checkout is paused');
+if(!stripeWebhook.includes('checkout.session.completed')||!stripeWebhook.includes('syncCheckoutSession')||!stripeWebhook.includes('subscriptionUsesConfiguredPrice'))throw new Error('Stripe Checkout fulfillment or plan validation is incomplete');
+if(!dashboard.includes('/api/create-checkout-session')||dashboard.includes("fetch('/api/billing/checkout'"))throw new Error('Website Stripe Checkout route is not connected to the production endpoint');
 const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
 const subscriptionSyncEnd=stripeWebhook.indexOf('async function recordInvoicePayment');
 if(subscriptionSyncStart<0||subscriptionSyncEnd<=subscriptionSyncStart) throw new Error('Stripe subscription sync structure is missing');
@@ -163,10 +166,12 @@ for(const file of ['mobile/app/home.tsx','mobile/app/settings.tsx']){
 if(!stripeCheckout.includes('monthlyPriceCents: 999')||!stripeCheckout.includes('maxActiveJobs: 3'))throw new Error('Billing status metadata is out of sync with the Founder plan');
 if(!stripeCheckout.includes('currentPeriodEnd: subscription?.current_period_end')||!stripeCheckout.includes('connectedToBilling'))throw new Error('Billing status omits paying-café renewal details');
 if(/async function createPortal[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeCheckout)||/async function stripeWebhook[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeWebhook))throw new Error('Billing pause blocks existing customers from managing or canceling subscriptions');
-if(!fs.readFileSync('pricing.html','utf8').includes('Founder checkout is not active yet'))throw new Error('Public pricing preview can start a charge while billing is paused');
+const publicPricing=fs.readFileSync('pricing.html','utf8');
+if(!publicPricing.includes('/signup.html?role=cafe_owner_manager')||publicPricing.includes('Founder checkout is not active yet'))throw new Error('Public pricing must route cafés through an authenticated account before Checkout');
 if(ownerDashboardScript.includes("metric('Free trials'")||!ownerDashboardScript.includes('Free and Pro plan displays are synchronized'))throw new Error('Private subscription analytics uses stale launch-plan labels');
 const mobileSubscription=fs.readFileSync('mobile/app/subscription.tsx','utf8');
 if(!mobileSubscription.includes("role !== 'cafe_owner_manager'")||!mobileSubscription.includes("router.replace('/home')"))throw new Error('Mobile subscription route is not protected from barista accounts');
+if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
 for(const file of ['terms.html','privacy.html']){
   const source=fs.readFileSync(file,'utf8');
   if(!source.includes('BaristaMatch LLC')||!source.includes('Effective September 2, 2026'))throw new Error(`${file}: LLC operator or effective date is missing`);

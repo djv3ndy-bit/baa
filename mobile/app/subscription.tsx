@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { getCurrentContext } from '@/lib/session';
 
@@ -32,13 +32,6 @@ export default function SubscriptionScreen() {
     }).catch(() => router.replace('/home'));
     return () => { active = false; };
   }, []);
-
-  function previewUpgrade() {
-    Alert.alert(
-      'Preview only',
-      'The Pro plan is not live yet, so you will not be charged. After you approve this screen, we can connect an App Store-compliant checkout.',
-    );
-  }
 
   if (checkingAccess) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#b75a1d" /></View></SafeAreaView>;
 
@@ -86,9 +79,9 @@ export default function SubscriptionScreen() {
           <Text style={styles.proDescription}>For cafés that are growing their team.</Text>
           <View style={styles.proDivider} />
           <View style={styles.benefits}>{proBenefits.map(item => <Benefit key={item} text={item} dark />)}</View>
-          <Pressable accessibilityRole="button" onPress={previewUpgrade} style={({ pressed }) => [styles.proButton, pressed && styles.pressed]}>
-            <Text style={styles.proButtonText}>Choose Pro  →</Text>
-          </Pressable>
+          <View style={styles.proButton}>
+            <Text style={styles.proButtonText}>Pro purchases are not available in this app</Text>
+          </View>
           <Text style={styles.finePrint}>Cancel anytime. Founder pricing stays with you while your subscription remains active.</Text>
         </View>
 
@@ -99,7 +92,7 @@ export default function SubscriptionScreen() {
             <Text style={styles.baristaText}>BaristaMatch never charges baristas to find work.</Text>
           </View>
         </View>
-        <Text style={styles.previewNote}>Preview only · billing is not active</Text>
+        <Text style={styles.previewNote}>Existing Pro subscriptions automatically sync when you sign in with the same café account.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -157,7 +150,6 @@ const styles = StyleSheet.create({
   proDivider: { height: 1, marginVertical: 18, backgroundColor: '#68412b' },
   proButton: { marginTop: 22, paddingVertical: 15, borderRadius: 14, alignItems: 'center', backgroundColor: '#d8641e' },
   proButtonText: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  pressed: { opacity: 0.8 },
   finePrint: { marginTop: 12, fontSize: 10, lineHeight: 15, textAlign: 'center', color: '#c9ad99' },
   baristaNote: { flexDirection: 'row', alignItems: 'center', padding: 17, borderWidth: 1, borderColor: '#e3d4c8', borderRadius: 20, backgroundColor: '#fff' },
   cup: { width: 44, fontSize: 27 },
