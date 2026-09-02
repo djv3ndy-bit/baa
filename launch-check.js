@@ -126,6 +126,13 @@ for(const token of ['blockUser','reportUser','isMessageAllowed'])if(!mobileSafet
 for(const token of ['openSafetyMenu','Report conversation','Block account','isMessageAllowed'])if(!mobileChat.includes(token))throw new Error(`Mobile chat safety flow missing ${token}`);
 const mobileProfile=fs.readFileSync('mobile/app/profile.tsx','utf8');
 if(!mobileProfile.includes('requestMediaLibraryPermissionsAsync')||!mobileProfile.includes('launchImageLibraryAsync'))throw new Error('Mobile profile media does not use the phone photo library');
+for(const token of ['date_of_birth','Date of birth required','maximumBirthDate','"female"','"male"','never shown to cafés'])if(!mobileProfile.includes(token))throw new Error(`Mobile private barista demographics missing ${token}`);
+for(const stale of ['AGE_RANGES','non_binary','another_identity','prefer_not_to_say'])if(mobileProfile.includes(stale))throw new Error(`Mobile barista demographics retain stale option ${stale}`);
+const privateDemographicsMigration='supabase/migrations/20260902025028_require_private_barista_demographics.sql';
+if(!fs.existsSync(privateDemographicsMigration))throw new Error('Missing private date-of-birth migration');
+const privateDemographicsSql=fs.readFileSync(privateDemographicsMigration,'utf8');
+for(const token of ['date_of_birth date',"gender_identity in ('female', 'male')",'where p.role = \'barista\'','never exposed on marketplace profiles'])if(!privateDemographicsSql.includes(token))throw new Error(`Private demographics migration missing ${token}`);
+if(!dashboard.includes('name="date_of_birth" type="date"')||!dashboard.includes('Private account information')||dashboard.includes('name="age_range"'))throw new Error('Website private barista demographics are incomplete');
 const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
 if(!mobileJobs.includes("pathname:'/post-job'")||!mobileJobs.includes("update({active:false})"))throw new Error('Mobile job management is incomplete');
 const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
