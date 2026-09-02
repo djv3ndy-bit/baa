@@ -17,6 +17,10 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
+import {
+  floridaCityFromLocation,
+  normalizeFloridaLocation,
+} from "@/lib/floridaLocation";
 
 const PREFERENCES = [
   "Warm customer service",
@@ -76,8 +80,6 @@ type SelectedMedia = {
   size?: number;
   mimeType?: string;
 };
-const isFloridaLocation = (value?: string | null) =>
-  /(^|,|\s)(fl|florida)(\s|$)/i.test(String(value || "").trim());
 function parseAvailability(value?: string | null) {
   const parts = String(value || "")
     .split(" · ")
@@ -123,6 +125,7 @@ export default function Profile() {
     [profile, setProfile] = useState<any>({}),
     [role, setRole] = useState<AppRole>("barista"),
     [saving, setSaving] = useState(false),
+    [locationCity, setLocationCity] = useState(""),
     [openHours, setOpenHours] = useState<OpenHours>({}),
     [availability, setAvailability] = useState<string[]>([]),
     [availabilityNotes, setAvailabilityNotes] = useState(""),
@@ -146,7 +149,12 @@ export default function Profile() {
         demographicsError.message,
       );
     }
-    setProfile({ ...(p || {}), ...(demographics || {}) });
+    setProfile({
+      ...(p || {}),
+      ...(demographics || {}),
+      preferred_city: floridaCityFromLocation(p?.preferred_city),
+    });
+    setLocationCity(floridaCityFromLocation(p?.location));
     setOpenHours(parseOpeningHours(p?.open_hours));
     const savedAvailability = parseAvailability(p?.availability);
     setAvailability(savedAvailability.selected);
@@ -253,10 +261,22 @@ export default function Profile() {
     });
   }
   async function save() {
-    if (!isFloridaLocation(profile.location))
+    const locationInput =
+      locationCity.trim() ||
+      (role === "barista" ? profile.preferred_city : "");
+    const normalizedLocation = normalizeFloridaLocation(locationInput);
+    if (!normalizedLocation)
       return Alert.alert(
-        "Florida location required",
-        "Enter a Florida location, such as Miami, FL. BaristaMatch is currently available in Florida only.",
+        "Florida city required",
+        "Enter a city such as Miami. Florida is selected automatically.",
+      );
+    const normalizedPreferredLocation = role === "barista"
+      ? normalizeFloridaLocation(profile.preferred_city || locationCity)
+      : null;
+    if (role === "barista" && !normalizedPreferredLocation)
+      return Alert.alert(
+        "Preferred work city required",
+        "Enter a Florida city where you want to work, such as Miami.",
       );
     if (role === "barista" && !profile.date_of_birth)
       return Alert.alert("Date of birth required", "Choose your date of birth to continue. It remains private and is never shown to cafés.");
@@ -312,7 +332,7 @@ export default function Profile() {
       );
     }
     const payload: any = {
-      location: profile.location || null,
+      location: normalizedLocation,
       bio: profile.bio || null,
     };
     if (role === "barista") {
@@ -323,7 +343,9 @@ export default function Profile() {
           .join(" · ") || null;
       payload.pay_expectation = profile.pay_expectation || null;
       payload.experience = profile.experience || null;
-      payload.preferred_city = profile.preferred_city || null;
+      payload.preferred_city = floridaCityFromLocation(
+        normalizedPreferredLocation,
+      );
       payload.preferred_state = "FL";
       payload.preferred_postal_code = profile.preferred_postal_code || null;
       payload.preferred_radius_miles = Number(
@@ -393,6 +415,7 @@ export default function Profile() {
       ...payload,
       skills_text: payload.skills?.join(", "),
     }));
+    setLocationCity(floridaCityFromLocation(normalizedLocation));
     setProfilePhoto(null);
     setBarPicture(null);
     setCoffeeVideo(null);
@@ -491,10 +514,16 @@ export default function Profile() {
               }
             />
             <Field
-              label="Florida city"
-              value={profile.location || ""}
-              onChange={(v) => set("location", v)}
-              placeholder="Miami, FL"
+              label="City"
+              value={locationCity}
+              onChange={setLocationCity}
+              placeholder="Miami"
+            />
+            <Field
+              label="State"
+              value="Florida (FL)"
+              onChange={() => {}}
+              editable={false}
             />
             {isBarista ? (
               <View style={s.privateCard}>
@@ -526,13 +555,14 @@ export default function Profile() {
             {isBarista ? (
               <>
                 <Field
-                  label="Preferred work city"
+                  label="Preferred work city (optional)"
                   value={profile.preferred_city || ""}
                   onChange={(v) => set("preferred_city", v)}
+                  placeholder={locationCity || "Miami"}
                 />
                 <Field
-                  label="Preferred state"
-                  value="FL"
+                  label="Preferred work state"
+                  value="Florida (FL)"
                   onChange={() => {}}
                   editable={false}
                 />
@@ -829,6 +859,7 @@ function Field({
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={label}
         value={value}
         onChangeText={onChange}
         multiline={multiline}
