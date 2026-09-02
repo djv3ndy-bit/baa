@@ -1,5 +1,5 @@
 import unittest
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from era.collectors.github import GitHubCollector
 from era.collectors.health import HealthCollector
@@ -66,6 +66,34 @@ class CollectorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(github[0].source, EvidenceSource.GITHUB)
         self.assertEqual(vercel[0].source, EvidenceSource.VERCEL)
         self.assertEqual(supabase[0].source, EvidenceSource.SUPABASE)
+
+    async def test_github_collector_ignores_failures_outside_lookback(self) -> None:
+        now = datetime.now(UTC)
+
+        class WindowedFakeGitHub(FakeGitHub):
+            async def list_failed_checks(self, repository, *, limit):
+                return [
+                    {
+                        "id": "stale-check",
+                        "occurred_at": (now - timedelta(hours=2)).isoformat(),
+                        "summary": "Old test failure",
+                        "conclusion": "failure",
+                    },
+                    {
+                        "id": "recent-check",
+                        "occurred_at": (now - timedelta(minutes=5)).isoformat(),
+                        "summary": "Recent test failure",
+                        "conclusion": "failure",
+                    },
+                ]
+
+        evidence = await GitHubCollector(
+            WindowedFakeGitHub(),
+            "owner/repo",
+            lookback_minutes=60,
+        ).collect()
+
+        self.assertEqual([item.id for item in evidence], ["recent-check"])
 
     def test_health_collector_rejects_unsafe_urls(self) -> None:
         hosts = frozenset({"example.com"})

@@ -19,6 +19,8 @@ on:
       - 'supabase/migrations/**'
       - 'vercel.json'
       - 'launch-check.js'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - '.github/workflows/launch-readiness-check.yml'
   workflow_dispatch:
 jobs:
@@ -26,6 +28,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: node launch-check.js
       - run: node --test tests/*.test.js
       - run: |
