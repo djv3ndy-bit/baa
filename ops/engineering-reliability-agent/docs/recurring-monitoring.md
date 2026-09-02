@@ -12,6 +12,8 @@ The default cycle requires no long-lived provider secret. It uses the job's shor
   collector resolves GitHub Actions metadata for a check named `monitor` and excludes
   it only when the workflow path is this reliability monitor, preventing an alert from
   re-ingesting its own previous failure while preserving same-named failures elsewhere.
+  Failed checks older than the configured `--lookback` window are ignored so a resolved
+  historical failure cannot keep every later hourly run red.
 
 Each run produces a sanitized JSON artifact retained for 14 days. The artifact includes the public and optional private monitoring results plus a response package with an incident fingerprint, affected routes, ranked change correlations, safe repair steps, and permanent prohibitions. P0, P1, and P2 findings fail the workflow so GitHub displays a review-only alert. P3 findings pass. The workflow does not call an OpenAI model, create an issue, modify code, open or merge a pull request, deploy, or make a provider write.
 

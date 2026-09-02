@@ -158,6 +158,7 @@ def build_live_plan(
             github_source,
             repository,
             limit=limit,
+            lookback_minutes=lookback_minutes,
         )
 
     if "vercel" in providers:
