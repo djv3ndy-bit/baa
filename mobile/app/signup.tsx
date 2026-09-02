@@ -35,7 +35,7 @@ export default function SignupScreen() {
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
-      options: { emailRedirectTo:'baristamatch://home',data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
+      options: { emailRedirectTo:'baristamatch://login',data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
     });
     if (!error && data.user) {
       await supabase.from('profiles').upsert({ ...profile, id: data.user.id }, { onConflict: 'id' });
@@ -43,7 +43,7 @@ export default function SignupScreen() {
     setLoading(false);
     if (error) return Alert.alert('Unable to create account', error.message);
     if(data.session){if(isCafe)await supabase.rpc('ensure_cafe_subscription');return router.replace('/home')}
-    Alert.alert('Check your email', 'Confirm your email to finish creating your BaristaMatch account.', [{ text: 'OK', onPress: () => router.replace('/login') }]);
+    router.replace('/verify-email');
   }
 
   return (
