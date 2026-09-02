@@ -38,7 +38,7 @@ The application currently processes the following categories. Mark them as linke
 | Identifiers | User ID, device push token | App functionality, security, notifications |
 | Usage data | Profile views, applications, matches, notification activity | App functionality, analytics |
 | Diagnostics | Error details, page or route, device/browser details | App functionality, diagnostics |
-| Other data | General location entered by the user, skills, experience, availability, desired pay, optional age range and gender | App functionality, matching, aggregate analytics |
+| Other data | General location entered by the user, skills, experience, availability, desired pay, and private barista date of birth and gender | App functionality, age eligibility, matching, aggregate analytics |
 | Purchases | Café subscription status if billing is enabled | App functionality, account management |
 
 Current policy: no data is sold and no data is used for third-party targeted advertising. Confirm the production build contains no additional analytics or advertising SDK before submitting these answers.
