@@ -113,6 +113,7 @@ if(!mobileLogin.includes('height < 900')||!mobileLogin.includes('height < 720')|
 if(!mobileLogin.includes('confirm you are at least 16')||!mobileLogin.includes('guardian permission')) throw new Error('Mobile social signup is missing age and guardian confirmation');
 const mobileSignup=fs.readFileSync('mobile/app/signup.tsx','utf8');
 for(const token of ['ageConfirmed','at least 16','parent or legal guardian','/terms.html','/privacy.html'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup legal consent is missing ${token}`);
+for(const token of ['normalizeFloridaLocation','Florida (FL)','Florida is selected automatically'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup structured Florida location is missing ${token}`);
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
 for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
@@ -130,6 +131,7 @@ for(const token of ['blockUser','reportUser','isMessageAllowed'])if(!mobileSafet
 for(const token of ['openSafetyMenu','Report conversation','Block account','isMessageAllowed'])if(!mobileChat.includes(token))throw new Error(`Mobile chat safety flow missing ${token}`);
 const mobileProfile=fs.readFileSync('mobile/app/profile.tsx','utf8');
 if(!mobileProfile.includes('requestMediaLibraryPermissionsAsync')||!mobileProfile.includes('launchImageLibraryAsync'))throw new Error('Mobile profile media does not use the phone photo library');
+for(const token of ['normalizeFloridaLocation','locationCity','Florida (FL)','Florida is selected automatically'])if(!mobileProfile.includes(token))throw new Error(`Mobile profile structured Florida location is missing ${token}`);
 for(const token of ['date_of_birth','Date of birth required','maximumBirthDate','"female"','"male"','never shown to cafés'])if(!mobileProfile.includes(token))throw new Error(`Mobile private barista demographics missing ${token}`);
 for(const stale of ['AGE_RANGES','non_binary','another_identity','prefer_not_to_say'])if(mobileProfile.includes(stale))throw new Error(`Mobile barista demographics retain stale option ${stale}`);
 const privateDemographicsMigration='supabase/migrations/20260902025028_require_private_barista_demographics.sql';
