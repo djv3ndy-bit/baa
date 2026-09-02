@@ -1,3 +1,6 @@
+import { randomBytes } from 'node:crypto';
+import { triageSupportTicket, supportDraft } from './_support-agent.js';
+
 function clean(value, max = 5000) {
   return String(value || '').trim().slice(0, max);
 }
@@ -67,13 +70,15 @@ export default async function handler(req,res){
     if(!email||!email.includes('@')||!issueType||!subject||description.length<10)return res.status(400).json({error:'Please complete all required fields.'});
     if(!new Set(['bug','account','barista','cafe','billing','feedback','question','other']).has(issueType))return res.status(400).json({error:'Please choose a valid issue type.'});
     const ticketId=makeTicketId();
-    const dbResponse=await fetch(`${supabaseUrl}/rest/v1/support_tickets`,{method:'POST',headers:adminHeaders({Prefer:'return=representation'}),body:JSON.stringify({ticket_id:ticketId,email,name:name||null,issue_type:issueType,subject,description,page_url:pageUrl||null,browser_info:browserInfo||null,status:'new'})});
+    const ticket={ticket_id:ticketId,email,name:name||null,issue_type:issueType,subject,description,page_url:pageUrl||null,browser_info:browserInfo||null,status:'new'};
+    const triage=triageSupportTicket(ticket);
+    const draft=supportDraft(ticket,triage);
+    const dbResponse=await fetch(`${supabaseUrl}/rest/v1/support_tickets`,{method:'POST',headers:adminHeaders({Prefer:'return=representation'}),body:JSON.stringify(ticket)});
     if(!dbResponse.ok){console.error('Support insert error:',await dbResponse.text());return res.status(500).json({error:'We could not create your support ticket. Please try again.'})}
     const safeName=escapeHtml(name||'there'),safeTicket=escapeHtml(ticketId),safeSubject=escapeHtml(subject),safeDescription=escapeHtml(description).replaceAll('\n','<br>'),safeType=escapeHtml(issueType),safePage=escapeHtml(pageUrl||'Not provided');
     const userEmail=await resendWithRetry({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:[email],reply_to:'hello@baristajobmatch.com',subject:`We received your support request — ${ticketId}`,html:supportEmailHtml({name:safeName,ticket:safeTicket,subject:safeSubject})},3);
-    const internalEmail=await resend({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:['hello@baristajobmatch.com'],reply_to:email,subject:`${issueType==='bug'?'🐞 New Bug':'New Support Ticket'} — ${ticketId}`,html:`<div style="max-width:600px;margin:0 auto;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#2b1a10"><h2 style="font-size:24px;line-height:30px">New BaristaMatch Support Ticket</h2><p><strong>Ticket:</strong> ${safeTicket}</p><p><strong>Type:</strong> ${safeType}</p><p><strong>From:</strong> ${escapeHtml(email)}</p><p><strong>Subject:</strong> ${safeSubject}</p><p><strong>Description:</strong><br>${safeDescription}</p><p><strong>Page:</strong> ${safePage}</p><p><strong>Status:</strong> New</p></div>`});
+    const internalEmail=await resend({from:'BaristaMatch Support <updates@updates.baristajobmatch.com>',to:['hello@baristajobmatch.com'],reply_to:email,subject:`[${triage.priority}] ${issueType==='bug'?'🐞 Bug':'Support'} — ${ticketId}`,html:`<div style="max-width:650px;margin:0 auto;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#2b1a10"><h2>New BaristaMatch Support Ticket</h2><p><strong>Ticket:</strong> ${safeTicket}</p><p><strong>Type:</strong> ${safeType}</p><p><strong>AI category:</strong> ${escapeHtml(triage.category)}</p><p><strong>Priority:</strong> ${escapeHtml(triage.priority)}</p><p><strong>Route:</strong> ${escapeHtml(triage.route)}</p><p><strong>Owner approval:</strong> ${triage.approval_required?'Required':'Not currently required'}</p><p><strong>Reason:</strong> ${escapeHtml(triage.reason)}</p><p><strong>From:</strong> ${escapeHtml(email)}</p><p><strong>Subject:</strong> ${safeSubject}</p><p><strong>Description:</strong><br>${safeDescription}</p><p><strong>Page:</strong> ${safePage}</p><hr><p><strong>Suggested reply — NOT SENT:</strong></p><pre style="white-space:pre-wrap;font-family:Arial,sans-serif">${escapeHtml(draft)}</pre></div>`});
     if(!userEmail.ok)console.error('Support confirmation email failed:',userEmail.data);if(!internalEmail.ok)console.error('Support internal email failed:',internalEmail.data);
-    return res.status(200).json({success:true,ticket_id:ticketId,confirmation_sent:userEmail.ok});
+    return res.status(200).json({success:true,ticket_id:ticketId,confirmation_sent:userEmail.ok,triage:{priority:triage.priority,route:triage.route}});
   }catch(error){console.error('Support API error:',error);return res.status(500).json({error:'Something went wrong. Please try again.'})}
 }
-import { randomBytes } from 'node:crypto';
