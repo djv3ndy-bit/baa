@@ -7,7 +7,6 @@ on:
       - 'api/support.js'
       - 'tests/support-agent.test.mjs'
       - 'package.json'
-      - 'package-lock.json'
       - '.github/workflows/support-agent-tests.yml'
   push:
     branches: [main]
@@ -16,7 +15,6 @@ on:
       - 'api/support.js'
       - 'tests/support-agent.test.mjs'
       - 'package.json'
-      - 'package-lock.json'
 
 permissions:
   contents: read
@@ -32,8 +30,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
       - name: Install dependencies
-        run: npm ci
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Run support agent safety tests
         run: npm test
