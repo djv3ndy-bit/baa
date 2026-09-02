@@ -133,6 +133,14 @@ if(!fs.existsSync(privateDemographicsMigration))throw new Error('Missing private
 const privateDemographicsSql=fs.readFileSync(privateDemographicsMigration,'utf8');
 for(const token of ['date_of_birth date',"gender_identity in ('female', 'male')",'where p.role = \'barista\'','never exposed on marketplace profiles'])if(!privateDemographicsSql.includes(token))throw new Error(`Private demographics migration missing ${token}`);
 if(!dashboard.includes('name="date_of_birth" type="date"')||!dashboard.includes('Private account information')||dashboard.includes('name="age_range"'))throw new Error('Website private barista demographics are incomplete');
+const invokerHardeningMigration='supabase/migrations/20260902030619_remove_authenticated_security_definer_functions.sql';
+if(!fs.existsSync(invokerHardeningMigration))throw new Error('Missing authenticated function privilege-hardening migration');
+const invokerHardeningSql=fs.readFileSync(invokerHardeningMigration,'utf8');
+for(const functionName of ['cafe_has_hiring_access','ensure_cafe_subscription','mark_conversation_read']){
+  if(!invokerHardeningSql.includes(`function public.${functionName}`))throw new Error(`Privilege hardening missing ${functionName}`);
+}
+if((invokerHardeningSql.match(/security invoker/g)||[]).length<3||invokerHardeningSql.includes('security definer'))throw new Error('Authenticated RPC functions must use caller permissions');
+for(const token of ['grant insert (user_id, complimentary_access)','grant update (read_at) on table public.messages','Matched recipients can mark messages read'])if(!invokerHardeningSql.includes(token))throw new Error(`Privilege hardening missing ${token}`);
 const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
 if(!mobileJobs.includes("pathname:'/post-job'")||!mobileJobs.includes("update({active:false})"))throw new Error('Mobile job management is incomplete');
 const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
