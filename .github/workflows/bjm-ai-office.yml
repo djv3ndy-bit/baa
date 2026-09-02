@@ -1,0 +1,25 @@
+name: BJM AI Office
+on:
+  pull_request:
+    paths: ['bjm-ai-office/**','.github/workflows/bjm-ai-office.yml']
+  push:
+    branches: [main]
+    paths: ['bjm-ai-office/**']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: bjm-ai-office
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm install
+      - run: npm test
+      - run: npm run build
+      - name: Verify deterministic widget bundle
+        run: test -f dist/assets/office.js
