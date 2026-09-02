@@ -58,24 +58,18 @@ const AVAILABILITY_OPTIONS = [
   "Flexible",
 ];
 const SEARCH_AREAS = [10, 25, 50, 100];
-const AGE_RANGES = [
-  { value: "", label: "Not provided" },
-  { value: "16_17", label: "16–17" },
-  { value: "18_24", label: "18–24" },
-  { value: "25_34", label: "25–34" },
-  { value: "35_44", label: "35–44" },
-  { value: "45_54", label: "45–54" },
-  { value: "55_plus", label: "55+" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
-];
 const GENDER_OPTIONS = [
-  { value: "", label: "Not provided" },
-  { value: "woman", label: "Woman" },
-  { value: "man", label: "Man" },
-  { value: "non_binary", label: "Non-binary" },
-  { value: "another_identity", label: "Another identity" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
 ];
+const parseDate = (value?: string | null) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const normalized = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return normalized === value ? date : null;
+};
+const maximumBirthDate = () => { const date = new Date(); date.setFullYear(date.getFullYear() - 16); date.setHours(12, 0, 0, 0); return date; };
 type SelectedMedia = {
   uri: string;
   name: string;
@@ -141,11 +135,10 @@ export default function Profile() {
   async function load() {
     const { user, profile: p, role: r } = await getCurrentContext();
     if (!user) return router.replace("/login");
-    const { data: demographics, error: demographicsError } = await supabase
-      .from("profile_demographics")
-      .select("age_range,gender_identity")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const demographicsResult = r === "barista"
+      ? await supabase.from("profile_demographics").select("date_of_birth,gender_identity").eq("user_id", user.id).maybeSingle()
+      : { data: null, error: null };
+    const { data: demographics, error: demographicsError } = demographicsResult;
     if (demographicsError) {
       setLoading(false);
       return Alert.alert(
@@ -261,6 +254,15 @@ export default function Profile() {
         "Florida location required",
         "Enter a Florida location, such as Miami, FL. BaristaMatch is currently available in Florida only.",
       );
+    if (role === "barista" && !profile.date_of_birth)
+      return Alert.alert("Date of birth required", "Choose your date of birth to continue. It remains private and is never shown to cafés.");
+    const birthDate = role === "barista" ? parseDate(profile.date_of_birth) : null;
+    if (role === "barista" && !birthDate)
+      return Alert.alert("Valid date required", "Enter your complete date of birth using YYYY-MM-DD, for example 1998-04-23.");
+    if (role === "barista" && birthDate && birthDate > maximumBirthDate())
+      return Alert.alert("Age requirement", "BaristaMatch accounts are available to people age 16 or older.");
+    if (role === "barista" && !["female", "male"].includes(profile.gender_identity))
+      return Alert.alert("Gender required", "Choose Female or Male to continue. This information remains private.");
     setSaving(true);
     const {
       data: { user },
@@ -363,13 +365,14 @@ export default function Profile() {
       .from("profiles")
       .update(payload)
       .eq("id", user.id);
-    const { error: demographicsError } = error
+    const { error: demographicsError } = error || role !== "barista"
       ? { error }
       : await supabase.from("profile_demographics").upsert(
           {
             user_id: user.id,
-            age_range: profile.age_range || null,
-            gender_identity: profile.gender_identity || null,
+            date_of_birth: profile.date_of_birth,
+            gender_identity: profile.gender_identity,
+            age_range: null,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" },
@@ -477,32 +480,33 @@ export default function Profile() {
               onChange={(v) => set("location", v)}
               placeholder="Miami, FL"
             />
-            <Text style={s.label}>Age range (optional)</Text>
-            <View style={s.choiceWrap}>
-              {AGE_RANGES.map((option) => (
-                <Choice
-                  key={option.value || "not_provided"}
-                  label={option.label}
-                  selected={(profile.age_range || "") === option.value}
-                  onPress={() => set("age_range", option.value)}
+            {isBarista ? (
+              <View style={s.privateCard}>
+                <Text style={s.privateTitle}>Private account information</Text>
+                <Text style={s.label}>Date of birth</Text>
+                <TextInput
+                  accessibilityLabel="Date of birth"
+                  value={profile.date_of_birth || ""}
+                  onChangeText={(value) => set("date_of_birth", value.replace(/[^0-9-]/g, "").slice(0, 10))}
+                  placeholder="YYYY-MM-DD"
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
+                  style={s.dateInput}
                 />
-              ))}
-            </View>
-            <Text style={[s.label, { marginTop: 15 }]}>Gender (optional)</Text>
-            <View style={s.choiceWrap}>
-              {GENDER_OPTIONS.map((option) => (
-                <Choice
-                  key={option.value || "not_provided"}
-                  label={option.label}
-                  selected={(profile.gender_identity || "") === option.value}
-                  onPress={() => set("gender_identity", option.value)}
-                />
-              ))}
-            </View>
-            <Text style={s.privateHelp}>
-              These private details are never shown on your marketplace profile.
-              They are used only in anonymous platform totals.
-            </Text>
+                <Text style={[s.label, { marginTop: 15 }]}>Gender</Text>
+                <View style={s.choiceWrap}>
+                  {GENDER_OPTIONS.map((option) => (
+                    <Choice
+                      key={option.value}
+                      label={option.label}
+                      selected={(profile.gender_identity || "") === option.value}
+                      onPress={() => set("gender_identity", option.value)}
+                    />
+                  ))}
+                </View>
+                <Text style={s.privateHelp}>Required for age eligibility and private platform reporting. Your date of birth, age, and gender are never shown to cafés or on your marketplace profile.</Text>
+              </View>
+            ) : null}
             {isBarista ? (
               <>
                 <Field
@@ -992,6 +996,9 @@ const s = StyleSheet.create({
   checkMarkSelected: { color: "#4f7d43" },
   choiceText: { fontSize: 11, fontWeight: "700", color: "#5c4435" },
   choiceTextSelected: { color: "#3f6738" },
+  privateCard: { marginTop: 16, padding: 16, borderWidth: 1, borderColor: "#e2d4c8", borderRadius: 16, backgroundColor: "#fffaf5" },
+  privateTitle: { fontSize: 15, fontWeight: "900", color: "#321708", marginBottom: 2 },
+  dateInput: { marginTop: 7, borderWidth: 1, borderColor: "#ddd0c6", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: "#fff", color: "#24150d", fontSize: 15, fontWeight: "700" },
   privateHelp: {
     fontSize: 11,
     lineHeight: 17,
