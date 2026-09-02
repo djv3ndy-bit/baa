@@ -71,6 +71,7 @@ if(/alter\s+policy|create\s+policy|drop\s+policy/i.test(subscriptionPauseSql))th
 for(const token of ['account_directory','set_cafe_subscription_access','stripe_subscription_id','owner_paused_at'])if(!fs.readFileSync('api/analytics.js','utf8').includes(token))throw new Error(`Owner account API missing ${token}`);
 const signup=fs.readFileSync('signup.html','utf8');
 if(!signup.includes('/privacy.html')||!signup.includes('/terms.html')||!signup.includes('name="terms"')) throw new Error('Signup legal consent links missing');
+if(!signup.includes('at least 16')||!signup.includes('parent or legal guardian')) throw new Error('Website signup age and guardian confirmation is missing');
 if(!signup.includes('class="login-link" href="/login.html"')) throw new Error('Signup login link is not routed to login');
 const login=fs.readFileSync('login.html','utf8');
 if(!login.includes('resetPasswordForEmail')||!login.includes('/reset-password.html')) throw new Error('Password reset request flow is missing');
@@ -106,10 +107,14 @@ if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mo
 if(!/finally\s*\{\s*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error('Mobile social login can remain stuck after cancellation');
 if(mobileLogin.includes('<ScrollView')) throw new Error('Mobile login must fit without scrolling');
 if(!mobileLogin.includes('height < 900')||!mobileLogin.includes('height < 720')||!mobileLogin.includes('styles.sheetShort')) throw new Error('Mobile login responsive layouts do not cover all supported iPhone heights');
+if(!mobileLogin.includes('confirm you are at least 16')||!mobileLogin.includes('guardian permission')) throw new Error('Mobile social signup is missing age and guardian confirmation');
+const mobileSignup=fs.readFileSync('mobile/app/signup.tsx','utf8');
+for(const token of ['ageConfirmed','at least 16','parent or legal guardian','/terms.html','/privacy.html'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup legal consent is missing ${token}`);
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
 for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
 if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('Delete account')) throw new Error('Mobile direct account deletion is missing');
+for(const token of ['/terms.html','/privacy.html','BaristaMatch LLC'])if(!mobileSettings.includes(token))throw new Error(`Mobile settings legal access is missing ${token}`);
 const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
 if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');
 const safetyMigration='supabase/migrations/20260831090000_add_member_safety_controls.sql';
@@ -146,5 +151,9 @@ if(!fs.readFileSync('pricing.html','utf8').includes('Founder checkout is not act
 if(ownerDashboardScript.includes("metric('Free trials'")||!ownerDashboardScript.includes('Free and Pro plan displays are synchronized'))throw new Error('Private subscription analytics uses stale launch-plan labels');
 const mobileSubscription=fs.readFileSync('mobile/app/subscription.tsx','utf8');
 if(!mobileSubscription.includes("role !== 'cafe_owner_manager'")||!mobileSubscription.includes("router.replace('/home')"))throw new Error('Mobile subscription route is not protected from barista accounts');
+for(const file of ['terms.html','privacy.html']){
+  const source=fs.readFileSync(file,'utf8');
+  if(!source.includes('BaristaMatch LLC')||!source.includes('Effective September 2, 2026'))throw new Error(`${file}: LLC operator or effective date is missing`);
+}
 
 console.log('BaristaMatch launch readiness static checks passed');
