@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
@@ -58,24 +60,13 @@ const AVAILABILITY_OPTIONS = [
   "Flexible",
 ];
 const SEARCH_AREAS = [10, 25, 50, 100];
-const AGE_RANGES = [
-  { value: "", label: "Not provided" },
-  { value: "16_17", label: "16–17" },
-  { value: "18_24", label: "18–24" },
-  { value: "25_34", label: "25–34" },
-  { value: "35_44", label: "35–44" },
-  { value: "45_54", label: "45–54" },
-  { value: "55_plus", label: "55+" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
-];
 const GENDER_OPTIONS = [
-  { value: "", label: "Not provided" },
-  { value: "woman", label: "Woman" },
-  { value: "man", label: "Man" },
-  { value: "non_binary", label: "Non-binary" },
-  { value: "another_identity", label: "Another identity" },
-  { value: "prefer_not_to_say", label: "Prefer not to say" },
+  { value: "female", label: "Female" },
+  { value: "male", label: "Male" },
 ];
+const formatDate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const parseDate = (value?: string | null) => value ? new Date(`${value}T12:00:00`) : new Date(2000, 0, 1, 12);
+const maximumBirthDate = () => { const date = new Date(); date.setFullYear(date.getFullYear() - 16); date.setHours(12, 0, 0, 0); return date; };
 type SelectedMedia = {
   uri: string;
   name: string;
@@ -132,6 +123,7 @@ export default function Profile() {
     [openHours, setOpenHours] = useState<OpenHours>({}),
     [availability, setAvailability] = useState<string[]>([]),
     [availabilityNotes, setAvailabilityNotes] = useState(""),
+    [showBirthPicker, setShowBirthPicker] = useState(false),
     [profilePhoto, setProfilePhoto] = useState<SelectedMedia | null>(null),
     [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
     [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
@@ -141,11 +133,10 @@ export default function Profile() {
   async function load() {
     const { user, profile: p, role: r } = await getCurrentContext();
     if (!user) return router.replace("/login");
-    const { data: demographics, error: demographicsError } = await supabase
-      .from("profile_demographics")
-      .select("age_range,gender_identity")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const demographicsResult = r === "barista"
+      ? await supabase.from("profile_demographics").select("date_of_birth,gender_identity").eq("user_id", user.id).maybeSingle()
+      : { data: null, error: null };
+    const { data: demographics, error: demographicsError } = demographicsResult;
     if (demographicsError) {
       setLoading(false);
       return Alert.alert(
@@ -163,6 +154,10 @@ export default function Profile() {
   }
   function set(k: string, v: any) {
     setProfile((p: any) => ({ ...p, [k]: v }));
+  }
+  function changeBirthDate(event: DateTimePickerEvent, selected?: Date) {
+    if (Platform.OS === "android") setShowBirthPicker(false);
+    if (event.type === "set" && selected) set("date_of_birth", formatDate(selected));
   }
   function togglePreference(value: string) {
     const selected = new Set<string>(profile.barista_preferences || []);
@@ -261,6 +256,12 @@ export default function Profile() {
         "Florida location required",
         "Enter a Florida location, such as Miami, FL. BaristaMatch is currently available in Florida only.",
       );
+    if (role === "barista" && !profile.date_of_birth)
+      return Alert.alert("Date of birth required", "Choose your date of birth to continue. It remains private and is never shown to cafés.");
+    if (role === "barista" && parseDate(profile.date_of_birth) > maximumBirthDate())
+      return Alert.alert("Age requirement", "BaristaMatch accounts are available to people age 16 or older.");
+    if (role === "barista" && !["female", "male"].includes(profile.gender_identity))
+      return Alert.alert("Gender required", "Choose Female or Male to continue. This information remains private.");
     setSaving(true);
     const {
       data: { user },
@@ -363,13 +364,14 @@ export default function Profile() {
       .from("profiles")
       .update(payload)
       .eq("id", user.id);
-    const { error: demographicsError } = error
+    const { error: demographicsError } = error || role !== "barista"
       ? { error }
       : await supabase.from("profile_demographics").upsert(
           {
             user_id: user.id,
-            age_range: profile.age_range || null,
-            gender_identity: profile.gender_identity || null,
+            date_of_birth: profile.date_of_birth,
+            gender_identity: profile.gender_identity,
+            age_range: null,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" },
@@ -477,32 +479,42 @@ export default function Profile() {
               onChange={(v) => set("location", v)}
               placeholder="Miami, FL"
             />
-            <Text style={s.label}>Age range (optional)</Text>
-            <View style={s.choiceWrap}>
-              {AGE_RANGES.map((option) => (
-                <Choice
-                  key={option.value || "not_provided"}
-                  label={option.label}
-                  selected={(profile.age_range || "") === option.value}
-                  onPress={() => set("age_range", option.value)}
-                />
-              ))}
-            </View>
-            <Text style={[s.label, { marginTop: 15 }]}>Gender (optional)</Text>
-            <View style={s.choiceWrap}>
-              {GENDER_OPTIONS.map((option) => (
-                <Choice
-                  key={option.value || "not_provided"}
-                  label={option.label}
-                  selected={(profile.gender_identity || "") === option.value}
-                  onPress={() => set("gender_identity", option.value)}
-                />
-              ))}
-            </View>
-            <Text style={s.privateHelp}>
-              These private details are never shown on your marketplace profile.
-              They are used only in anonymous platform totals.
-            </Text>
+            {isBarista ? (
+              <View style={s.privateCard}>
+                <Text style={s.privateTitle}>Private account information</Text>
+                <Text style={s.label}>Date of birth</Text>
+                <Pressable accessibilityRole="button" onPress={() => setShowBirthPicker(true)} style={s.dateButton}>
+                  <Text style={profile.date_of_birth ? s.dateText : s.datePlaceholder}>
+                    {profile.date_of_birth || "Choose your date of birth"}
+                  </Text>
+                </Pressable>
+                {showBirthPicker ? (
+                  <View>
+                    <DateTimePicker
+                      value={parseDate(profile.date_of_birth)}
+                      mode="date"
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      maximumDate={maximumBirthDate()}
+                      minimumDate={new Date(1920, 0, 1, 12)}
+                      onChange={changeBirthDate}
+                    />
+                    {Platform.OS === "ios" ? <Pressable onPress={() => setShowBirthPicker(false)} style={s.dateDone}><Text style={s.dateDoneText}>Done</Text></Pressable> : null}
+                  </View>
+                ) : null}
+                <Text style={[s.label, { marginTop: 15 }]}>Gender</Text>
+                <View style={s.choiceWrap}>
+                  {GENDER_OPTIONS.map((option) => (
+                    <Choice
+                      key={option.value}
+                      label={option.label}
+                      selected={(profile.gender_identity || "") === option.value}
+                      onPress={() => set("gender_identity", option.value)}
+                    />
+                  ))}
+                </View>
+                <Text style={s.privateHelp}>Required for age eligibility and private platform reporting. Your date of birth, age, and gender are never shown to cafés or on your marketplace profile.</Text>
+              </View>
+            ) : null}
             {isBarista ? (
               <>
                 <Field
@@ -992,6 +1004,13 @@ const s = StyleSheet.create({
   checkMarkSelected: { color: "#4f7d43" },
   choiceText: { fontSize: 11, fontWeight: "700", color: "#5c4435" },
   choiceTextSelected: { color: "#3f6738" },
+  privateCard: { marginTop: 16, padding: 16, borderWidth: 1, borderColor: "#e2d4c8", borderRadius: 16, backgroundColor: "#fffaf5" },
+  privateTitle: { fontSize: 15, fontWeight: "900", color: "#321708", marginBottom: 2 },
+  dateButton: { marginTop: 7, borderWidth: 1, borderColor: "#ddd0c6", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: "#fff" },
+  dateText: { color: "#24150d", fontSize: 15, fontWeight: "700" },
+  datePlaceholder: { color: "#8b7c72", fontSize: 14 },
+  dateDone: { alignSelf: "flex-end", paddingHorizontal: 16, paddingVertical: 9 },
+  dateDoneText: { color: "#a95820", fontWeight: "900" },
   privateHelp: {
     fontSize: 11,
     lineHeight: 17,
