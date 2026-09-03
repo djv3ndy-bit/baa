@@ -1,0 +1,95 @@
+name: Notion reliability incident sync
+
+on:
+  workflow_run:
+    workflows:
+      - Engineering reliability monitor
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: notion-reliability-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: >-
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the reviewed default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download the sanitized reliability artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p monitoring-artifacts/source
+          gh run download "$SOURCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'engineering-reliability-result-*' \
+            --dir monitoring-artifacts/source
+          input_path="$(find monitoring-artifacts/source -type f -name response-package.json -print -quit)"
+          if [[ -z "$input_path" ]]; then
+            printf '%s\n' '{"status":"artifact_missing","attempted":false}' > monitoring-artifacts/notion-sync.json
+            exit 1
+          fi
+          printf 'NOTION_RESPONSE_PACKAGE=%s\n' "$input_path" >> "$GITHUB_ENV"
+
+      - name: Create or refresh the private Notion incident task
+        id: notion_sync
+        shell: bash
+        env:
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+          NOTION_AGENT_DATA_SOURCE_ID: 64a712d1-8a77-44da-8db5-6a80b9ace054
+          NOTION_SOURCE_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+        run: |
+          set +e
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.notion \
+              --input "$NOTION_RESPONSE_PACKAGE" \
+              --source-url "$NOTION_SOURCE_URL" \
+              > monitoring-artifacts/notion-sync.json 2>&1
+          sync_exit=$?
+          set -e
+
+          SYNC_PATH=monitoring-artifacts/notion-sync.json python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          with open(os.environ["SYNC_PATH"], encoding="utf-8") as handle:
+              result = json.load(handle)
+          print("## Private Notion incident sync")
+          print(f"- Status: {result.get('status', 'unknown')}")
+          print(f"- Attempted: {str(result.get('attempted', False)).lower()}")
+          print("- Healthy checks are skipped")
+          print("- Repeated incident fingerprints update one task instead of creating duplicates")
+          print("- Notion credentials are never written to logs or artifacts")
+          PY
+          exit "$sync_exit"
+
+      - name: Preserve the sanitized Notion sync result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: notion-reliability-sync-${{ github.event.workflow_run.id }}
+          path: monitoring-artifacts/notion-sync.json
+          if-no-files-found: error
+          retention-days: 14
