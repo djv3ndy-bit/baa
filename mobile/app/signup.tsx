@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
 import { normalizeFloridaLocation } from '@/lib/floridaLocation';
 
 type Role = 'barista' | 'cafe_owner_manager';
@@ -34,9 +35,12 @@ export default function SignupScreen() {
     };
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email: email.trim().toLowerCase(),
       password,
-      options: { emailRedirectTo:'baristamatch://login',data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location } },
+      options: {
+        emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE,
+        data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location },
+      },
     });
     if (!error && data.user) {
       await supabase.from('profiles').upsert({ ...profile, id: data.user.id }, { onConflict: 'id' });
