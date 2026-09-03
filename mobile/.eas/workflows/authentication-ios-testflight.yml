@@ -1,0 +1,86 @@
+name: Authentication iOS TestFlight release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        type: string
+        required: true
+        description: Exact current main commit SHA approved for the TestFlight build
+      release_mode:
+        type: choice
+        required: true
+        description: Keep HOLD unless the owner is intentionally starting the TestFlight release
+        default: HOLD
+        options:
+          - HOLD
+          - BUILD_AND_SUBMIT_TO_INTERNAL_TESTFLIGHT
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  validate_source:
+    name: Validate the exact approved authentication revision
+    if: ${{ inputs.release_mode == 'BUILD_AND_SUBMIT_TO_INTERNAL_TESTFLIGHT' && github.ref_name == 'main' && github.sha == inputs.release_sha }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Confirm the exact approved commit
+        run: |
+          set -euo pipefail
+          current_sha="$(git rev-parse HEAD)"
+          test "$current_sha" = "${{ inputs.release_sha }}"
+          test -z "$(git status --porcelain)"
+      - name: Verify authentication release contracts
+        run: npm run release:verify-auth
+      - name: Type-check the complete mobile application
+        run: npm run typecheck
+
+  owner_testflight_approval:
+    name: Owner approval before Apple upload
+    type: require-approval
+    needs: [validate_source]
+
+  build_ios:
+    name: Build the approved iOS production binary
+    type: build
+    needs: [owner_testflight_approval]
+    params:
+      platform: ios
+      profile: production
+
+  submit_internal_testflight:
+    name: Upload the approved build to internal TestFlight
+    type: testflight
+    needs: [build_ios]
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: production
+      changelog: |
+        Authentication reliability release:
+        - Completes mobile email verification on cold start and while the app is open
+        - Uses the canonical BaristaMatch authentication callback
+        - Creates the Supabase session safely and restores the correct account role
+        - Keeps invalid or expired-link errors generic
+
+        Test before any App Store promotion:
+        1. New barista email signup and verification
+        2. New cafe email signup and verification
+        3. Existing-user login and invalid-password handling
+        4. Forgot-password email, reset link, and new-password login
+        5. Google and Apple sign-in
+        6. Session persistence, logout, and closed-app callback handling
+      submit_beta_review: false
+      wait_processing_timeout_seconds: 1800
+
+  verification_checklist:
+    name: Required owner verification after TestFlight processing
+    type: doc
+    needs: [submit_internal_testflight]
+    params:
+      md: |
+        ## Authentication TestFlight build uploaded
+
+        Do not submit this build for App Review yet. Complete the authentication test matrix in `docs/authentication-ios-testflight-release.md`, record the build number and results, and obtain a separate owner approval before any public App Store release.

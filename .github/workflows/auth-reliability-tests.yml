@@ -9,6 +9,10 @@ on:
       - 'mobile/app/forgot-password.tsx'
       - 'mobile/lib/authCallback.ts'
       - 'mobile/lib/supabase.ts'
+      - 'mobile/.eas/workflows/authentication-ios-testflight.yml'
+      - 'mobile/docs/authentication-ios-testflight-release.md'
+      - 'mobile/scripts/verify-authentication-release.mjs'
+      - 'mobile/package.json'
       - 'mobile-auth-callback.html'
       - 'reset-password.html'
       - 'tests/auth-reliability.test.mjs'
@@ -23,6 +27,10 @@ on:
       - 'mobile/app/forgot-password.tsx'
       - 'mobile/lib/authCallback.ts'
       - 'mobile/lib/supabase.ts'
+      - 'mobile/.eas/workflows/authentication-ios-testflight.yml'
+      - 'mobile/docs/authentication-ios-testflight-release.md'
+      - 'mobile/scripts/verify-authentication-release.mjs'
+      - 'mobile/package.json'
       - 'mobile-auth-callback.html'
       - 'reset-password.html'
       - 'tests/auth-reliability.test.mjs'
@@ -65,6 +73,13 @@ jobs:
           callback_module="$(find /tmp/bjm-auth-callback -type f -name authCallback.js -print -quit)"
           test -n "$callback_module"
           AUTH_CALLBACK_MODULE="$callback_module" node --test tests/auth-reliability.test.mjs
+
+      - name: Validate the EAS TestFlight workflow schema
+        working-directory: mobile
+        run: npx --yes eas-cli@23.2.0 workflow:validate .eas/workflows/authentication-ios-testflight.yml --non-interactive
+
+      - name: Verify the guarded iOS authentication release configuration
+        run: npm run release:verify-auth --prefix mobile
 
       - name: Type-check the mobile application
         run: npm run typecheck --prefix mobile
