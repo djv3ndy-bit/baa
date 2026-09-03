@@ -1,10 +1,14 @@
-name: Notion incident sync tests
+name: Reliability control-plane tests
 
 on:
   pull_request:
     paths:
       - 'ops/engineering-reliability-agent/src/era/notion.py'
+      - 'ops/engineering-reliability-agent/src/era/providers/github.py'
       - 'ops/engineering-reliability-agent/tests/test_notion.py'
+      - 'ops/engineering-reliability-agent/tests/test_notion_retry.py'
+      - 'ops/engineering-reliability-agent/tests/test_provider_sources.py'
+      - 'ops/engineering-reliability-agent/tests/test_control_plane.py'
       - '.github/workflows/notion-reliability-sync.yml'
       - '.github/workflows/notion-sync-tests.yml'
   push:
@@ -12,7 +16,11 @@ on:
       - main
     paths:
       - 'ops/engineering-reliability-agent/src/era/notion.py'
+      - 'ops/engineering-reliability-agent/src/era/providers/github.py'
       - 'ops/engineering-reliability-agent/tests/test_notion.py'
+      - 'ops/engineering-reliability-agent/tests/test_notion_retry.py'
+      - 'ops/engineering-reliability-agent/tests/test_provider_sources.py'
+      - 'ops/engineering-reliability-agent/tests/test_control_plane.py'
       - '.github/workflows/notion-reliability-sync.yml'
       - '.github/workflows/notion-sync-tests.yml'
 
@@ -34,10 +42,18 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Run Notion sync unit tests
+      - name: Run control-plane unit tests
         env:
           PYTHONPATH: ops/engineering-reliability-agent/src
-        run: python -m unittest ops/engineering-reliability-agent/tests/test_notion.py
+        run: |
+          python -m unittest \
+            ops/engineering-reliability-agent/tests/test_notion.py \
+            ops/engineering-reliability-agent/tests/test_notion_retry.py \
+            ops/engineering-reliability-agent/tests/test_provider_sources.py \
+            ops/engineering-reliability-agent/tests/test_control_plane.py
 
-      - name: Compile the sync module
-        run: python -m py_compile ops/engineering-reliability-agent/src/era/notion.py
+      - name: Compile control-plane modules
+        run: |
+          python -m py_compile \
+            ops/engineering-reliability-agent/src/era/notion.py \
+            ops/engineering-reliability-agent/src/era/providers/github.py

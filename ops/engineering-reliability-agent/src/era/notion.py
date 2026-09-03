@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
@@ -12,10 +13,27 @@ from urllib.request import Request, urlopen
 
 NOTION_API_VERSION = "2025-09-03"
 MAX_INPUT_BYTES = 2_000_000
+MAX_ERROR_BODY_BYTES = 8_192
+MAX_REQUEST_ATTEMPTS = 3
+MAX_RETRY_DELAY_SECONDS = 8.0
+RETRYABLE_HTTP_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 
 class NotionSyncError(RuntimeError):
     """Raised when the private Notion sync cannot complete."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        http_status: int | None = None,
+        error_code: str | None = None,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.http_status = http_status
+        self.error_code = error_code
+        self.retryable = retryable
 
 
 def _load_json_object(path_value: str) -> dict[str, Any]:
@@ -37,36 +55,123 @@ def _clean_data_source_id(value: str) -> str:
     return cleaned
 
 
+def _safe_notion_error_code(body: bytes) -> str | None:
+    """Extract only Notion's machine error code, never its message/body."""
+    if not body:
+        return None
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    raw_code = payload.get("code")
+    if not isinstance(raw_code, str):
+        return None
+    cleaned = "".join(
+        character
+        for character in raw_code.strip()
+        if character.isalnum() or character in {"_", "-", "."}
+    )
+    return cleaned[:100] or None
+
+
+def _retry_delay_seconds(error: HTTPError, attempt: int) -> float:
+    retry_after = error.headers.get("Retry-After") if error.headers else None
+    if retry_after:
+        try:
+            return min(
+                max(float(retry_after), 0.0),
+                MAX_RETRY_DELAY_SECONDS,
+            )
+        except ValueError:
+            pass
+    return min(float(2 ** (attempt - 1)), MAX_RETRY_DELAY_SECONDS)
+
+
 def _request_json(
     method: str,
     url: str,
     token: str,
     payload: Mapping[str, Any],
+    *,
+    opener: Callable[..., Any] = urlopen,
+    sleeper: Callable[[float], None] = time.sleep,
+    max_attempts: int = MAX_REQUEST_ATTEMPTS,
 ) -> dict[str, Any]:
-    request = Request(
-        url,
-        data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
-        method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Notion-Version": NOTION_API_VERSION,
-            "Content-Type": "application/json",
-            "User-Agent": "BaristaMatch-Reliability-Agent/1.0",
-        },
+    if not 1 <= max_attempts <= 5:
+        raise ValueError("Notion request attempts must be between 1 and 5")
+
+    body_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    for attempt in range(1, max_attempts + 1):
+        request = Request(
+            url,
+            data=body_bytes,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": NOTION_API_VERSION,
+                "Content-Type": "application/json",
+                "User-Agent": "BaristaMatch-Reliability-Agent/1.0",
+            },
+        )
+        try:
+            with opener(request, timeout=10) as response:
+                response_body = response.read()
+        except HTTPError as error:
+            error_body = b""
+            try:
+                error_body = error.read(MAX_ERROR_BODY_BYTES)
+            except Exception:
+                error_body = b""
+            finally:
+                try:
+                    error.close()
+                except Exception:
+                    pass
+            status = int(error.code)
+            error_code = _safe_notion_error_code(error_body)
+            retryable = status in RETRYABLE_HTTP_STATUSES
+            if retryable and attempt < max_attempts:
+                sleeper(_retry_delay_seconds(error, attempt))
+                continue
+            raise NotionSyncError(
+                f"Notion API returned HTTP {status}",
+                http_status=status,
+                error_code=error_code,
+                retryable=retryable,
+            ) from None
+        except (URLError, TimeoutError) as error:
+            if attempt < max_attempts:
+                sleeper(min(float(2 ** (attempt - 1)), MAX_RETRY_DELAY_SECONDS))
+                continue
+            raise NotionSyncError(
+                type(error).__name__,
+                error_code="transport_error",
+                retryable=True,
+            ) from None
+
+        if not response_body:
+            return {}
+        try:
+            value = json.loads(response_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise NotionSyncError(
+                "Notion API returned invalid JSON",
+                error_code="invalid_json",
+            ) from None
+        if not isinstance(value, dict):
+            raise NotionSyncError(
+                "Notion API returned an invalid response",
+                error_code="invalid_response",
+            )
+        return value
+
+    raise NotionSyncError(
+        "Notion request exhausted retries",
+        error_code="retry_exhausted",
+        retryable=True,
     )
-    try:
-        with urlopen(request, timeout=10) as response:  # noqa: S310 - fixed HTTPS host
-            body = response.read()
-    except HTTPError as error:
-        raise NotionSyncError(f"Notion API returned HTTP {error.code}") from None
-    except (URLError, TimeoutError) as error:
-        raise NotionSyncError(type(error).__name__) from None
-    if not body:
-        return {}
-    value = json.loads(body.decode("utf-8"))
-    if not isinstance(value, dict):
-        raise NotionSyncError("Notion API returned an invalid response")
-    return value
 
 
 def _rich_text(value: str, *, limit: int = 1900) -> dict[str, Any]:
@@ -198,6 +303,21 @@ def sync_response_package(
     }
 
 
+def _safe_failure(error: Exception) -> dict[str, Any]:
+    failure: dict[str, Any] = {
+        "status": "failed",
+        "attempted": True,
+        "error_type": type(error).__name__,
+    }
+    if isinstance(error, NotionSyncError):
+        failure["retryable"] = error.retryable
+        if error.http_status is not None:
+            failure["http_status"] = error.http_status
+        if error.error_code:
+            failure["error_code"] = error.error_code
+    return failure
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Sync a sanitized reliability incident to private Notion"
@@ -222,14 +342,7 @@ def main() -> int:
         return 0
     except Exception as error:
         print(
-            json.dumps(
-                {
-                    "status": "failed",
-                    "attempted": True,
-                    "error_type": type(error).__name__,
-                },
-                separators=(",", ":"),
-            ),
+            json.dumps(_safe_failure(error), separators=(",", ":")),
             file=sys.stderr,
         )
         return 1
