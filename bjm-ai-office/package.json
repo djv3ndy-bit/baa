@@ -1,11 +1,13 @@
 {
   "name": "bjm-ai-office",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
+  "engines": { "node": "22.x" },
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
@@ -17,6 +19,10 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0",
