@@ -1,0 +1,70 @@
+name: Authentication reliability tests
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/app/auth/callback.tsx'
+      - 'mobile/app/signup.tsx'
+      - 'mobile/app/login.tsx'
+      - 'mobile/app/forgot-password.tsx'
+      - 'mobile/lib/authCallback.ts'
+      - 'mobile/lib/supabase.ts'
+      - 'mobile-auth-callback.html'
+      - 'reset-password.html'
+      - 'tests/auth-reliability.test.mjs'
+      - '.github/workflows/auth-reliability-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'mobile/app/auth/callback.tsx'
+      - 'mobile/app/signup.tsx'
+      - 'mobile/app/login.tsx'
+      - 'mobile/app/forgot-password.tsx'
+      - 'mobile/lib/authCallback.ts'
+      - 'mobile/lib/supabase.ts'
+      - 'mobile-auth-callback.html'
+      - 'reset-password.html'
+      - 'tests/auth-reliability.test.mjs'
+      - '.github/workflows/auth-reliability-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@8f152de45cc393bb48ce5d89ebf354894e33150e # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install the locked mobile dependencies
+        run: npm ci --prefix mobile
+
+      - name: Compile and test the callback contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/bjm-auth-callback
+          ./mobile/node_modules/.bin/tsc mobile/lib/authCallback.ts \
+            --target ES2022 \
+            --module commonjs \
+            --lib ES2022,DOM \
+            --skipLibCheck \
+            --outDir /tmp/bjm-auth-callback
+          callback_module="$(find /tmp/bjm-auth-callback -type f -name authCallback.js -print -quit)"
+          test -n "$callback_module"
+          AUTH_CALLBACK_MODULE="$callback_module" node --test tests/auth-reliability.test.mjs
+
+      - name: Type-check the mobile application
+        run: npm run typecheck --prefix mobile
