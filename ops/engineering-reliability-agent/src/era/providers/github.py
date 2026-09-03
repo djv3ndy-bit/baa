@@ -14,8 +14,14 @@ _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _FAILED_CONCLUSIONS = frozenset(
     {"action_required", "cancelled", "failure", "startup_failure", "timed_out"}
 )
-_SELF_MONITOR_CHECK_NAMES = frozenset({"monitor"})
-_SELF_MONITOR_WORKFLOW_PATH = ".github/workflows/engineering-reliability-monitor.yml"
+_CONTROL_PLANE_WORKFLOW_PATHS = frozenset(
+    {
+        ".github/workflows/engineering-reliability-monitor.yml",
+        ".github/workflows/notion-reliability-sync.yml",
+        ".github/workflows/notion-connection-verification.yml",
+        ".github/workflows/notion-sync-tests.yml",
+    }
+)
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:
@@ -120,6 +126,7 @@ class GitHubApiSource:
         commits = await self._list_commits(repository, limit=min(limit, 10))
         repository_path = self._repository_path(repository)
         failures: list[Mapping[str, Any]] = []
+        workflow_path_cache: dict[str, str | None] = {}
         for item in commits:
             sha = str(item.get("sha") or "")
             if not re.fullmatch(r"[0-9a-fA-F]{7,64}", sha):
@@ -139,8 +146,11 @@ class GitHubApiSource:
                 name = sanitize_text(
                     str(check.get("name") or "unnamed check"), max_length=120
                 )
-                if await self._is_self_monitor_check(
-                    repository, repository_path, check, name
+                if await self._is_control_plane_check(
+                    repository,
+                    repository_path,
+                    check,
+                    workflow_path_cache,
                 ):
                     continue
                 failures.append(
@@ -158,16 +168,14 @@ class GitHubApiSource:
                     return failures
         return failures
 
-    async def _is_self_monitor_check(
+    async def _is_control_plane_check(
         self,
         repository: str,
         repository_path: str,
         check: Mapping[str, Any],
-        name: str,
+        workflow_path_cache: dict[str, str | None],
     ) -> bool:
-        if name.lower() not in _SELF_MONITOR_CHECK_NAMES:
-            return False
-
+        """Ignore only known monitoring-control workflows, never product CI."""
         details_url = str(check.get("details_url") or "")
         parsed = urlsplit(details_url)
         if (
@@ -191,13 +199,17 @@ class GitHubApiSource:
         if not run_id.isdigit():
             return False
 
-        try:
-            workflow_run = _mapping(
-                await self._get(
-                    f"/repos/{repository_path}/actions/runs/{quote(run_id)}"
+        if run_id not in workflow_path_cache:
+            try:
+                workflow_run = _mapping(
+                    await self._get(
+                        f"/repos/{repository_path}/actions/runs/{quote(run_id)}"
+                    )
                 )
-            )
-        except ProviderReadError:
-            return False
-        workflow_path = str(workflow_run.get("path") or "").split("@", 1)[0]
-        return workflow_path == _SELF_MONITOR_WORKFLOW_PATH
+            except ProviderReadError:
+                workflow_path_cache[run_id] = None
+            else:
+                workflow_path_cache[run_id] = str(
+                    workflow_run.get("path") or ""
+                ).split("@", 1)[0]
+        return workflow_path_cache[run_id] in _CONTROL_PLANE_WORKFLOW_PATHS
