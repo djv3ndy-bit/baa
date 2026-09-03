@@ -1,22 +1,42 @@
 import express from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { z } from 'zod';
-import { ownerApprovalFor, teamSnapshot } from './policy.js';
-import { getLiveOverview,getSupportSummary,getBillingSummary,getSystemHealth,getDecisionSignals } from './providers.js';
+import { createOfficeMcpServer } from './mcp.js';
+import { getSystemHealth } from './providers.js';
 
-const app=express(); app.use(express.json({limit:'1mb'}));
-const server=new McpServer({name:'bjm-ai-office',version:'0.2.0'}); const widgetUri='ui://bjm-ai-office/owner-v1';
-const meta={ui:{resourceUri:widgetUri},'openai/outputTemplate':widgetUri};
-server.registerResource('bjm-ai-office-widget',widgetUri,{},async()=>({contents:[{uri:widgetUri,mimeType:'text/html;profile=mcp-app',text:`<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/office.js"></script></body></html>`,_meta:{ui:{prefersBorder:true,csp:{connectDomains:[],resourceDomains:[]}},'openai/widgetDescription':'Private Barista Job Match AI Office for owner reports, team status, and approval decisions.'}}]}));
+const app = express();
+app.use(express.json({ limit: '1mb' }));
 
-server.registerTool('get_owner_overview',{title:'BJM Owner Overview',description:'Use this when the owner wants the live AI Office overview, business counts, support/billing summary, system health, and approval signals.',inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},_meta:meta},async()=>{const [business,support,billing,health,decisions]=await Promise.all([getLiveOverview(),getSupportSummary(),getBillingSummary(),getSystemHealth(),getDecisionSignals()]);return {structuredContent:{screen:'overview',business,support,billing,health,approvals:{count:decisions.filter(x=>x.protected).length},decisions},content:[{type:'text',text:'Loaded the live BJM owner overview. Sensitive provider credentials remain server-side.'}]};});
-server.registerTool('get_ai_team_status',{title:'AI Team Status',description:'Use this when the owner wants to see the Barista Job Match AI team and each agent operating mode.',inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},_meta:meta},async()=>({structuredContent:{screen:'team',agents:teamSnapshot()},content:[{type:'text',text:'Loaded the BJM AI team.'}]}));
-server.registerTool('get_decision_queue',{title:'Owner Decision Queue',description:'Use this when the owner asks what needs approval. Aggregates live safety signals but never executes a protected action.',inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},_meta:meta},async()=>{const items=await getDecisionSignals();return {structuredContent:{screen:'decisions',items},content:[{type:'text',text:items.length?`Loaded ${items.length} owner decision signal(s).`:'No current decision signals were detected.'}]};});
-server.registerTool('get_system_health',{title:'BJM System Health',description:'Use this when the owner wants website and private provider configuration health.',inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:true},_meta:meta},async()=>({structuredContent:{screen:'health',health:await getSystemHealth()},content:[{type:'text',text:'Loaded BJM system health.'}]}));
-server.registerTool('get_billing_summary',{title:'Billing Summary',description:'Use this when the owner wants a read-only billing and subscription summary. This tool cannot charge, refund, cancel, or modify subscriptions.',inputSchema:{},annotations:{readOnlyHint:true,destructiveHint:false,openWorldHint:false},_meta:meta},async()=>({structuredContent:{screen:'billing',billing:await getBillingSummary()},content:[{type:'text',text:'Loaded the read-only billing summary.'}]}));
-server.registerTool('request_owner_action',{title:'Prepare Owner Approval',description:'Use this when an agent has a proposed action. Classifies owner approval and prepares a review item; it never executes the action.',inputSchema:{action:z.string().min(1).max(500),agent:z.string().min(1).max(80),summary:z.string().min(1).max(1500)},annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:true,openWorldHint:false},_meta:meta},async({action,agent,summary})=>{const policy=ownerApprovalFor(action);return {structuredContent:{screen:'decision',item:{action,agent,summary,...policy,status:policy.approvalRequired?'owner_review':'routine'}},content:[{type:'text',text:policy.approvalRequired?'Owner approval is required. No action was executed.':'Routine internal work may proceed. No external action was executed.'}]};});
+app.all('/mcp', async (req, res) => {
+  if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
+    res.setHeader('Allow', 'GET, POST, DELETE');
+    return res.status(405).json({ error: 'Method not allowed.' });
+  }
 
-app.post('/mcp',async(req,res)=>{const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined});res.on('close',()=>transport.close());await server.connect(transport);await transport.handleRequest(req,res,req.body);});
-app.get('/health',async(_req,res)=>res.json({ok:true,app:'bjm-ai-office',version:'0.2.0',health:await getSystemHealth()}));
-app.listen(Number(process.env.PORT||8787),()=>console.log('BJM AI Office MCP server ready'));
+  const server = createOfficeMcpServer();
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const close = async () => {
+    try { await transport.close(); } catch {}
+    try { await server.close(); } catch {}
+  };
+  res.on('close', close);
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.method === 'POST' ? req.body : undefined);
+  } catch (error) {
+    console.error('BJM AI Office MCP request failed', error);
+    if (!res.headersSent) res.status(500).json({ error: 'MCP request failed.' });
+  }
+});
+
+app.get('/health', async (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, app: 'bjm-ai-office', version: '0.3.0', health: await getSystemHealth() });
+});
+
+if (!process.env.VERCEL) {
+  const port = Number(process.env.PORT || 8787);
+  app.listen(port, () => console.log(`BJM AI Office MCP server ready on ${port}`));
+}
+
+export default app;
