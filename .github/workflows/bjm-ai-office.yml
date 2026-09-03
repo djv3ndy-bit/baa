@@ -10,7 +10,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: bjm-ai-office
@@ -20,6 +20,9 @@ jobs:
         with: {node-version: '22'}
       - run: npm install
       - run: npm test
+      - run: npm run typecheck
       - run: npm run build
       - name: Verify deterministic widget bundle
         run: test -f dist/assets/office.js
+      - name: Verify Vercel function routes
+        run: test -f api/mcp.ts && test -f api/health.ts && test -f vercel.json
