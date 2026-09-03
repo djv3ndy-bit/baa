@@ -1,0 +1,43 @@
+name: Notion incident sync tests
+
+on:
+  pull_request:
+    paths:
+      - 'ops/engineering-reliability-agent/src/era/notion.py'
+      - 'ops/engineering-reliability-agent/tests/test_notion.py'
+      - '.github/workflows/notion-reliability-sync.yml'
+      - '.github/workflows/notion-sync-tests.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'ops/engineering-reliability-agent/src/era/notion.py'
+      - 'ops/engineering-reliability-agent/tests/test_notion.py'
+      - '.github/workflows/notion-reliability-sync.yml'
+      - '.github/workflows/notion-sync-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Run Notion sync unit tests
+        env:
+          PYTHONPATH: ops/engineering-reliability-agent/src
+        run: python -m unittest ops/engineering-reliability-agent/tests/test_notion.py
+
+      - name: Compile the sync module
+        run: python -m py_compile ops/engineering-reliability-agent/src/era/notion.py
