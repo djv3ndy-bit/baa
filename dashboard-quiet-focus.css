@@ -892,3 +892,83 @@ body {
     font-size: 8px;
   }
 }
+
+/* Reference alignment: open greeting, latte backdrop, inset photo, quiet activity. */
+:root{--quiet-orange:#b45214;--quiet-paper:#fffdf9;--quiet-cream:#f0e7de;--quiet-shadow:0 5px 20px rgba(50,23,8,.035)}
+body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
+.side,.role-cafe_owner_manager .side{min-height:73px;border-bottom:1px solid #eee7df;box-shadow:none}
+.side .nav-icon{display:grid;color:inherit;background:none}
+.side .menu button,.role-cafe_owner_manager .menu button{font-weight:500}
+.content,.role-cafe_owner_manager .content{padding:0 28px 32px}
+.quiet-hero{min-height:284px;margin:0 -28px 0;padding:34px 40px 96px;border:0;border-radius:0;box-shadow:none;background-color:#fcf8f2;background-image:linear-gradient(90deg,#fcf8f2 0%,#fcf8f2 44%,#fcf8f299 61%,transparent 78%),url('/assets/editorial-latte-v3.jpg');background-repeat:no-repeat;background-size:100% 100%,auto 360px;background-position:center,right center}
+.quiet-hero-copy{width:72%}
+.quiet-kicker{color:#746154;font-weight:500;letter-spacing:.25em;font-size:10px}
+.quiet-hero h2{font-size:clamp(38px,4.6vw,64px);margin:8px 0 3px;letter-spacing:-.045em}
+.quiet-hero p{font-size:34px;color:#8c7b6a}
+.quiet-handwritten{position:absolute;left:57%;top:43px;max-width:125px;color:#665342;font:italic 25px/1.08 'Brush Script MT','Segoe Script',cursive;transform:rotate(-11deg);text-align:center}
+.quiet-search-bar{left:40px;right:auto;width:min(76%,860px);bottom:28px;grid-template-columns:minmax(180px,1.4fr) minmax(150px,.8fr) auto;border-color:#eee7df;box-shadow:0 3px 12px #32170808}
+.quiet-search-bar button{min-height:62px;padding:13px 22px;font-weight:400}
+.quiet-search-bar .quiet-search-action{min-width:210px;min-height:50px;background:linear-gradient(110deg,#ae4d11,#c25911);font-weight:500}
+.quiet-layout{grid-template-columns:minmax(0,1fr) 290px;gap:18px}
+.quiet-primary-column>.quiet-section-heading{min-height:48px;padding:14px 22px 5px;background:#fffdfb;border:1px solid #eee7df;border-bottom:0;border-radius:16px 16px 0 0}
+.quiet-primary-column>.quiet-section-heading h3{font-size:22px}
+.quiet-primary-column>.quiet-section-heading h3:before{content:'★';margin-right:10px;color:var(--quiet-orange)}
+.quiet-primary-column>.quiet-section-heading>button{display:none}
+.quiet-feature-card{min-height:245px;padding:8px 22px 20px;border:1px solid #eee7df;border-top:0;border-radius:0 0 16px 16px;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:22px;background:#fffdfb;box-shadow:none}
+.quiet-feature-image{min-height:232px;border-radius:11px;background-image:url('/assets/editorial-cafe-v3.jpg');background-position:center}
+.quiet-feature-image>span,.quiet-feature-body>.quiet-card-kicker{display:none}
+.quiet-feature-body{padding:0 0 0;min-width:0}
+.quiet-title-row{margin-top:1px;gap:10px;flex-wrap:wrap}
+.quiet-title-row h3{font-size:30px;letter-spacing:-.035em}
+.quiet-title-row>strong{font-size:19px}
+.quiet-feature-body p{font-size:14px;line-height:1.35;margin-top:10px}
+.quiet-feature-body .quiet-meta{font-size:13px;margin-top:6px}
+.quiet-tags{margin-top:10px;gap:6px}
+.quiet-tags span{font-size:11px;border-radius:7px;padding:6px 10px;background:#f2eee8}
+.quiet-primary{margin-top:15px;max-width:none;width:100%;min-height:44px;border-radius:999px;background:linear-gradient(110deg,#af4b10,#bf5412);font-weight:500;font-size:15px}
+.quiet-feature-body .quiet-primary{margin-top:auto}
+.quiet-feature-body p:last-of-type{margin-bottom:15px}
+.quiet-activity-panel{padding:19px 18px 25px;border:1px solid #eee7df;border-radius:16px;background:#fffcf8;box-shadow:none;min-height:403px}
+.quiet-activity-panel>h3{font-size:22px}
+.quiet-activity-grid{gap:10px}
+.quiet-activity-tile{min-height:69px;grid-template-columns:32px minmax(0,1fr) 10px;padding:10px 12px;border-color:#f1eae3;background:transparent;border-radius:12px;gap:12px}
+.quiet-activity-icon{width:30px;height:32px;background:transparent;border-radius:0;font-size:25px}
+.quiet-activity-tile b{font:700 16px/1.1 Georgia,serif}
+.quiet-activity-tile small{font-size:11px;margin-top:5px}
+.quiet-activity-tile strong{font-size:12px;font-weight:500}
+.quiet-note{margin-top:32px;border:0;padding:0;background:transparent;grid-template-columns:38px 1fr;box-shadow:none}
+.quiet-note strong{font:400 20px/1.1 Georgia,serif}
+.quiet-note small,.quiet-note>span:last-child{display:none}
+.quiet-note>span:first-child{font-size:36px}
+.quiet-more{margin-top:19px}.quiet-more .quiet-section-heading h3{font-size:20px}
+.quiet-mini-photo{background-image:url('/assets/editorial-latte-v3.jpg');width:84px;height:72px;background-position:right center;border-radius:8px}
+.quiet-mini-job{grid-template-columns:84px minmax(0,1fr) auto;padding:8px;border-color:#eee7df;border-radius:12px;gap:12px}
+.quiet-mini-job strong{font-size:17px}.quiet-mini-job small{font-size:11px}.quiet-mini-job>b{font:700 15px Georgia,serif}
+@media(min-width:761px) and (max-width:1040px){.quiet-layout{grid-template-columns:minmax(0,1fr) 250px}.quiet-feature-card{gap:14px;padding-inline:16px;grid-template-columns:1fr 1fr}.quiet-title-row h3{font-size:25px}.quiet-search-bar{width:80%}.quiet-search-bar .quiet-search-action{min-width:160px}.quiet-hero h2{font-size:50px}.quiet-handwritten{display:none}}
+@media(max-width:760px){
+ .content,.role-cafe_owner_manager .content{padding:0 17px 25px}
+ .quiet-hero{min-height:0;margin:0 0 14px;padding:7px 0 0;background:none;border:0;border-radius:0}
+ .quiet-hero-copy{width:100%;padding:0 0 14px}.quiet-kicker{font-size:9px}.quiet-hero h2{font-size:clamp(30px,8.6vw,39px);margin:7px 0 3px;line-height:1.05}.quiet-hero p{font-size:23px;margin-top:0}
+ .quiet-handwritten{display:none}
+ .quiet-search-bar{position:static;width:100%;grid-template-columns:1fr;gap:8px;box-shadow:none;border:0}
+ .quiet-search-bar button{min-height:47px;padding:10px 15px;border-color:#eee7df;border-radius:17px;font-size:14px;box-shadow:0 3px 10px #32170804}
+ .quiet-search-bar .quiet-search-action{display:none}
+ .quiet-layout{display:grid;grid-template-columns:1fr;gap:17px}
+ .quiet-primary-column{display:contents}
+ .quiet-primary-column>.quiet-section-heading{display:none}
+ .quiet-feature-card{display:block;min-height:0;padding:0;border:1px solid #eee7df;border-radius:15px;overflow:hidden}
+ .quiet-feature-image{min-height:0;height:clamp(170px,53vw,250px);border-radius:0;background-position:center}
+ .quiet-feature-body{padding:13px 14px 12px}
+ .quiet-title-row{flex-wrap:nowrap;margin:0;align-items:baseline}.quiet-title-row h3{font-size:24px}.quiet-title-row>strong{font-size:17px}
+ .quiet-feature-body .quiet-meta{font-size:12px;margin:5px 0 0}.quiet-tags{margin-top:8px}.quiet-tags span{padding:5px 10px;font-size:11px}
+ .quiet-feature-body .quiet-primary{margin-top:11px;min-height:42px;border-radius:10px;font-size:14px}
+ .quiet-feature-body>p:not(.quiet-meta){display:none}
+ .quiet-activity-panel{order:2;width:100%;min-height:0;padding:0;border:0;background:none;border-radius:0}.quiet-activity-panel>h3{font-size:20px;margin-bottom:9px}
+ .quiet-activity-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+ .quiet-activity-tile{min-height:87px;padding:10px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:#fffdfb;border:1px solid #eee7df;border-radius:13px;text-align:center}
+ .quiet-activity-icon{height:25px;font-size:24px}.quiet-activity-tile b{font:400 11px/1.25 Arial,sans-serif}.quiet-activity-tile strong{display:inline;font-size:10px;margin-right:3px}.quiet-activity-tile small,.quiet-chevron{display:none}
+ .quiet-note{display:none}.quiet-more{order:3;margin-top:0;width:100%}.quiet-more-grid{grid-template-columns:1fr}
+ .quiet-mobile-nav{border-radius:23px 23px 0 0;box-shadow:0 -3px 15px #32170806}.quiet-mobile-nav button.active{background:none}
+}
+
+.quiet-feature-image{background-image:none;overflow:hidden}.quiet-feature-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center}.quiet-feature-body .quiet-title-row{overflow-wrap:anywhere}.quiet-feature-body p{overflow-wrap:anywhere}

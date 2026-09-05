@@ -37,6 +37,12 @@
     return tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
   }
 
+  function featureImage(job) {
+    const candidate = String(job?.owner?.avatar_url || '');
+    const source = /^(https?:\/\/|\/(?!\/))/.test(candidate) ? candidate : '/assets/editorial-latte-v3.jpg';
+    return `<div class="quiet-feature-image"><img src="${escapeHtml(source)}" alt="${candidate ? escapeHtml(job?.owner?.cafe_name || 'Café') : 'Coffee illustration'}" loading="lazy"></div>`;
+  }
+
   function activityTile({ icon, value, label, copy, section }) {
     return `<button class="quiet-activity-tile" type="button" data-go="${section}">
       <span class="quiet-activity-icon" aria-hidden="true">${icon}</span>
@@ -69,6 +75,7 @@
         <h2>${timeGreeting()}, ${escapeHtml(name)}.</h2>
         <p>${isCafe ? 'Build your next great team.' : 'Find your next shift.'}</p>
       </div>
+      <div class="quiet-handwritten" aria-hidden="true">Great coffee,<br>brighter days.</div>
       <div class="quiet-search-bar" aria-label="Quick search">
         <button type="button" data-go="${destination}"><span aria-hidden="true">⌕</span><span>${prompt}</span></button>
         <button type="button" data-go="${destination}"><span aria-hidden="true">⌖</span><span>${escapeHtml(location)}</span></button>
@@ -81,14 +88,14 @@
     const job = context.marketJobs.find((item) => item.active !== false) || context.marketJobs[0];
     if (!job) {
       return `<article class="quiet-feature-card quiet-empty-feature">
-        <div class="quiet-feature-image"><span>BEST MATCH FOR YOU</span></div>
+        ${featureImage(job)}
         <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3>Your next café starts here.</h3><p>New roles matching your saved Florida work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
       </article>`;
     }
     const cafe = job.owner?.cafe_name || 'Local café';
     const location = job.location || context.profile.location || 'Florida';
     return `<article class="quiet-feature-card">
-      <div class="quiet-feature-image"><span>BEST MATCH FOR YOU</span></div>
+      ${featureImage(job)}
       <div class="quiet-feature-body">
         <span class="quiet-card-kicker">FEATURED JOB</span>
         <div class="quiet-title-row"><h3>${escapeHtml(job.title || 'Barista role')}</h3><strong>${escapeHtml(money(job))}</strong></div>
@@ -104,12 +111,12 @@
     const job = context.marketJobs.find((item) => item.active !== false) || context.marketJobs[0];
     if (!job) {
       return `<article class="quiet-feature-card quiet-empty-feature">
-        <div class="quiet-feature-image"><span>YOUR NEXT STEP</span></div>
+        ${featureImage(job)}
         <div class="quiet-feature-body"><span class="quiet-card-kicker">START HIRING</span><h3>Post your first barista role.</h3><p>Add clear pay, schedule, location, and skills so nearby baristas know what to expect.</p><button class="quiet-primary" type="button" data-go="Job Posts">Post a job <span aria-hidden="true">→</span></button></div>
       </article>`;
     }
     return `<article class="quiet-feature-card">
-      <div class="quiet-feature-image"><span>ACTIVE OPPORTUNITY</span></div>
+      ${featureImage(job)}
       <div class="quiet-feature-body">
         <span class="quiet-card-kicker">YOUR JOB POST</span>
         <div class="quiet-title-row"><h3>${escapeHtml(job.title || 'Barista role')}</h3><span class="quiet-live">${job.active === false ? 'PAUSED' : 'LIVE'}</span></div>
@@ -151,8 +158,7 @@
       : [
           activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse nearby cafés', section: 'Discover' }),
           activityTile({ icon: '↗', value: context.applications.length, label: 'Applications', copy: 'Track your progress', section: 'Applications' }),
-          activityTile({ icon: '♡', value: matches, label: 'Matches', copy: 'See connections', section: 'Matches' }),
-          activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Update availability', section: 'My Profile' }),
+          activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Availability', copy: 'Set your hours', section: 'My Profile' }),
         ];
 
     return `<section class="quiet-dashboard">
