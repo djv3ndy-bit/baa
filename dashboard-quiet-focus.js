@@ -108,7 +108,7 @@
       </div>
       <div class="quiet-handwritten" aria-hidden="true">Great coffee,<br>brighter days.</div>
       <div class="quiet-search-bar" aria-label="Quick search">
-        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌕')}</span><span><span class="quiet-search-desktop-label">${prompt}</span><span class="quiet-search-mobile-label">${isCafe ? 'Find baristas' : 'Search jobs'}</span></span></button>
+        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌕')}</span><span class="quiet-search-desktop-label">${prompt}</span><span class="quiet-search-mobile-label">${isCafe ? 'Find baristas' : 'Search jobs'}</span></button>
         <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌖')}</span><span>${escapeHtml(location)}</span></button>
         <button class="quiet-search-action" type="button" data-go="${destination}">Search ${isCafe ? 'baristas' : 'jobs'} <span aria-hidden="true">→</span></button>
       </div>
