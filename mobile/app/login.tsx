@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platfor
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
+import { parseMobileAuthCallback } from '@/lib/authCallback';
 
 const oauthAppCallback = 'baristamatch://auth/callback';
 const oauthRedirect = 'https://www.baristajobmatch.com/mobile-auth-callback.html';
@@ -12,11 +13,6 @@ WebBrowser.maybeCompleteAuthSession();
 
 function Text(props: TextProps) {
   return <NativeText maxFontSizeMultiplier={1.5} {...props} />;
-}
-
-function readOAuthParams(url: string) {
-  const encoded = url.includes('#') ? url.split('#')[1] : url.split('?')[1];
-  return new URLSearchParams(encoded || '');
 }
 
 export default function LoginScreen() {
@@ -63,32 +59,32 @@ export default function LoginScreen() {
   }, []);
 
   async function handleOAuth(url: string | null) {
-    if (!url?.startsWith(oauthAppCallback)) return;
-    const params = readOAuthParams(url);
-    const errorDescription = params.get('error_description');
-    if (errorDescription) {
+    const callback = parseMobileAuthCallback(url);
+    if (!callback.ok) {
+      if (callback.reason === 'invalid_callback') return;
       setSocialLoading(null);
-      return Alert.alert('Sign-in failed', decodeURIComponent(errorDescription));
+      return Alert.alert('Sign-in failed', 'The sign-in response could not be completed. Please try again.');
     }
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    if (!accessToken || !refreshToken) {
+    const { accessToken, refreshToken } = callback;
+    try {
+      const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
       setSocialLoading(null);
-      return Alert.alert('Sign-in failed', 'The sign-in response was incomplete. Please try again.');
+      if (error) return Alert.alert('Sign-in failed', 'Please try signing in again.');
+      if (!data.user) return;
+      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id,role').eq('id', data.user.id).maybeSingle();
+      if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
+      if (existingProfile) return await routeSignedIn(data.user,existingProfile.role);
+      const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
+      Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
+        { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
+        { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
+        { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
+      ]);
+    } catch {
+      Alert.alert('Connection problem', 'Check your internet connection and try again.');
+    } finally {
+      setSocialLoading(null);
     }
-    const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-    setSocialLoading(null);
-    if (error) return Alert.alert('Sign-in failed', error.message);
-    if (!data.user) return;
-    const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id,role').eq('id', data.user.id).maybeSingle();
-    if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
-    if (existingProfile) return routeSignedIn(data.user,existingProfile.role);
-    const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
-    Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
-      { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
-      { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
-      { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
-    ]);
   }
 
   async function createSocialProfile(userId: string, role: 'barista' | 'cafe_owner_manager', name: string, location = '') {
