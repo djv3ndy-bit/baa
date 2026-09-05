@@ -80,8 +80,27 @@
       ? [['⌂', 'Home', 'Overview'], ['▣', 'Jobs', 'Job Posts'], ['⌕', 'Discover', 'Discover'], ['♡', 'Matches', 'Matches'], ['◎', 'Profile', 'Café Profile']]
       : [['⌂', 'Home', 'Overview'], ['⌕', 'Find Jobs', 'Discover'], ['♡', 'Matches', 'Matches'], ['◌', 'Messages', 'Messages'], ['◎', 'Profile', 'My Profile']];
     return `<nav class="quiet-mobile-nav" aria-label="Dashboard navigation">${items
-      .map(([icon, label, section], index) => `<button class="${index === 0 ? 'active' : ''}" type="button" data-go="${section}"><span aria-hidden="true">${iconSvg(icon)}</span><small>${label}</small></button>`)
+      .map(([icon, label, section]) => `<button type="button" data-go="${section}"><span aria-hidden="true">${iconSvg(icon)}</span><small>${label}</small></button>`)
       .join('')}</nav>`;
+  }
+
+  function syncMobileNav(host, isCafe, section, onNavigate) {
+    const role = isCafe ? 'cafe' : 'barista';
+    if (host.dataset.role !== role) {
+      host.innerHTML = mobileNav(isCafe);
+      host.dataset.role = role;
+    }
+    const selected = section === 'Find Jobs' ? 'Discover' : section;
+    host.querySelectorAll('button[data-go]').forEach(button => {
+      const active = button.dataset.go === selected;
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    });
+    host.onclick = event => {
+      const button = event.target.closest('button[data-go]');
+      if (button && host.contains(button)) onNavigate(button.dataset.go);
+    };
   }
 
   function hero({ name, location, isCafe }) {
@@ -194,7 +213,6 @@
           <button class="quiet-note" type="button" data-go="${isCafe ? 'Café Profile' : 'My Profile'}"><span aria-hidden="true">⌁</span><span><strong>Good people.<br>Better opportunities.</strong><small>${isCafe ? 'Keep your café profile current.' : 'Keep your profile ready.'}</small></span><span aria-hidden="true">→</span></button>
         </aside>
       </div>
-      ${mobileNav(isCafe)}
     </section>`;
   }
 
@@ -207,5 +225,5 @@
     if (section === 'Discover') return role === 'barista' ? 'Find Jobs' : 'Find Baristas';
     return section;
   }
-  window.BaristaMatchQuietFocus = { render, timeGreeting, menuIcon, menuLabel };
+  window.BaristaMatchQuietFocus = { render, timeGreeting, menuIcon, menuLabel, syncMobileNav };
 })();
