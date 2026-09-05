@@ -63,12 +63,5 @@ document.addEventListener('DOMContentLoaded', () => {
     signoff.innerHTML = 'People.<br>Cafés.<br>Opportunities.<br>Together.';
     how.append(signoff);
   }
-  // Illustrative product screenshots must never imply real platform totals.
-  const previews = document.querySelector('.preview-section');
-  if(previews) {
-    const note = document.createElement('p');
-    note.textContent = 'Product examples — sample profiles and activity, not platform statistics.';
-    note.style.cssText = 'text-align:center;color:#71665f;font-size:12px';
-    previews.prepend(note);
-  }
+
 });
