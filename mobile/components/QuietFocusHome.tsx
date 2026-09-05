@@ -79,24 +79,24 @@ export function QuietFocusHome({
           </Pressable>
         </View>
 
-        <Text style={styles.eyebrow}>GOOD TO SEE YOU</Text>
-        <Text style={styles.greeting}>{getTimeGreeting()}, {firstName}.</Text>
-        <Text style={styles.subtitle}>{isCafe ? 'Meet your next great barista.' : 'Find your next shift.'}</Text>
+        {isCafe ? <Text style={styles.eyebrow}>GOOD TO SEE YOU</Text> : null}
+        <Text style={[styles.greeting, !isCafe && styles.guidedGreeting]}>{getTimeGreeting()}, {firstName}.</Text>
+        <Text style={[styles.subtitle, !isCafe && styles.guidedSubtitle]}>{isCafe ? 'Meet your next great barista.' : 'Find your next shift.'}</Text>
 
-        <View style={styles.searchStack}>
+        <View style={[styles.searchStack, !isCafe && styles.guidedSearch]}>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/discover')}
-            style={({ pressed }) => [styles.searchField, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.searchField, !isCafe && styles.guidedSearchField, pressed && styles.pressed]}
           >
             <Text style={styles.searchIcon}>⌕</Text>
-            <Text style={styles.searchText}>{isCafe ? 'Find local baristas' : 'Find your next shift'}</Text>
+            <Text style={styles.searchText}>{isCafe ? 'Find local baristas' : 'Search jobs'}</Text>
             <Text style={styles.arrow}>›</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/profile')}
-            style={({ pressed }) => [styles.searchField, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.searchField, !isCafe && styles.guidedSearchField, pressed && styles.pressed]}
           >
             <Text style={styles.locationPin}>●</Text>
             <Text numberOfLines={1} style={styles.searchText}>{place}</Text>
@@ -104,13 +104,13 @@ export function QuietFocusHome({
           </Pressable>
         </View>
 
-        <View style={styles.feature}>
-          <Image source={CAFE_IMAGE} style={styles.featureImage} resizeMode="cover" accessibilityLabel="Latte in a warm café" />
-          <View style={styles.featureBody}>
+        <View style={[styles.feature, !isCafe && styles.guidedFeature]}>
+          <Image source={CAFE_IMAGE} style={[styles.featureImage, !isCafe && styles.guidedImage]} resizeMode="cover" accessibilityLabel="Latte in a warm café" />
+          <View style={[styles.featureBody, !isCafe && styles.guidedBody]}>
           <View style={styles.featureCopy}>
             <Text style={styles.featureEyebrow}>{isCafe ? 'BUILD YOUR TEAM' : 'LOCAL OPPORTUNITIES'}</Text>
             <Text style={styles.featureTitle}>{isCafe ? 'Find your next great barista' : 'Discover local cafés'}</Text>
-            <Text numberOfLines={2} style={styles.featureSubtitle}>
+            <Text style={styles.featureSubtitle}>
               {isCafe ? 'Connect with people who fit your café.' : `Explore open roles around ${place}.`}
             </Text>
           </View>
@@ -119,7 +119,7 @@ export function QuietFocusHome({
             onPress={() => router.push('/discover')}
             style={({ pressed }) => [styles.featureButton, pressed && styles.pressed]}
           >
-            <Text style={styles.featureButtonText}>{isCafe ? 'Discover talent' : 'Find jobs'}  →</Text>
+            <Text style={styles.featureButtonText}>{isCafe ? 'Discover talent' : 'Explore jobs'}  →</Text>
           </Pressable>
         </View>
         </View>
@@ -128,7 +128,7 @@ export function QuietFocusHome({
           <Text style={styles.sectionTitle}>Your activity</Text>
 
         </View>
-        <View style={styles.activityRow}>
+        {isCafe ? <View style={styles.activityRow}>
           {activity.map((item) => (
             <View key={item.label} style={styles.activityCard}>
               <Text style={styles.activityIcon}>{item.icon}</Text>
@@ -136,7 +136,11 @@ export function QuietFocusHome({
               <Text numberOfLines={1} style={styles.activityLabel}>{item.label}</Text>
             </View>
           ))}
-        </View>
+        </View> : <View style={styles.guidedActivity}>
+          <ActionRow label="Matches" detail="See your connections" onPress={() => router.push('/matches')} />
+          <ActionRow label="Messages" detail="Open your conversations" onPress={() => router.push('/messages')} />
+          <ActionRow label="My Profile" detail="Manage your information" onPress={() => router.push('/profile')} />
+        </View>}
 
         {isCafe ? (
           <>
@@ -187,10 +191,7 @@ export function QuietFocusHome({
               </View>
               <Text style={styles.profileCopy}>Keep your experience, skills, and availability current.</Text>
             </Pressable>
-            <View style={styles.actionGrid}>
-              <ActionTile icon="♡" label="Matches" detail="See connections" onPress={() => router.push('/matches')} />
-              <ActionTile icon="✉" label="Messages" detail="Start a conversation" onPress={() => router.push('/messages')} />
-            </View>
+
           </>
         )}
       </ScrollView>
@@ -211,19 +212,17 @@ function ActionRow({ label, detail, onPress }: { label: string; detail: string; 
   );
 }
 
-function ActionTile({ icon, label, detail, onPress }: { icon: string; label: string; detail: string; onPress: () => void }) {
-  return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.actionTile, pressed && styles.pressed]}>
-      <Text style={styles.actionTileIcon}>{icon}</Text>
-      <Text style={styles.actionTileTitle}>{label}</Text>
-      <Text style={styles.actionTileDetail}>{detail}</Text>
-    </Pressable>
-  );
-}
-
 const editorialFont = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
 const styles = StyleSheet.create({
+  guidedGreeting: { fontSize: 28, lineHeight: 33, marginTop: 0 },
+  guidedSubtitle: { fontFamily: undefined, fontSize: 16, lineHeight: 23, marginBottom: 18 },
+  guidedSearch: { flexDirection: 'row', gap: 8 },
+  guidedSearchField: { flex: 1, minWidth: 0, paddingHorizontal: 9, borderRadius: 10 },
+  guidedFeature: { flexDirection: 'row', minHeight: 220, borderRadius: 12 },
+  guidedImage: { width: '38%', height: '100%', minHeight: 220 },
+  guidedBody: { flex: 1, minWidth: 0, padding: 12, justifyContent: 'center' },
+  guidedActivity: { marginBottom: 8 },
   safe: { flex: 1, backgroundColor: '#fffdf9' },
   content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 30 },
   pressed: { opacity: 0.78 },

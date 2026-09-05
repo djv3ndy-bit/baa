@@ -19,7 +19,7 @@ export function AppBottomNav({
 }) {
   const items: NavItem[] = [
     { key: 'home', icon: '⌂', label: 'Home', path: '/home' },
-    { key: 'discover', icon: '⌕', label: 'Discover', path: '/discover' },
+    { key: 'discover', icon: '⌕', label: role === 'barista' ? 'Find Jobs' : 'Discover', path: '/discover' },
     ...(role === 'cafe_owner_manager'
       ? [{ key: 'candidates' as Tab, icon: '♙', label: 'Candidates', path: '/candidates' }]
       : []),
