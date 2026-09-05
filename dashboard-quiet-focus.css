@@ -1040,3 +1040,20 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
   .shell:has(#dashboard-mobile-navigation) .content{padding-bottom:calc(96px + env(safe-area-inset-bottom))!important}
   #dashboard-mobile-navigation .quiet-mobile-nav button{font-family:Arial,sans-serif;cursor:pointer}
 }
+
+/* One persistent mobile header for all pages; titles scroll with their content. */
+@media(max-width:760px){
+  .quiet-shell-header{position:sticky;top:0;margin:0;z-index:90;width:100%;padding-inline:16px 72px}
+  .shell .main>.top{position:static!important;top:auto!important;min-height:0!important;padding:20px 16px 12px!important;border:0!important;box-shadow:none!important;background:transparent!important;backdrop-filter:none!important}
+  .shell .main>.top h1{margin:0;font-size:24px!important;line-height:1.2!important}
+  .shell .main>.top .rolebadge{display:none}
+  body:has(.quiet-dashboard) .content{padding-top:18px!important}
+  .shell:not(:has(.quiet-dashboard)) .content{padding-top:0!important}
+  .quiet-shell-header~.content .quiet-mobile-header{display:none}
+  .applicant-status-row{display:grid;grid-template-columns:40px minmax(0,1fr);gap:10px 12px;align-items:start}
+  .applicant-status-row .avatar{width:40px;height:40px;flex:none}
+  .applicant-status-row .itemtext{width:100%;min-width:0}
+  .applicant-status-row .itemtext b{font-size:15px;line-height:1.35;overflow-wrap:break-word}
+  .applicant-status-row .itemtext small{font-size:13px;line-height:1.5;overflow-wrap:break-word}
+  .applicant-status-row>.secondary{grid-column:1/-1;width:100%;min-width:0;min-height:44px;margin-top:3px}
+}

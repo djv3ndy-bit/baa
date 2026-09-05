@@ -40,7 +40,7 @@
   function featureImage(job) {
     const candidate = String(job?.owner?.avatar_url || '');
     const source = /^(https?:\/\/|\/(?!\/))/.test(candidate) ? candidate : '/assets/editorial-latte-v3.jpg';
-    return `<div class="quiet-feature-image"><img src="${escapeHtml(source)}" alt="${candidate ? escapeHtml(job?.owner?.cafe_name || 'Café') : 'Coffee illustration'}" loading="lazy"></div>`;
+    return `<div class="quiet-feature-image"><img src="${escapeHtml(source)}" alt="${candidate ? escapeHtml(job?.owner?.cafe_name || 'Café') : 'Coffee illustration'}" loading="eager" decoding="async"></div>`;
   }
 
   function iconSvg(icon) {
@@ -67,12 +67,6 @@
       <span><strong>${escapeHtml(value)}</strong><b>${escapeHtml(label)}</b><small>${escapeHtml(copy)}</small></span>
       <span class="quiet-chevron" aria-hidden="true">›</span>
     </button>`;
-  }
-
-  function mobileHeader() {
-    return `<div class="quiet-mobile-header">
-      <a class="quiet-mobile-brand" href="/" aria-label="BaristaMatch home"><img src="/assets/favicon-transparent-v2.png" alt=""><span>Barista<b>Match</b></span></a>
-    </div>`;
   }
 
   function mobileNav(isCafe) {
@@ -199,7 +193,6 @@
         ];
 
     return `<section class="quiet-dashboard">
-      ${mobileHeader()}
       ${hero({ name: firstName, location, isCafe })}
       <div class="quiet-layout">
         <div class="quiet-primary-column">
