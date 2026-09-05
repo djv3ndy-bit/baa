@@ -45,6 +45,8 @@
 
   function iconSvg(icon) {
     const paths = {
+      'settings': '<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="m9 3-1 3-3 1-2 3 2 2-1 3 2 3 3-1 3 2 3-2 3 1 2-3-1-3 2-2-2-3-3-1-1-3Z"/>',
+      'eye': '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
       '⌂': '<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
       '⌕': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
       '⌖': '<path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
@@ -196,5 +198,14 @@
     </section>`;
   }
 
-  window.BaristaMatchQuietFocus = { render, timeGreeting };
+  function menuIcon(section) {
+    const icons = { Overview: '⌂', Discover: '⌕', 'Find Jobs': '⌕', 'Job Posts': '▣', Candidates: '♙', Matches: '♡', Messages: '◌', 'Profile Views': 'eye', 'My Profile': '◎', 'Café Profile': '◎', 'Account Settings': 'settings', Subscription: '▣' };
+    return iconSvg(icons[section] || '◎');
+  }
+  function menuLabel(section, role) {
+    if (section === 'Overview') return 'Home';
+    if (section === 'Discover') return role === 'barista' ? 'Find Jobs' : 'Find Baristas';
+    return section;
+  }
+  window.BaristaMatchQuietFocus = { render, timeGreeting, menuIcon, menuLabel };
 })();
