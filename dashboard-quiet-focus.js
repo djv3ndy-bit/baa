@@ -43,9 +43,25 @@
     return `<div class="quiet-feature-image"><img src="${escapeHtml(source)}" alt="${candidate ? escapeHtml(job?.owner?.cafe_name || 'Café') : 'Coffee illustration'}" loading="lazy"></div>`;
   }
 
+  function iconSvg(icon) {
+    const paths = {
+      '⌂': '<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
+      '⌕': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
+      '⌖': '<path d="M19 10c0 5-7 11-7 11S5 15 5 10a7 7 0 1 1 14 0Z"/><circle cx="12" cy="10" r="2"/>',
+      '♡': '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/>',
+      '◌': '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5a9.5 9.5 0 0 1 19 0Z"/>',
+      '◎': '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/>',
+      '♙': '<circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/>',
+      '▣': '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V3h8v4M3 12h18M10 12v3h4v-3"/>',
+      '↗': '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+      '◷': '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>'
+    };
+    return `<svg class="quiet-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[icon] || paths['◎']}</svg>`;
+  }
+
   function activityTile({ icon, value, label, copy, section }) {
     return `<button class="quiet-activity-tile" type="button" data-go="${section}">
-      <span class="quiet-activity-icon" aria-hidden="true">${icon}</span>
+      <span class="quiet-activity-icon" aria-hidden="true">${iconSvg(icon)}</span>
       <span><strong>${escapeHtml(value)}</strong><b>${escapeHtml(label)}</b><small>${escapeHtml(copy)}</small></span>
       <span class="quiet-chevron" aria-hidden="true">›</span>
     </button>`;
@@ -62,7 +78,7 @@
       ? [['⌂', 'Home', 'Overview'], ['▣', 'Jobs', 'Job Posts'], ['⌕', 'Discover', 'Discover'], ['♡', 'Matches', 'Matches'], ['◎', 'Profile', 'Café Profile']]
       : [['⌂', 'Home', 'Overview'], ['⌕', 'Find Jobs', 'Discover'], ['♡', 'Matches', 'Matches'], ['◌', 'Messages', 'Messages'], ['◎', 'Profile', 'My Profile']];
     return `<nav class="quiet-mobile-nav" aria-label="Dashboard navigation">${items
-      .map(([icon, label, section], index) => `<button class="${index === 0 ? 'active' : ''}" type="button" data-go="${section}"><span aria-hidden="true">${icon}</span><small>${label}</small></button>`)
+      .map(([icon, label, section], index) => `<button class="${index === 0 ? 'active' : ''}" type="button" data-go="${section}"><span aria-hidden="true">${iconSvg(icon)}</span><small>${label}</small></button>`)
       .join('')}</nav>`;
   }
 
@@ -77,8 +93,8 @@
       </div>
       <div class="quiet-handwritten" aria-hidden="true">Great coffee,<br>brighter days.</div>
       <div class="quiet-search-bar" aria-label="Quick search">
-        <button type="button" data-go="${destination}"><span aria-hidden="true">⌕</span><span>${prompt}</span></button>
-        <button type="button" data-go="${destination}"><span aria-hidden="true">⌖</span><span>${escapeHtml(location)}</span></button>
+        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌕')}</span><span>${prompt}</span></button>
+        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌖')}</span><span>${escapeHtml(location)}</span></button>
         <button class="quiet-search-action" type="button" data-go="${destination}">Search ${isCafe ? 'baristas' : 'jobs'} <span aria-hidden="true">→</span></button>
       </div>
     </section>`;
@@ -158,7 +174,7 @@
       : [
           activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse nearby cafés', section: 'Discover' }),
           activityTile({ icon: '↗', value: context.applications.length, label: 'Applications', copy: 'Track your progress', section: 'Applications' }),
-          activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Availability', copy: 'Set your hours', section: 'My Profile' }),
+          activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];
 
     return `<section class="quiet-dashboard">
