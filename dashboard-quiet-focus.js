@@ -108,7 +108,7 @@
       </div>
       <div class="quiet-handwritten" aria-hidden="true">Great coffee,<br>brighter days.</div>
       <div class="quiet-search-bar" aria-label="Quick search">
-        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌕')}</span><span>${prompt}</span></button>
+        <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌕')}</span><span><span class="quiet-search-desktop-label">${prompt}</span><span class="quiet-search-mobile-label">${isCafe ? 'Find baristas' : 'Search jobs'}</span></span></button>
         <button type="button" data-go="${destination}"><span aria-hidden="true">${iconSvg('⌖')}</span><span>${escapeHtml(location)}</span></button>
         <button class="quiet-search-action" type="button" data-go="${destination}">Search ${isCafe ? 'baristas' : 'jobs'} <span aria-hidden="true">→</span></button>
       </div>
@@ -120,7 +120,7 @@
     if (!job) {
       return `<article class="quiet-feature-card quiet-empty-feature">
         ${featureImage(job)}
-        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3>Your next café starts here.</h3><p>New roles matching your saved Florida work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
+        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3><span class="quiet-desktop-copy">Your next café starts here.</span><span class="quiet-mobile-copy">No matching roles yet</span></h3><p>New roles matching your saved Florida work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
       </article>`;
     }
     const cafe = job.owner?.cafe_name || 'Local café';
@@ -192,7 +192,7 @@
           activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];
 
-    return `<section class="quiet-dashboard">
+    return `<section class="quiet-dashboard ${isCafe ? 'quiet-cafe' : 'quiet-guided'}">
       ${hero({ name: firstName, location, isCafe })}
       <div class="quiet-layout">
         <div class="quiet-primary-column">
@@ -203,6 +203,11 @@
         <aside class="quiet-activity-panel">
           <h3>Your activity</h3>
           <div class="quiet-activity-grid">${activity.join('')}</div>
+          ${isCafe ? '' : `<div class="quiet-guided-activity">${[
+            ['↗', 'Applications', 'Applications'],
+            ['eye', 'Profile Views', 'Profile Views'],
+            ['◎', 'My Profile', 'My Profile']
+          ].map(([icon, label, section]) => `<button type="button" data-go="${section}">${iconSvg(icon)}<span>${label}</span><span aria-hidden="true">›</span></button>`).join('')}</div>`}
           <button class="quiet-note" type="button" data-go="${isCafe ? 'Café Profile' : 'My Profile'}"><span aria-hidden="true">⌁</span><span><strong>Good people.<br>Better opportunities.</strong><small>${isCafe ? 'Keep your café profile current.' : 'Keep your profile ready.'}</small></span><span aria-hidden="true">→</span></button>
         </aside>
       </div>
