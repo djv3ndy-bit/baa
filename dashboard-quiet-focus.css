@@ -1034,3 +1034,9 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
   .side .brand,.role-cafe_owner_manager .side .brand{font-size:21px!important;margin-bottom:14px!important;padding-bottom:18px!important}
   .side .brand img,.role-cafe_owner_manager .side .brand img{width:38px!important;height:38px!important}
 }
+
+/* Reserve space for the persistent tabs on every dashboard section. */
+@media(max-width:760px){
+  .shell:has(#dashboard-mobile-navigation) .content{padding-bottom:calc(96px + env(safe-area-inset-bottom))!important}
+  #dashboard-mobile-navigation .quiet-mobile-nav button{font-family:Arial,sans-serif;cursor:pointer}
+}
