@@ -1,0 +1,53 @@
+name: Apply reviewed launch checklist repair
+on:
+  push:
+    branches: [fix/launch-checklist-20260906]
+    paths: [.github/workflows/apply-launch-checklist.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/fix/launch-checklist-20260906'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply exact locally tested source changes
+        run: |
+          git merge-base --is-ancestor 6d4bdff315d11aa984a59b8fc7e597eca93e8829 HEAD
+          python3 .github/scripts/apply-launch-checklist.py
+          git diff --check
+      - name: Install existing test prerequisites
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --prefix mobile --no-audit --no-fund
+      - name: Full tests and mobile checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          callback_dir="$(mktemp -d)"
+          trap 'rm -rf "$callback_dir"' EXIT
+          ./mobile/node_modules/.bin/tsc mobile/lib/authCallback.ts --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck --outDir "$callback_dir"
+          callback_module="$(find "$callback_dir" -name authCallback.js -type f -print -quit)"
+          test -n "$callback_module"
+          AUTH_CALLBACK_MODULE="$callback_module" npm test
+          npm run typecheck --prefix mobile
+          npm run release:verify-stores --prefix mobile
+      - name: Commit only tested source to the repair branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add APP-STORE-SUBMISSION.md GOOGLE-PLAY-SUBMISSION.md dashboard.html docs/APPLE-DELETION-FOLLOWUP-2026-09-06.md docs/STORE-READINESS-AUDIT-2026-09-06.md launch-check.js mobile/app.json mobile/app/profile.tsx privacy.html
+          git commit -m 'Apply tested optional demographics and media-permission repairs'
+          actual="$(git ls-remote origin refs/heads/fix/launch-checklist-20260906 | cut -f1)"
+          test "$actual" = "$GITHUB_SHA"
+          git push origin HEAD:refs/heads/fix/launch-checklist-20260906
+# Temporary branch-only application tooling; remove before merging. No signing or production secrets.

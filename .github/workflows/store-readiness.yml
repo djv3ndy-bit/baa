@@ -65,5 +65,49 @@ jobs:
         run: npx expo export --platform ios --output-dir /tmp/baristamatch-ios
       - name: Bundle Android JavaScript
         run: npx expo export --platform android --output-dir /tmp/baristamatch-android
+  android-manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_store_ci_placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Use the hosted JDK 17
+        run: |
+          test -d "$JAVA_HOME_17_X64"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+      - name: Install locked native configuration dependencies
+        run: npm ci --prefix mobile --no-audit --no-fund
+      - name: Generate Android project without signing or store submission
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+      - name: Merge actual Android release permissions and SDK declarations
+        working-directory: mobile/android
+        run: ./gradlew :app:processReleaseMainManifest --no-daemon --console=plain
+      - name: Validate merged manifest and save non-secret evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(find mobile/android/app/build/intermediates -type f -path '*merged_manifest*' -path '*release*' -name AndroidManifest.xml -print -quit)"
+          test -n "$manifest"
+          mkdir -p /tmp/bjm-android-evidence
+          python3 mobile/scripts/verify-android-manifest.py "$manifest" > /tmp/bjm-android-evidence/report.json
+          cp "$manifest" /tmp/bjm-android-evidence/AndroidManifest.xml
+          cat /tmp/bjm-android-evidence/report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-release-manifest
+          path: /tmp/bjm-android-evidence/
+          retention-days: 7
 # This workflow neither submits to stores nor uses signing, billing, or production secrets.
 # JS exports are not signed binaries or physical-device test evidence.
