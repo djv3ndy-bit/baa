@@ -75,7 +75,7 @@ export function QuietFocusHome({
             onPress={onOpenSettings}
             style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
           >
-            <Text style={styles.settingsIcon}>⚙</Text>
+            <Text allowFontScaling={false} style={styles.settingsIcon}>⚙</Text>
           </Pressable>
         </View>
 
@@ -180,7 +180,7 @@ export function QuietFocusHome({
               style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}
             >
               <View style={styles.profileTop}>
-                <View>
+                <View style={styles.profileHeading}>
                   <Text style={styles.profileEyebrow}>YOUR PROFILE</Text>
                   <Text style={styles.profileTitle}>{profileProgress}% complete</Text>
                 </View>
@@ -226,12 +226,12 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fffdf9' },
   content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 30 },
   pressed: { opacity: 0.78 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
-  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  brandImage: { width: 33, height: 33, resizeMode: 'contain' },
-  brand: { color: '#17110d', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
+  brandRow: { gap: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
+  brandLockup: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  brandImage: { flexShrink: 0, width: 33, height: 33, resizeMode: 'contain' },
+  brand: { flexShrink: 1, minWidth: 0, color: '#17110d', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
   brandAccent: { color: '#b76022' },
-  settingsButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  settingsButton: { flexShrink: 0, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   settingsIcon: { color: '#321708', fontSize: 20 },
   eyebrow: { color: '#71665f', fontSize: 9, fontWeight: '800', letterSpacing: 2.2 },
   greeting: { color: '#17110d', fontFamily: editorialFont, fontSize: 33, lineHeight: 38, fontWeight: '700', letterSpacing: -1.3, marginTop: 7 },
@@ -249,8 +249,8 @@ const styles = StyleSheet.create({
   featureEyebrow: { display: 'none' },
   featureTitle: { color: '#17110d', fontFamily: editorialFont, fontSize: 24, lineHeight: 28, fontWeight: '700' },
   featureSubtitle: { color: '#71665f', fontSize: 12, lineHeight: 16, marginTop: 5 },
-  featureButton: { minHeight: 43, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#b95214' },
-  featureButtonText: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  featureButton: { paddingHorizontal: 8, paddingVertical: 10, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#b95214' },
+  featureButtonText: { textAlign: 'center', flexShrink: 1, color: '#fff', fontSize: 14, fontWeight: '500' },
   sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 },
   sectionTitle: { color: '#17110d', fontFamily: editorialFont, fontSize: 20, fontWeight: '700' },
   sectionHint: { color: '#8b7e75', fontSize: 9 },
@@ -275,6 +275,7 @@ const styles = StyleSheet.create({
   actionRowDetail: { color: '#71665f', fontSize: 10, marginTop: 3 },
   actionRowArrow: { color: '#b76022', fontSize: 25 },
   profileCard: { borderWidth: 1, borderColor: '#eadfd5', borderRadius: 19, backgroundColor: '#fff', padding: 16, marginBottom: 12 },
+  profileHeading: { flex: 1, minWidth: 0 },
   profileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   profileEyebrow: { color: '#2d7444', fontSize: 8, fontWeight: '900', letterSpacing: 1.4 },
   profileTitle: { color: '#17110d', fontFamily: editorialFont, fontSize: 21, fontWeight: '700', marginTop: 3 },

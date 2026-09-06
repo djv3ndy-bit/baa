@@ -151,10 +151,10 @@ export default function Chat() {
     <SafeAreaView style={s.safe}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={s.header}>
-          <Pressable onPress={() => router.back()} style={s.back}><Text style={s.backText}>‹</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={s.back}><Text allowFontScaling={false} style={s.backText}>‹</Text></Pressable>
           <View style={s.avatar}><Text>☕</Text></View>
-          <View style={s.heading}><Text style={s.name}>{name}</Text><Text style={s.sub}>Mutual match · Private conversation</Text></View>
-          <Pressable accessibilityLabel="Conversation safety options" disabled={safetyBusy} onPress={openSafetyMenu} style={s.safety}><Text style={s.safetyText}>•••</Text></Pressable>
+          <View style={s.heading}><Text accessibilityLabel={name} numberOfLines={2} ellipsizeMode="tail" style={s.name}>{name}</Text><Text numberOfLines={2} style={s.sub}>Mutual match · Private conversation</Text></View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Conversation safety options" disabled={safetyBusy} onPress={openSafetyMenu} style={s.safety}><Text allowFontScaling={false} style={s.safetyText}>•••</Text></Pressable>
         </View>
         <ScrollView ref={scroll} style={s.stream} contentContainerStyle={s.streamContent}>
           {messages.length ? messages.map(message => (
@@ -175,11 +175,11 @@ export default function Chat() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f7f0e9' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { height: 72, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eadfd5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 8 },
-  back: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }, backText: { fontSize: 36, color: '#321708', marginTop: -5 },
-  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#f3e8de', alignItems: 'center', justifyContent: 'center' },
+  header: { minHeight: 72, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eadfd5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 8 },
+  back: { flexShrink: 0, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, backText: { fontSize: 36, color: '#321708', marginTop: -5 },
+  avatar: { flexShrink: 0, width: 42, height: 42, borderRadius: 21, backgroundColor: '#f3e8de', alignItems: 'center', justifyContent: 'center' },
   heading: { flex: 1, minWidth: 0 }, name: { fontSize: 16, fontWeight: '900', color: '#24150d' }, sub: { fontSize: 11, color: '#746a61', marginTop: 2 },
-  safety: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }, safetyText: { fontSize: 18, fontWeight: '900', color: '#6d381c', letterSpacing: 1 },
+  safety: { flexShrink: 0, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, safetyText: { fontSize: 18, fontWeight: '900', color: '#6d381c', letterSpacing: 1 },
   stream: { flex: 1 }, streamContent: { padding: 16, paddingBottom: 24 }, bubbleWrap: { alignItems: 'flex-start', marginBottom: 9 }, mineWrap: { alignItems: 'flex-end' },
   bubble: { maxWidth: '80%', backgroundColor: '#fff', borderWidth: 1, borderColor: '#eadfd5', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 19, borderBottomLeftRadius: 5 },
   mine: { backgroundColor: '#321708', borderColor: '#321708', borderBottomLeftRadius: 19, borderBottomRightRadius: 5 }, text: { fontSize: 15, lineHeight: 21, color: '#2d211b' }, mineText: { color: '#fff' },
