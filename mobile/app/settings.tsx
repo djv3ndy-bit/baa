@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { supabase } from "@/lib/supabase";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AUTH_STORAGE_KEY, supabase } from "@/lib/supabase";
+import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } from '@/lib/accountDeletion';
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi } from "@/lib/api";
@@ -27,6 +29,7 @@ type BillingStatus = {
 };
 
 export default function Settings() {
+  const deletionBusy = useRef(false);
   const [role, setRole] = useState<AppRole>("barista"),
     [email, setEmail] = useState(""),
     [showPassword, setShowPassword] = useState(false),
@@ -101,7 +104,7 @@ export default function Settings() {
   function confirmAccountDeletion() {
     Alert.alert(
       "Final confirmation",
-      "Delete your BaristaMatch account and all account data now?",
+      "Delete your BaristaMatch account now? Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.",
       [
         { text: "Keep my account", style: "cancel" },
         { text: "Delete permanently", style: "destructive", onPress: deleteAccount },
@@ -109,15 +112,22 @@ export default function Settings() {
     );
   }
   async function deleteAccount() {
+    if (deletionBusy.current) return;
+    deletionBusy.current = true;
     setDeleting(true);
     try {
-      await authenticatedApi<{ success: boolean }>("/delete-account", { confirmation: "DELETE" });
-      await unregisterThisDeviceNotifications().catch(() => undefined);
-      await supabase.auth.signOut();
-      router.replace("/login");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) throw new Error('Your session expired. Please log in again.');
+      await finishAccountDeletion(
+        () => authenticatedApi<DeletionResponse>("/delete-account", { confirmation: "DELETE" }, 'POST', session.user.id),
+        () => clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, session.user.id),
+      );
+      // Server deletion cascades device registrations; do not make authenticated
+      // cleanup calls with a user that no longer exists.
+      router.replace('/account-deleted');
     } catch (error) {
       Alert.alert("Could not delete account", error instanceof Error ? error.message : "Please try again.");
-    } finally { setDeleting(false); }
+    } finally { deletionBusy.current = false; setDeleting(false); }
   }
   return (
     <SafeAreaView style={s.safe}>

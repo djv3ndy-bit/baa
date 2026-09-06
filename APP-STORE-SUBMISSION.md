@@ -27,7 +27,7 @@ The native plan screen currently displays pricing information but does not initi
 
 Email/password, Google and Apple sign-in are implemented. Verify provider configuration, callback routes, canceled login, returning accounts, email verification and password-reset flows on the exact release build. The presence of a button is not evidence that provider sign-in works.
 
-Account Settings includes permanent account deletion. The backend must finish storage cleanup before removing the account identity. Blocking and reporting controls and server-side message policies exist; test them with two distinct accounts. Apple-provider token revocation is still an unresolved release blocker: the audited deletion endpoint does not revoke Apple authorization. Complete a secure revocation/re-authentication implementation and test it with configured Apple credentials before claiming compliance.
+Account Settings includes permanent account deletion. The backend must finish storage cleanup before removing the account identity. Blocking and reporting controls and server-side message policies exist; test them with two distinct accounts. The current integration does not retain Apple provider credentials for automatic revocation. The September 6 follow-up implements the no-token fallback in Apple TN3194: complete account deletion, clear the local session, and show Apple disconnect instructions. This is not automatic token revocation. Verify the fallback on the signed build; secure provider-token capture/revocation for future sign-ins remains follow-up work, not deployed functionality.
 
 ## App Privacy — candidate inventory, not submitted answers
 
@@ -51,7 +51,7 @@ Mandatory gender collection for aggregate reporting presents a data-minimization
 - [ ] Organization seller identity verified; agreements, tax and banking completed where applicable by the authorized account holder.
 - [ ] Exact intended build/source revision recorded; production signing and bundle IDs verified.
 - [ ] iOS binary built with Xcode 26+ and iOS 26+ SDK; build logs and final binary inspected.
-- [ ] Apple authorization revocation implemented and verified during account deletion.
+- [ ] Apple deletion behavior verified on a signed build: current no-token fallback must show disconnect instructions and remove local auth. Automatic provider-token revocation is not enabled.
 - [ ] Full deletion lifecycle tested, including all uploads, related rows, residual diagnostics/support retention and any paid subscription.
 - [ ] Actual collection reconciled with App Privacy; required-reason API manifests and SDK signatures checked.
 - [ ] Appropriate age-rating, content rights, UGC reporting/blocking and moderation operations verified.
@@ -71,3 +71,7 @@ Mandatory gender collection for aggregate reporting presents a data-minimization
 - https://developer.apple.com/support/offering-account-deletion-in-your-app/
 - https://docs.expo.dev/versions/v54.0.0/
 - https://docs.expo.dev/build-reference/infrastructure/
+
+### Apple deletion policy clarification — September 6 follow-up
+
+Apple TN3194 explicitly documents fulfilling account deletion and directing manual Apple revocation when no provider credentials are available. Do not reject or postpone those deletion requests simply because no token is stored. Do not tell reviewers that manual guidance is automatic revocation. For future integrations, securely capture and validate Apple credentials server-side, implement revocation/notifications, and test with configured credentials. Reference: https://developer.apple.com/documentation/technotes/tn3194-handling-account-deletions-and-revoking-tokens-for-sign-in-with-apple

@@ -2,9 +2,10 @@ import { supabase } from './supabase';
 
 const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.baristajobmatch.com/api').replace(/\/$/, '');
 
-export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST'): Promise<T> {
+export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST', expectedUserId?: string): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) throw new Error('Your session expired. Please log in again.');
+  if (expectedUserId && session.user.id !== expectedUserId) throw new Error('The signed-in account changed. Please review the request again.');
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,

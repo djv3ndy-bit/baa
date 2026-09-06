@@ -84,6 +84,15 @@ export async function listOwnedUploads(userId, request) {
   return objects;
 }
 
+// The current Supabase OAuth flow has no retained Apple provider token.
+// Apple's TN3194 says to fulfill deletion and direct these users to manual
+// revocation, not to block deletion or claim that a Supabase token is an Apple token.
+export function appleDisconnectRequired(user) {
+  return (Array.isArray(user?.identities) && user.identities.some(identity => identity?.provider === "apple")) ||
+    user?.app_metadata?.provider === "apple" ||
+    (Array.isArray(user?.app_metadata?.providers) && user.app_metadata.providers.includes("apple"));
+}
+
 export default async function handler(req, res) {
   Object.entries(jsonHeaders).forEach(([name, value]) => res.setHeader(name, value));
   if (req.method !== "POST") {
@@ -147,7 +156,10 @@ export default async function handler(req, res) {
     if ((await listOwnedUploads(user.id, request)).length) throw new CleanupError();
     const deleteResponse = await request(`/auth/v1/admin/users/${encodeURIComponent(user.id)}`, { method: "DELETE" });
     if (!deleteResponse.ok) throw new CleanupError("We could not delete your account. Please try again or contact support.");
-    return res.status(200).json({ success: true });
+    return res.status(200).json({
+      success: true,
+      appleRevocation: appleDisconnectRequired(user) ? "manual_required" : "not_applicable"
+    });
   } catch (error) {
     const timeout = error?.name === "TimeoutError" || error?.name === "AbortError";
     console.error("Account deletion request failed", error?.name || "Error");
