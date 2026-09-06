@@ -21,7 +21,7 @@ jobs:
       - name: Apply exact locally tested source changes
         run: |
           git merge-base --is-ancestor 6d4bdff315d11aa984a59b8fc7e597eca93e8829 HEAD
-          python3 .github/scripts/apply-launch-checklist.py
+          python3 .github/scripts/indent-launch-checklist.py
           git diff --check
       - name: Install existing test prerequisites
         run: |
