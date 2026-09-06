@@ -1,5 +1,7 @@
 # BaristaMatch Google Play submission record
 
+> Current execution status and remaining gates: [Launch checklist](docs/LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
+
 Prepared September 6, 2026. No Play Console submission, organization verification or Android release is certified by this document.
 
 ## Identity and public resources

@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,6 +16,7 @@ import {
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
+import { needsMediaLibraryPermission, normalizeOptionalGender } from "@/lib/profilePrivacy";
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import {
@@ -63,6 +65,7 @@ const AVAILABILITY_OPTIONS = [
 ];
 const SEARCH_AREAS = [10, 25, 50, 100];
 const GENDER_OPTIONS = [
+  { value: "", label: "Prefer not to say" },
   { value: "female", label: "Female" },
   { value: "male", label: "Male" },
 ];
@@ -179,26 +182,32 @@ export default function Profile() {
   }
   async function pickMedia(kind: "photo" | "bar" | "video") {
     try {
-      const permission =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        const buttons: Parameters<typeof Alert.alert>[2] = [
-          { text: "Not now", style: "cancel" },
-        ];
-        if (!permission.canAskAgain)
-          buttons.push({
-            text: "Open Settings",
-            onPress: () => Linking.openSettings(),
-          });
-        Alert.alert(
-          "Photos access required",
-          "Allow BaristaMatch to access your photos and videos so you can add profile media.",
-          buttons,
-        );
-        return;
-      }
+      // Use the system picker without broad library access on Android and for photos.
+      // Original iOS videos require permission with SDK 54 pass-through export.
+      if (needsMediaLibraryPermission(Platform.OS, kind)) {
+        const permission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          const buttons: Parameters<typeof Alert.alert>[2] = [
+            { text: "Not now", style: "cancel" },
+          ];
+          if (!permission.canAskAgain)
+            buttons.push({
+              text: "Open Settings",
+              onPress: () => Linking.openSettings(),
+            });
+          Alert.alert(
+            "Video access permission",
+            "Access is needed to add your original video. You can skip this optional upload and keep using BaristaMatch.",
+            buttons,
+          );
+          return;
+        }
 
+      }
       const result = await ImagePicker.launchImageLibraryAsync({
+        legacy: false,
+        exif: false,
         mediaTypes: kind === "video" ? "videos" : "images",
         allowsEditing: false,
         quality: 1,
@@ -209,7 +218,8 @@ export default function Profile() {
       });
       if (result.canceled) return;
 
-      const picked = result.assets[0];
+      const picked = result.assets?.[0];
+      if (!picked?.uri) throw new Error("No media was selected. Please try again.");
       const asset: SelectedMedia = {
         uri: picked.uri,
         name:
@@ -285,8 +295,11 @@ export default function Profile() {
       return Alert.alert("Valid date required", "Enter your complete date of birth using YYYY-MM-DD, for example 1998-04-23.");
     if (role === "barista" && birthDate && birthDate > maximumBirthDate())
       return Alert.alert("Age requirement", "BaristaMatch accounts are available to people age 16 or older.");
-    if (role === "barista" && !["female", "male"].includes(profile.gender_identity))
-      return Alert.alert("Gender required", "Choose Female or Male to continue. This information remains private.");
+    let genderIdentity: "female" | "male" | null = null;
+    if (role === "barista") {
+      try { genderIdentity = normalizeOptionalGender(profile.gender_identity); }
+      catch { return Alert.alert("Check optional gender", "Choose Female, Male, or Prefer not to say."); }
+    }
     setSaving(true);
     const {
       data: { user },
@@ -398,7 +411,7 @@ export default function Profile() {
           {
             user_id: user.id,
             date_of_birth: profile.date_of_birth,
-            gender_identity: profile.gender_identity,
+            gender_identity: genderIdentity,
             age_range: null,
             updated_at: new Date().toISOString(),
           },
@@ -538,7 +551,7 @@ export default function Profile() {
                   maxLength={10}
                   style={s.dateInput}
                 />
-                <Text style={[s.label, { marginTop: 15 }]}>Gender</Text>
+                <Text style={[s.label, { marginTop: 15 }]}>Gender (optional)</Text>
                 <View style={s.choiceWrap}>
                   {GENDER_OPTIONS.map((option) => (
                     <Choice
@@ -549,7 +562,7 @@ export default function Profile() {
                     />
                   ))}
                 </View>
-                <Text style={s.privateHelp}>Required for age eligibility and private platform reporting. Your date of birth, age, and gender are never shown to cafés or on your marketplace profile.</Text>
+                <Text style={s.privateHelp}>Date of birth is required for age eligibility. Gender is optional and used only for aggregate platform reporting; it never affects visibility or matching. Choose Prefer not to say to remove a previous selection. Your date of birth, age, and gender are never shown to cafés or on your marketplace profile.</Text>
               </View>
             ) : null}
             {isBarista ? (
