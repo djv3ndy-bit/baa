@@ -17,7 +17,7 @@ test('merged Android manifest passes required target/package without claiming si
   assert.equal(report.target_sdk,36);assert.equal(report.signed_binary_checked,false);assert.equal(report.physical_device_tested,false);
 });
 for(const target of ['35','unknown',''])test(`rejects invalid target ${target}`,()=>assert.notEqual(run(manifest(target)).status,0));
-for(const name of ['READ_MEDIA_IMAGES','READ_MEDIA_VIDEO','READ_MEDIA_AUDIO','READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE','CAMERA','RECORD_AUDIO'])test(`rejects merged ${name}`,()=>{
+for(const name of ['READ_MEDIA_IMAGES','READ_MEDIA_VIDEO','READ_MEDIA_AUDIO','READ_EXTERNAL_STORAGE','WRITE_EXTERNAL_STORAGE','CAMERA','RECORD_AUDIO','SYSTEM_ALERT_WINDOW'])test(`rejects merged ${name}`,()=>{
   assert.notEqual(run(manifest('36',`<uses-permission android:name="android.permission.${name}"/>`)).status,0);
 });
 test('rejects wrong app and malformed manifests',()=>{

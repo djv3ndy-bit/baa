@@ -10,7 +10,8 @@ ANDROID = '{http://schemas.android.com/apk/res/android}'
 FORBIDDEN = {
     'android.permission.' + name for name in (
         'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_MEDIA_AUDIO',
-        'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'CAMERA', 'RECORD_AUDIO'
+        'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'CAMERA', 'RECORD_AUDIO',
+        'SYSTEM_ALERT_WINDOW'
     )
 }
 
