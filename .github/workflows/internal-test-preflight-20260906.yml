@@ -1,0 +1,118 @@
+name: Internal test build preflight - September 6
+on:
+  push:
+    branches: [release/internal-test-preflight-20260906]
+    paths: [.github/workflows/internal-test-preflight-20260906.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: owner-internal-test-20260906
+  cancel-in-progress: false
+jobs:
+  prepare-internal-test:
+    if: github.repository == 'djv3ndy-bit/baa' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 220fa5ecbe42f69b1dd53683e6b709d9cb9b1e6a
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Verify approved main and successful source checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          sha = '220fa5ecbe42f69b1dd53683e6b709d9cb9b1e6a'
+          base = 'https://api.github.com/repos/djv3ndy-bit/baa'
+          def read(path):
+              req = urllib.request.Request(base + path, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          assert subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip() == sha
+          assert read('/git/ref/heads/main')['object']['sha'] == sha, 'Main changed: do not use stale approval.'
+          runs = read('/actions/runs?head_sha=' + sha + '&per_page=100')['workflow_runs']
+          for name in ['Store readiness', 'Native layout regressions', 'Engineering reliability monitor']:
+              matching = [r for r in runs if r['name'] == name and r['head_sha'] == sha and r['head_branch'] == 'main']
+              assert matching, 'Missing current-main result: ' + name
+              latest = max(matching, key=lambda r: r['id'])
+              print(name, latest['id'], latest['status'], latest['conclusion'])
+              assert latest['status'] == 'completed' and latest['conclusion'] == 'success', 'Unpassed gate: ' + name
+          PY
+      - name: Install existing locked test prerequisites
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --prefix mobile --no-audit --no-fund
+          npm ci --prefix tests/layout --ignore-scripts --no-audit --no-fund
+      - name: Rerun complete source and layout tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          callback_dir="$(mktemp -d)"
+          trap 'rm -rf "$callback_dir"' EXIT
+          ./mobile/node_modules/.bin/tsc mobile/lib/authCallback.ts --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck --outDir "$callback_dir"
+          callback_module="$(find "$callback_dir" -type f -name authCallback.js -print -quit)"
+          test -n "$callback_module"
+          AUTH_CALLBACK_MODULE="$callback_module" npm test
+          node --test tests/layout/*.test.mjs
+          node launch-check.js
+          npm run --prefix mobile release:verify-auth
+          npm run --prefix mobile release:verify-stores
+          npm run --prefix mobile typecheck
+      - name: Start only the existing approval-gated internal TestFlight workflow
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error, urllib.parse, uuid
+          from pathlib import Path
+          sha = '220fa5ecbe42f69b1dd53683e6b709d9cb9b1e6a'
+          token = os.environ.get('EXPO_TOKEN', '').strip()
+          report = {'source_sha': sha, 'source_checks_passed': True, 'expo_token_available_to_runner': bool(token), 'workflow_dispatched': False, 'signed_build_verified': False, 'public_store_release': 'HOLD', 'android_build_started': False}
+          if not token:
+              report['status'] = 'BLOCKED_MISSING_EXPO_TOKEN'
+              print('BLOCKED: EXPO_TOKEN is not available to this GitHub runner. No EAS workflow or app build started.')
+          else:
+              # No credentials, response bodies or runtime data are printed. Do not
+              # retry a dispatch after an ambiguous network response.
+              class NoRedirect(urllib.request.HTTPRedirectHandler):
+                  def redirect_request(self, *args, **kwargs):
+                      return None
+              opener = urllib.request.build_opener(NoRedirect)
+              body = {'appId': 'faef8923-6780-4373-bb0b-c789e3eb1bcc', 'gitRef': 'main', 'fileName': 'authentication-ios-testflight.yml', 'inputs': {'release_sha': sha, 'release_mode': 'BUILD_AND_SUBMIT_TO_INTERNAL_TESTFLIGHT'}}
+              request = urllib.request.Request('https://api.expo.dev/v2/workflows/dispatch', data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}, method='POST')
+              try:
+                  with opener.open(request, timeout=45) as response:
+                      data = json.load(response)['data']
+                  run_id = str(uuid.UUID(data['id']))
+                  url = str(data['url'])
+                  assert urllib.parse.urlparse(url).scheme == 'https' and urllib.parse.urlparse(url).hostname == 'expo.dev'
+                  report.update(status='WORKFLOW_DISPATCHED_APPROVAL_GATE_PRESERVED', workflow_dispatched=True, workflow_id=run_id, workflow_url=url)
+                  print('EAS workflow dispatched:', run_id)
+                  print('Owner approval inside EAS is still required before the iOS build/upload. No public submission was requested.')
+              except urllib.error.HTTPError as error:
+                  report.update(status='BLOCKED_EXPO_HTTP_ERROR', http_status=error.code)
+                  print('EAS dispatch did not return a successful receipt. HTTP status:', error.code)
+              except Exception:
+                  report['status'] = 'DISPATCH_UNCONFIRMED_DO_NOT_RETRY_WITHOUT_CHECKING_EAS'
+                  print('EAS dispatch result is unconfirmed. Check EAS before any retry to avoid duplicate builds.')
+          Path('/tmp/internal-test-preflight.json').write_text(json.dumps(report, indent=2))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Internal test build attempt\n\n```json\n' + json.dumps(report, indent=2) + '\n```\n\nNo signed or installed app is claimed by this preflight. The existing EAS owner approval gate and public-launch HOLD are preserved.\n')
+          PY
+      - name: Save sanitized execution receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: internal-test-preflight-receipt
+          path: /tmp/internal-test-preflight.json
+          if-no-files-found: error
+          retention-days: 7
+# One-shot owner-approved bridge only. Do not merge this into main or add
+# automatic public release, EAS Update, credential mutation, or retries.
