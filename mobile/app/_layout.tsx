@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Stack, usePathname } from 'expo-router';
 import { Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { listenForPhoneNotifications, registerForPhoneNotifications } from '@/lib/pushNotifications';
@@ -25,7 +26,11 @@ export default function RootLayout() {
   return (
     <AppErrorBoundary>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+      {/* Android 16 is edge-to-edge. RN's per-screen SafeAreaView is iOS-only.
+          Expo Router supplies the safe-area provider. Keep existing iOS insets. */}
+      <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'android' ? ['top', 'right', 'bottom', 'left'] : []}>
+        <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+      </SafeAreaView>
     </AppErrorBoundary>
   );
 }

@@ -1,0 +1,69 @@
+name: Store readiness
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: store-readiness-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  server-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, matching the existing auth workflow
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install pinned server dependency without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install locked dependencies used by existing mobile interaction tests
+        run: npm ci --prefix mobile --no-audit --no-fund
+      - name: Compile auth helper and run the complete repository test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          callback_dir="$(mktemp -d)"
+          trap 'rm -rf "$callback_dir"' EXIT
+          ./mobile/node_modules/.bin/tsc mobile/lib/authCallback.ts \
+            --target ES2022 --module commonjs --lib ES2022,DOM \
+            --skipLibCheck --outDir "$callback_dir"
+          callback_module="$(find "$callback_dir" -type f -name authCallback.js -print -quit)"
+          test -n "$callback_module"
+          AUTH_CALLBACK_MODULE="$callback_module" npm test
+  native-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_store_ci_placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked mobile dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript validation
+        run: npm run typecheck
+      - name: Store configuration checks
+        run: npm run release:verify-stores
+      - name: Bundle iOS JavaScript
+        run: npx expo export --platform ios --output-dir /tmp/baristamatch-ios
+      - name: Bundle Android JavaScript
+        run: npx expo export --platform android --output-dir /tmp/baristamatch-android
+# This workflow neither submits to stores nor uses signing, billing, or production secrets.
+# JS exports are not signed binaries or physical-device test evidence.
