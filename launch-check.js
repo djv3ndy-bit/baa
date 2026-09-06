@@ -176,7 +176,8 @@ if(!mobileSubscription.includes("role !== 'cafe_owner_manager'")||!mobileSubscri
 if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
 for(const file of ['terms.html','privacy.html']){
   const source=fs.readFileSync(file,'utf8');
-  if(!source.includes('BaristaMatch LLC')||!source.includes('Effective September 2, 2026'))throw new Error(`${file}: LLC operator or effective date is missing`);
+  const effectiveDate=file==='privacy.html'?'Effective September 6, 2026':'Effective September 2, 2026';
+  if(!source.includes('BaristaMatch LLC')||!source.includes(effectiveDate))throw new Error(`${file}: LLC operator or effective date is missing`);
 }
 
 console.log('BaristaMatch launch readiness static checks passed');

@@ -1,5 +1,7 @@
 # Apple-account deletion follow-up — September 6, 2026
 
+> Current execution status and remaining gates: [Launch checklist](LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
+
 ## Scope and correction
 Baseline: 3fb5a58a1f3e7e9d01d1f16c2c9b0608a234de3f. The current repository deletion integration has no retained Apple provider token or automatic /auth/revoke path. Supabase sessions are not Apple provider credentials and must never be sent to Apple's revoke endpoint.
 

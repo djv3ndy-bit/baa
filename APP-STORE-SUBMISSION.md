@@ -1,5 +1,7 @@
 # BaristaMatch App Store submission record
 
+> Current execution status and remaining gates: [Launch checklist](docs/LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
+
 Reviewed September 6, 2026 for version 1.0.3. This is a preparation record, not confirmation that any console form, signed build, or Apple review has passed.
 
 ## Legal and listing identity
@@ -44,7 +46,7 @@ Account Settings includes permanent account deletion. The backend must finish st
 
 Determine linkage, purposes, optionality, tracking and third-party SDK behavior from actual collection. A no-sale policy is not proof of no sharing or no tracking. Current policy states no sale and no third-party targeted advertising. Check the compiled app's SDK inventory and merged privacy manifests before submitting that answer. An empty `NSPrivacyAccessedAPITypes` list in app.json is not evidence that the final binary has no required-reason API declarations.
 
-Mandatory gender collection for aggregate reporting presents a data-minimization review risk. Do not claim this is optional until the app, website and backend behavior have been changed consistently. Keep private demographics out of employer-visible profiles.
+Gender is optional in the updated web/native source and is stored as NULL when unprovided. The production database already permits NULL and its visibility rule does not require gender. Profile visibility and saving no longer depend on gender in the updated clients. Keep demographics private; verify this behavior on the signed release build before submitting disclosures. Older installed builds do not receive these changes merely because source was merged.
 
 ## Release checklist
 

@@ -1,5 +1,7 @@
 # BaristaMatch store-readiness audit — September 6, 2026
 
+> Current execution status and remaining gates: [Launch checklist](LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
+
 ## Verdict
 
 **Public App Store and Google Play release: HOLD.** This repair batch addresses confirmed code and configuration problems. It is not a legal certification, store approval or a complete device/binary audit. The owner has approved remediation but requires BaristaMatch LLC seller verification before public release.
