@@ -1,0 +1,22 @@
+name: Checklist source snapshot
+on:
+  push:
+    branches: [fix/launch-checklist-20260906]
+    paths: [.github/workflows/checklist-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: 6d4bdff315d11aa984a59b8fc7e597eca93e8829
+      - run: git archive --format=zip --output=/tmp/checklist-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checklist-source
+          path: /tmp/checklist-source.zip
+          retention-days: 1
