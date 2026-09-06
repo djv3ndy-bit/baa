@@ -1,0 +1,51 @@
+name: Store readiness
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: store-readiness-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  server-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned server dependency without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Run complete repository test suite
+        run: npm test
+  native-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_store_ci_placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked mobile dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript validation
+        run: npm run typecheck
+      - name: Store configuration checks
+        run: npm run release:verify-stores
+      - name: Bundle iOS JavaScript
+        run: npx expo export --platform ios --output-dir /tmp/baristamatch-ios
+      - name: Bundle Android JavaScript
+        run: npx expo export --platform android --output-dir /tmp/baristamatch-android
+# This workflow neither submits to stores nor uses signing, billing, or production secrets.
+# JS exports are not signed binaries or physical-device test evidence.

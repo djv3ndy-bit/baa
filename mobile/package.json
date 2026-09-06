@@ -8,7 +8,9 @@
     "ios": "expo start --ios",
     "android": "expo start --android",
     "typecheck": "tsc --noEmit",
-    "release:verify-auth": "node scripts/verify-authentication-release.mjs"
+    "release:verify-auth": "node scripts/verify-authentication-release.mjs",
+    "release:verify-stores": "node scripts/verify-store-toolchain.mjs",
+    "eas-build-pre-install": "node scripts/verify-store-toolchain.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.1.2",

@@ -1,59 +1,73 @@
 # BaristaMatch App Store submission record
 
-Use this record when completing App Store Connect for iOS version 1.0.3. Recheck every answer whenever application behavior changes.
+Reviewed September 6, 2026 for version 1.0.3. This is a preparation record, not confirmation that any console form, signed build, or Apple review has passed.
 
 ## Legal and listing identity
 
 - App name: BaristaMatch
 - Bundle ID: `com.baristajobmatch.app`
+- App Store Connect app ID: `6807117736`
 - Legal operator: BaristaMatch LLC (Florida)
 - Privacy Policy URL: `https://www.baristajobmatch.com/privacy.html`
 - Support URL: `https://www.baristajobmatch.com/support.html`
+- External account deletion: `https://www.baristajobmatch.com/delete-account.html`
 - Marketing URL: `https://www.baristajobmatch.com/`
 - Contact email: `hello@baristajobmatch.com`
 - Suggested primary category: Business
-- Suggested secondary category: Social Networking
-- Suggested age rating: 16+ because the marketplace is limited to users age 16 or older and includes user-generated profiles and messaging.
+- Minimum service eligibility: 16; under-18 users must have guardian permission.
+- Complete Apple's current age-rating questionnaire accurately. Service eligibility is not itself a content-rating result.
 
-Do not enter the EIN in application code, public metadata, review notes, or public legal pages. Provide tax identifiers only through Apple's protected tax and banking workflow.
+The owner requires the seller to be BaristaMatch LLC before public release. Verify the completed Individual-to-Organization conversion in Apple's account, not just the company name in this file. Do not put EINs, signing credentials, reviewer passwords or private verification documents in source control or public metadata.
 
-## App Review notes
+## App Review notes — verify before copying into the console
 
-BaristaMatch is a Florida-focused employment marketplace connecting cafés with baristas. Baristas can create profiles, discover café opportunities, apply, match, and message. Cafés can create profiles, post jobs, review applicants, match, and message. BaristaMatch is not an employer or staffing agency.
+BaristaMatch is an employment marketplace connecting cafés and baristas. Users can create profiles, discover opportunities, apply, match and message. BaristaMatch is not an employer or staffing agency. Reviewers need separate working barista and café credentials in the private App Review Information fields.
 
-Account creation is limited to users who confirm they are at least 16. Users under 18 must confirm parent or guardian permission. In-app Account Settings includes permanent account deletion. User-generated conversations include report and block controls. A functional review account for each role must be supplied in the secure App Review Information fields.
+The native plan screen currently displays pricing information but does not initiate new purchases or link to checkout. Existing Pro access can sync from the same café account. Website billing is controlled separately by production configuration; do not tell reviewers that all billing is disabled unless that has actually been verified. No payment settings or customer subscriptions were changed by the September 6 store-audit repair batch. Any future native purchase or external-purchase path needs a fresh storefront-specific policy assessment.
 
-Barista accounts are free. Café billing is not active in this release: the plan screen is an informational preview and cannot initiate a charge. Café accounts receive complimentary access without entering a card. Existing billing-administration code is server-disabled by default. If paid café functionality is enabled in a future version, payment eligibility must be reviewed again against the then-current App Review Guidelines before release.
+Email/password, Google and Apple sign-in are implemented. Verify provider configuration, callback routes, canceled login, returning accounts, email verification and password-reset flows on the exact release build. The presence of a button is not evidence that provider sign-in works.
 
-The app uses Sign in with Apple and Google as optional authentication methods alongside email/password. Sign in with Apple must remain configured for the production bundle identifier and its tokens must be revoked during account deletion if Apple authorization was used.
+Account Settings includes permanent account deletion. The backend must finish storage cleanup before removing the account identity. Blocking and reporting controls and server-side message policies exist; test them with two distinct accounts. Apple-provider token revocation is still an unresolved release blocker: the audited deletion endpoint does not revoke Apple authorization. Complete a secure revocation/re-authentication implementation and test it with configured Apple credentials before claiming compliance.
 
-## App Privacy answers to verify in App Store Connect
+## App Privacy — candidate inventory, not submitted answers
 
-The application currently processes the following categories. Mark them as linked to the user's identity unless App Store Connect guidance clearly indicates otherwise.
+| Candidate category | Source behavior to reconcile with the signed build |
+| --- | --- |
+| Contact information | Name/café name and email address |
+| User content | Profile text, jobs, photos, videos, messages and support requests |
+| Identifiers | Account IDs and push tokens; check each SDK's definitions |
+| Location | User-entered city/general location; assess Coarse Location, not only Other Data |
+| Usage data | Page/route activity, profile views, applications, matches and notifications |
+| Diagnostics | Failure details and device/browser information actually transmitted |
+| Other personal data | Private date of birth and gender; evaluate minimization and correct taxonomy |
+| Purchases | Café subscription status and billing records where actually processed |
 
-| Data category | Examples in BaristaMatch | Purpose |
-| --- | --- | --- |
-| Contact info | Email address | App functionality, account management, support |
-| User content | Profile text, job posts, images, coffee videos, messages | App functionality |
-| Identifiers | User ID, device push token | App functionality, security, notifications |
-| Usage data | Profile views, applications, matches, notification activity | App functionality, analytics |
-| Diagnostics | Error details, page or route, device/browser details | App functionality, diagnostics |
-| Other data | General location entered by the user, skills, experience, availability, desired pay, and private barista date of birth and gender | App functionality, age eligibility, matching, aggregate analytics |
-| Purchases | Café subscription status if billing is enabled | App functionality, account management |
+Determine linkage, purposes, optionality, tracking and third-party SDK behavior from actual collection. A no-sale policy is not proof of no sharing or no tracking. Current policy states no sale and no third-party targeted advertising. Check the compiled app's SDK inventory and merged privacy manifests before submitting that answer. An empty `NSPrivacyAccessedAPITypes` list in app.json is not evidence that the final binary has no required-reason API declarations.
 
-Current policy: no data is sold and no data is used for third-party targeted advertising. Confirm the production build contains no additional analytics or advertising SDK before submitting these answers.
+Mandatory gender collection for aggregate reporting presents a data-minimization review risk. Do not claim this is optional until the app, website and backend behavior have been changed consistently. Keep private demographics out of employer-visible profiles.
 
-## Required manual App Store Connect checks
+## Release checklist
 
-- Confirm the Apple Developer membership is an Organization membership under the exact LLC legal name. If it is Individual, request conversion and complete D-U-N-S verification before public release if the LLC should be displayed as seller.
-- Complete Agreements, Tax, and Banking using Apple's protected forms.
-- Verify the app record uses the bundle ID and App Store Connect app ID declared in `mobile/app.json` and `mobile/eas.json`.
-- Add accurate iPhone screenshots for every required display size and ensure screenshots show the production interface.
-- Supply working barista and café review accounts in the private App Review Information fields.
-- Test email/password, Sign in with Apple, Google sign-in, password reset, account deletion, report/block, job posting, applying, matching, messaging, photo/video upload, and push notifications on a physical iPhone.
-- Confirm the production Supabase migrations are applied, Vercel environment variables are configured, and billing remains disabled for this release.
-- Upload a release build to TestFlight, complete internal testing, inspect crashes, and only then submit the selected build for review.
+- [ ] Organization seller identity verified; agreements, tax and banking completed where applicable by the authorized account holder.
+- [ ] Exact intended build/source revision recorded; production signing and bundle IDs verified.
+- [ ] iOS binary built with Xcode 26+ and iOS 26+ SDK; build logs and final binary inspected.
+- [ ] Apple authorization revocation implemented and verified during account deletion.
+- [ ] Full deletion lifecycle tested, including all uploads, related rows, residual diagnostics/support retention and any paid subscription.
+- [ ] Actual collection reconciled with App Privacy; required-reason API manifests and SDK signatures checked.
+- [ ] Appropriate age-rating, content rights, UGC reporting/blocking and moderation operations verified.
+- [ ] Barista and café review accounts work and are provided privately.
+- [ ] Final screenshots reflect the actual interface and all required device sizes.
+- [ ] Physical iPhone tests pass for signup, verification, all login methods, reset, onboarding, posting, discovery, applications, matching, messages, reports/blocks, media, notifications, logout and deletion.
+- [ ] TestFlight build selected after crash/error review; seller gate remains satisfied.
 
-## Release gate
+## Validation available in the repository
 
-The app is ready to submit only when automated checks pass, the production build passes the physical-device flow above, App Store Connect privacy answers match the build, review accounts work, and the seller/legal account setup is correct.
+`npm test` runs repository checks. In `mobile`, run `npm run typecheck` and `npm run release:verify-stores`. The EAS production iOS pre-install hook also checks actual Xcode and iPhoneOS SDK versions. These checks do not replace signed-binary inspection, physical-device testing or Apple's review.
+
+## Primary policy references
+
+- https://developer.apple.com/app-store/review/guidelines/
+- https://developer.apple.com/app-store/submitting/
+- https://developer.apple.com/support/offering-account-deletion-in-your-app/
+- https://docs.expo.dev/versions/v54.0.0/
+- https://docs.expo.dev/build-reference/infrastructure/
