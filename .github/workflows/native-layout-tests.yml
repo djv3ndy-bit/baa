@@ -1,0 +1,26 @@
+name: Native layout regressions
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  native-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/layout/package-lock.json
+      - name: Install isolated locked layout-test dependencies
+        run: npm ci --prefix tests/layout --ignore-scripts --no-audit --no-fund
+      - name: Check actual TSX layout trees across widths and text scales
+        run: node --test tests/layout/*.test.mjs
+# No production/signing secrets. Yoga uses synthetic text metrics: these are
+# layout regressions, not iPhone/Android font screenshots or device QA.

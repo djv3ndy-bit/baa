@@ -1,0 +1,53 @@
+name: Apply reviewed native header repair
+on:
+  push:
+    branches: [fix/native-header-overflow-20260906]
+    paths: [.github/scripts/apply-ui-overflow.py, .github/workflows/apply-ui-overflow.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/fix/native-header-overflow-20260906'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply exact source-hash checked changes
+        run: |
+          git merge-base --is-ancestor fbfff22abcd72b96b8abddd0101de0fce263f3c2 HEAD
+          python3 .github/scripts/apply-ui-overflow.py
+          git diff --check
+      - name: Install locked test dependencies
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm ci --prefix mobile --no-audit --no-fund
+          npm ci --prefix tests/layout --ignore-scripts --no-audit --no-fund
+      - name: Full tests, typecheck and layout regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          callback_dir="$(mktemp -d)"
+          trap 'rm -rf "$callback_dir"' EXIT
+          ./mobile/node_modules/.bin/tsc mobile/lib/authCallback.ts --target ES2022 --module commonjs --lib ES2022,DOM --skipLibCheck --outDir "$callback_dir"
+          callback_module="$(find "$callback_dir" -type f -name authCallback.js -print -quit)"
+          test -n "$callback_module"
+          AUTH_CALLBACK_MODULE="$callback_module" npm test
+          npm run typecheck --prefix mobile
+          npm run release:verify-stores --prefix mobile
+          node --test tests/layout/*.test.mjs
+      - name: Commit only tested UI source to the repair branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/fix/native-header-overflow-20260906 | cut -f1)" = "$GITHUB_SHA"
+          git add -- mobile/app/cafe-trial.tsx mobile/app/candidates.tsx 'mobile/app/chat/[id].tsx' mobile/app/discover.tsx mobile/app/jobs.tsx mobile/app/post-job.tsx mobile/app/profile.tsx mobile/app/settings.tsx mobile/app/subscription.tsx mobile/components/QuietFocusHome.tsx
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix constrained mobile headers and responsive profile controls'
+          git push origin HEAD:refs/heads/fix/native-header-overflow-20260906
