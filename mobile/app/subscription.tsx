@@ -39,7 +39,7 @@ export default function SubscriptionScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.back}>‹</Text>
+          <Text allowFontScaling={false} style={styles.back}>‹</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Café plans</Text>
         <View style={styles.headerSpacer} />
@@ -110,11 +110,11 @@ function Benefit({ text, dark }: { text: string; dark: boolean }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fffaf3' },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { height: 60, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eadfd5', backgroundColor: '#fffaf3' },
-  backButton: { width: 38, height: 42, alignItems: 'flex-start', justifyContent: 'center' },
+  header: { minHeight: 60, paddingVertical: 8, gap: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eadfd5', backgroundColor: '#fffaf3' },
+  backButton: { flexShrink: 0, width: 44, height: 44, alignItems: 'flex-start', justifyContent: 'center' },
   back: { fontSize: 38, lineHeight: 40, color: '#321708' },
-  headerTitle: { fontSize: 18, fontWeight: '900', color: '#321708' },
-  headerSpacer: { width: 38 },
+  headerTitle: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 18, fontWeight: '900', color: '#321708' },
+  headerSpacer: { width: 44, flexShrink: 0 },
   wrap: { paddingHorizontal: 18, paddingTop: 26, paddingBottom: 40 },
   hero: { marginBottom: 20 },
   eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1.7, color: '#b75a1d' },

@@ -132,11 +132,11 @@ export default function Settings() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={s.back}>‹</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Go back" style={s.backButton} onPress={() => router.back()}>
+          <Text allowFontScaling={false} style={s.back}>‹</Text>
         </Pressable>
         <Text style={s.title}>Account Settings</Text>
-        <View style={{ width: 32 }} />
+        <View style={s.headerSpacer} />
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
         <Card title="Account email" copy={email} />
@@ -312,7 +312,9 @@ function Card({
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#fbf7f1" },
   header: {
-    height: 66,
+    minHeight: 66,
+    paddingVertical: 10,
+    gap: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -321,8 +323,10 @@ const s = StyleSheet.create({
     borderBottomColor: "#eadfd5",
     backgroundColor: "#fff",
   },
+  backButton: { width: 44, height: 44, flexShrink: 0, alignItems: "center", justifyContent: "center" },
+  headerSpacer: { width: 44, flexShrink: 0 },
   back: { fontSize: 34, color: "#321708" },
-  title: { fontSize: 19, fontWeight: "900", color: "#321708" },
+  title: { flex: 1, minWidth: 0, textAlign: "center", fontSize: 19, fontWeight: "900", color: "#321708" },
   wrap: { padding: 18, paddingBottom: 40 },
   card: {
     backgroundColor: "#fff",

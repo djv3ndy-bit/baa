@@ -456,7 +456,7 @@ export default function Profile() {
   return (
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
-        <View>
+        <View style={s.headerCopy}>
           <Text style={s.title}>Profile</Text>
           <Text style={s.sub}>
             {isBarista
@@ -464,8 +464,8 @@ export default function Profile() {
               : "Show baristas what makes your café special"}
           </Text>
         </View>
-        <Pressable onPress={() => router.push("/settings")} style={s.settings}>
-          <Text style={{ fontSize: 20 }}>⚙</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open account settings" onPress={() => router.push("/settings")} style={s.settings}>
+          <Text allowFontScaling={false} style={{ fontSize: 20 }}>⚙</Text>
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
@@ -926,13 +926,17 @@ const s = StyleSheet.create({
   header: {
     padding: 20,
     paddingBottom: 10,
+    gap: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+  // Reserve the trailing action width; long subtitles must wrap, not push it off screen.
+  headerCopy: { flex: 1, minWidth: 0 },
   title: { fontSize: 31, fontWeight: "900", color: "#321708" },
   sub: { fontSize: 13, color: "#746a61", marginTop: 4 },
   settings: {
+    flexShrink: 0,
     width: 44,
     height: 44,
     borderRadius: 14,
@@ -954,8 +958,8 @@ const s = StyleSheet.create({
   },
   barPhoto: { width: "100%", height: 180, borderRadius: 22 },
   profilePhoto: { width: 88, height: 88, borderRadius: 44 },
-  name: { fontSize: 28, fontWeight: "900", color: "#321708", marginTop: 12 },
-  location: { fontSize: 14, color: "#746a61", marginTop: 5 },
+  name: { maxWidth: "100%", textAlign: "center", fontSize: 28, fontWeight: "900", color: "#321708", marginTop: 12 },
+  location: { maxWidth: "100%", textAlign: "center", fontSize: 14, color: "#746a61", marginTop: 5 },
   edit: {
     marginTop: 14,
     paddingHorizontal: 18,
@@ -989,6 +993,7 @@ const s = StyleSheet.create({
   multi: { minHeight: 90, textAlignVertical: "top" },
   mediaRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
@@ -997,14 +1002,16 @@ const s = StyleSheet.create({
     padding: 8,
     backgroundColor: "#fff",
   },
-  mediaValue: { flex: 1, fontSize: 12, color: "#746a61", paddingLeft: 4 },
+  mediaValue: { flexGrow: 1, flexShrink: 1, flexBasis: 100, minWidth: 0, fontSize: 12, color: "#746a61", paddingLeft: 4 },
   mediaButton: {
+    maxWidth: "100%",
+    flexShrink: 0,
     backgroundColor: "#f3e8de",
     borderRadius: 9,
     paddingHorizontal: 11,
     paddingVertical: 9,
   },
-  mediaButtonText: { fontSize: 11, fontWeight: "900", color: "#8d4215" },
+  mediaButtonText: { flexShrink: 1, textAlign: "center", fontSize: 11, fontWeight: "900", color: "#8d4215" },
   mediaHelp: { fontSize: 10, lineHeight: 15, color: "#746a61", marginTop: 5 },
   hoursList: { gap: 8, marginBottom: 7 },
   hoursRow: {
@@ -1014,18 +1021,23 @@ const s = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     backgroundColor: "#fff",
   },
   hoursRowSelected: { borderColor: "#5f8b50", backgroundColor: "#f7fbf4" },
   dayCheck: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 120,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 12,
   },
-  dayText: { fontSize: 13, fontWeight: "800", color: "#5c4435" },
+  dayText: { flexShrink: 1, fontSize: 13, fontWeight: "800", color: "#5c4435" },
   hoursInput: {
+    flexGrow: 1,
     width: 116,
     borderLeftWidth: 1,
     borderLeftColor: "#dce8d7",
@@ -1042,6 +1054,7 @@ const s = StyleSheet.create({
   },
   choiceWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: {
+    maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
@@ -1054,7 +1067,7 @@ const s = StyleSheet.create({
   choiceSelected: { borderColor: "#5f8b50", backgroundColor: "#edf3e9" },
   checkMark: { fontSize: 15, color: "#9b8778", marginRight: 5 },
   checkMarkSelected: { color: "#4f7d43" },
-  choiceText: { fontSize: 11, fontWeight: "700", color: "#5c4435" },
+  choiceText: { flexShrink: 1, fontSize: 11, fontWeight: "700", color: "#5c4435" },
   choiceTextSelected: { color: "#3f6738" },
   privateCard: { marginTop: 16, padding: 16, borderWidth: 1, borderColor: "#e2d4c8", borderRadius: 16, backgroundColor: "#fffaf5" },
   privateTitle: { fontSize: 15, fontWeight: "900", color: "#321708", marginBottom: 2 },
