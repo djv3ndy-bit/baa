@@ -1,94 +1,84 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { authenticatedApi } from '@/lib/api';
+import { JOB_FIELDS, MarketJob } from '@/lib/marketplace';
+import { blankJobDraft, draftFromJob, jobPayload } from '@/lib/jobEditor';
 
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
-
 export default function PostJobScreen() {
-  const {jobId}=useLocalSearchParams<{jobId?:string}>();
-  const editing=Boolean(jobId);
-  const [form, setForm] = useState({ title: '', address1: '', address2: '', city: '', state: 'FL', postalCode: '', hourlyPay: '', skills: '', description: '' });
+  const params = useLocalSearchParams<{ jobId?: string }>();
+  const jobId = typeof params.jobId === 'string' ? params.jobId : undefined, editing = !!jobId;
+  const [form, setForm] = useState({ ...blankJobDraft });
   const [schedules, setSchedules] = useState<string[]>([]);
   const [publishing, setPublishing] = useState(false);
-  const [loadingJob,setLoadingJob]=useState(editing);
-
-  useEffect(()=>{if(!jobId){setLoadingJob(false);return}let live=true;(async()=>{const {user}=await getCurrentContext();if(!user)return router.replace('/login');const {data,error}=await supabase.from('jobs').select('title,address_line1,address_line2,city,state,postal_code,pay_min,schedule,required_skills,description').eq('id',jobId).eq('owner_id',user.id).maybeSingle();if(!live)return;if(error||!data){setLoadingJob(false);Alert.alert('Job unavailable','This job could not be loaded.');return router.back()}setForm({title:data.title||'',address1:data.address_line1||'',address2:data.address_line2||'',city:data.city||'',state:data.state||'FL',postalCode:data.postal_code||'',hourlyPay:data.pay_min==null?'':String(data.pay_min),skills:(data.required_skills||[]).join(', '),description:data.description||''});setSchedules(String(data.schedule||'').split(' · ').filter(Boolean));setLoadingJob(false)})();return()=>{live=false}},[jobId]);
-
+  const [loadingJob, setLoadingJob] = useState(true);
+  const [loadError, setLoadError] = useState(''), [customSchedule, setCustomSchedule] = useState('');
+  const action = useRef(false), request = useRef(0), focused = useRef(false), ownerId = useRef(''), active = useRef(true), initialized = useRef<string | null>(null);
+  const load = useCallback(async () => {
+    const version = ++request.current; setLoadingJob(true); setLoadError('');
+    try {
+      const { user, role } = await getCurrentContext();
+      if (version !== request.current) return;
+      if (!user) { router.replace('/login'); return; }
+      if (role !== 'cafe_owner_manager') { router.replace('/home'); return; }
+      ownerId.current = user.id;
+      if (!jobId) { initialized.current = jobId || 'new'; return; }
+      const { data, error } = await supabase.from('jobs').select(JOB_FIELDS).eq('id', jobId).eq('owner_id', user.id).maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('This job is no longer available to edit.');
+      if (version !== request.current) return;
+      setForm(draftFromJob(data as MarketJob)); setSchedules(String(data.schedule || '').split(' · ').filter(Boolean)); active.current = data.active; initialized.current = jobId || 'new';
+    } catch (caught) { if (version === request.current) setLoadError(caught instanceof Error ? caught.message : 'The job could not load. Please retry.'); }
+    finally { if (version === request.current) setLoadingJob(false); }
+  }, [jobId]);
+  useFocusEffect(useCallback(() => { focused.current = true; if (initialized.current !== (jobId || 'new')) void load(); return () => { focused.current = false; request.current++; }; }, [load, jobId]));
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
   const toggleSchedule = (value: string) => setSchedules(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
-
   async function publish() {
-    const { user, role, profile } = await getCurrentContext();
-    if (!user) return router.replace('/login');
-    if (role !== 'cafe_owner_manager') return Alert.alert('Café account required', 'Only café accounts can publish jobs.');
-    const profileReady=[profile?.cafe_name,profile?.avatar_url,profile?.location,profile?.bio,profile?.cafe_address,profile?.open_hours,profile?.shop_type].every(Boolean)&&Array.isArray(profile?.barista_preferences)&&profile.barista_preferences.length>0;
-    if (!profileReady) return Alert.alert('Complete your café profile', 'Add your café name, Florida location, photo, address, opening hours, shop type, description, and barista preferences before publishing a job.', [{text:'Open profile',onPress:()=>router.push('/profile')}]);
-    const pay = Number(form.hourlyPay);
-    if (!form.title.trim() || !form.address1.trim() || !form.city.trim() || !form.state.trim() || !form.postalCode.trim() || !form.description.trim() || !Number.isFinite(pay) || pay <= 0 || !schedules.length) {
-      return Alert.alert('Complete the job details', 'Add the title, address, pay, schedule, and description before publishing.');
-    }
-    const state = form.state.trim().toUpperCase();
-    if(state!=='FL')return Alert.alert('Florida jobs only','BaristaMatch is currently available for jobs located in Florida.');
-    setPublishing(true);
-    const payload = {
-      owner_id: user.id,
-      title: form.title.trim(),
-      location: [form.city.trim(), state, form.postalCode.trim()].join(', '),
-      address_line1: form.address1.trim(),
-      address_line2: form.address2.trim() || null,
-      city: form.city.trim(),
-      state,
-      postal_code: form.postalCode.trim(),
-      pay_min: pay,
-      pay_max: null,
-      schedule: schedules.join(' · '),
-      required_skills: form.skills.split(',').map(item => item.trim()).filter(Boolean),
-      description: form.description.trim(),
-    };
-    const result=editing
-      ? await supabase.from('jobs').update(payload).eq('id',jobId!).eq('owner_id',user.id).select('id').single()
-      : await supabase.from('jobs').insert({...payload,active:true}).select('id').single();
-    const {data:job,error}=result;
-    setPublishing(false);
-    if (error) return Alert.alert(editing?'Could not update job':'Could not publish job', error.message);
-    if(!editing)authenticatedApi('/push-event', { type: 'job', job_id: job.id }).catch(error => console.warn('Nearby job notification failed', error?.message || error));
-    Alert.alert(editing?'Job updated':'Job published', editing?'Your changes are now live.':'Your opportunity is now visible to local baristas.', [{ text: 'Done', onPress: () => router.replace(editing?'/jobs':'/home') }]);
+    if (action.current || loadingJob || loadError || !initialized.current) return;
+    action.current = true; setPublishing(true);
+    const draft = { ...form }, chosenSchedules = [...schedules, customSchedule.trim()].filter(Boolean);
+    try {
+      const payload = jobPayload(draft, chosenSchedules, ownerId.current);
+      const { user, role, profile } = await getCurrentContext();
+      if (!user || user.id !== ownerId.current || role !== 'cafe_owner_manager') throw new Error('Your account changed. Reopen this job before saving.');
+      if (!profile?.is_discoverable || profile.suspended_at) throw new Error('Complete and save your café profile before publishing or editing jobs.');
+      const query = editing ? supabase.from('jobs').update(payload).eq('id', jobId!).eq('owner_id', user.id) : supabase.from('jobs').insert({ ...payload, active: true });
+      const { data: job, error } = await query.select('id,active').single();
+      if (error) throw error;
+      if (!job) throw new Error('Your saved job could not be confirmed. Please refresh Job Posts before retrying.');
+      if (!editing) authenticatedApi('/push-event', { type: 'job', job_id: job.id }, 'POST', user.id).catch(() => {});
+      if (focused.current) { router.replace('/jobs'); Alert.alert(editing ? 'Job updated' : 'Job published', job.active ? 'Your job details are saved and available to baristas.' : 'Your changes are saved. This job remains paused and its applications are retained.'); }
+    } catch (caught) { if (focused.current) Alert.alert(editing ? 'Job not updated' : 'Job not published', caught instanceof Error ? caught.message : 'Please check your connection and try again.'); }
+    finally { action.current = false; setPublishing(false); }
   }
-
-  if(loadingJob)return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#321708"/><Text style={styles.loadingText}>Loading job…</Text></View></SafeAreaView>;
-
-  return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton} onPress={() => router.back()}><Text allowFontScaling={false} style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>{editing?'Edit job':'Post a job'}</Text><View style={styles.headerSpacer} /></View>
-        <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>{editing?'Keep your job accurate.':'Find your next great barista.'}</Text>
-          <Text style={styles.subtitle}>{editing?'Update the role, schedule, pay, or description.':'Publish a clear local opportunity in a few minutes.'}</Text>
-          <Field label="Job title" value={form.title} onValueChange={value => update('title', value)} placeholder="Lead Barista" />
-          <Field label="Street address" value={form.address1} onValueChange={value => update('address1', value)} placeholder="123 Main Street" autoComplete="address-line1" />
-          <Field label="Suite / unit (optional)" value={form.address2} onValueChange={value => update('address2', value)} placeholder="Suite 200" autoComplete="address-line2" />
-          <View style={styles.row}>
-            <View style={styles.flex}><Field label="City" value={form.city} onValueChange={value => update('city', value)} placeholder="Miami" /></View>
-            <View style={styles.state}><Field label="State" value={form.state} onValueChange={()=>{}} placeholder="FL" autoCapitalize="characters" editable={false} /></View>
-          </View>
-          <Field label="ZIP code" value={form.postalCode} onValueChange={value => update('postalCode', value)} placeholder="33101" keyboardType="numbers-and-punctuation" autoComplete="postal-code" />
-          <Field label="Hourly pay" value={form.hourlyPay} onValueChange={value => update('hourlyPay', value)} placeholder="20.00" keyboardType="decimal-pad" />
-          <Text style={styles.label}>Schedule</Text>
-          <View style={styles.options}>{scheduleOptions.map(option => <Pressable key={option} onPress={() => toggleSchedule(option)} style={[styles.option, schedules.includes(option) && styles.optionSelected]}><Text style={[styles.optionText, schedules.includes(option) && styles.optionTextSelected]}>{option}</Text></Pressable>)}</View>
-          <Field label="Skills (comma separated)" value={form.skills} onValueChange={value => update('skills', value)} placeholder="Espresso, latte art" />
-          <Field label="Description" value={form.description} onValueChange={value => update('description', value)} placeholder="Describe the role, team, and what success looks like." multiline />
-          <Pressable disabled={publishing} onPress={publish} style={[styles.primary, publishing && styles.disabled]}><Text style={styles.primaryText}>{publishing ? (editing?'Saving…':'Publishing…') : (editing?'Save changes':'Publish job')}</Text></Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
+  if (loadingJob) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#321708"/><Text style={styles.loadingText}>Loading job…</Text></View></SafeAreaView>;
+  return <SafeAreaView style={styles.safe}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.header}><Pressable disabled={publishing} accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton} onPress={() => router.back()}><Text allowFontScaling={false} style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>{editing ? 'Edit job' : 'Post a job'}</Text><View style={styles.headerSpacer}/></View>
+    <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
+      {loadError ? <><Text accessibilityRole="alert" style={styles.subtitle}>{loadError}</Text><Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Retry loading job</Text></Pressable></> : <>
+      <Text style={styles.title}>{editing ? 'Keep your job accurate.' : 'Find your next great barista.'}</Text><Text style={styles.subtitle}>{editing ? `Update the role while keeping its applications and ${active.current ? 'active' : 'paused'} status.` : 'Publish a clear Florida opportunity.'}</Text>
+      <Field label="Job title" value={form.title} onValueChange={value => update('title', value)} placeholder="Lead Barista" editable={!publishing}/>
+      <Field label="Street address" value={form.address1} onValueChange={value => update('address1', value)} placeholder="123 Main Street" editable={!publishing} autoComplete="address-line1"/>
+      <Field label="Suite / unit (optional)" value={form.address2} onValueChange={value => update('address2', value)} placeholder="Suite 200" editable={!publishing} autoComplete="address-line2"/>
+      <View style={styles.row}><View style={styles.flex}><Field label="City" value={form.city} onValueChange={value => update('city', value)} placeholder="Miami" editable={!publishing}/></View><View style={styles.state}><Field label="State" value={form.state} onValueChange={() => {}} placeholder="FL" editable={false}/></View></View>
+      <Field label="ZIP code" value={form.postalCode} onValueChange={value => update('postalCode', value)} placeholder="33101" editable={!publishing} keyboardType="numbers-and-punctuation" autoComplete="postal-code"/>
+      <Field label="Minimum hourly pay" value={form.hourlyPay} onValueChange={value => update('hourlyPay', value)} placeholder="20.00" editable={!publishing} keyboardType="decimal-pad"/>
+      <Field label="Maximum hourly pay (optional)" value={form.maximumPay} onValueChange={value => update('maximumPay', value)} placeholder="25.00" editable={!publishing} keyboardType="decimal-pad"/>
+      <Text style={styles.label}>Schedule</Text><View style={styles.options}>{[...new Set([...scheduleOptions, ...schedules])].map(option => <Pressable key={option} accessibilityRole="checkbox" accessibilityState={{ checked: schedules.includes(option) }} disabled={publishing} onPress={() => toggleSchedule(option)} style={[styles.option, schedules.includes(option) && styles.optionSelected]}><Text style={[styles.optionText, schedules.includes(option) && styles.optionTextSelected]}>{option}</Text></Pressable>)}</View>
+      <Field label="Additional schedule (optional)" value={customSchedule} onValueChange={setCustomSchedule} placeholder="Weekends, 7 AM–2 PM" editable={!publishing}/>
+      <Field label="Skills (comma separated)" value={form.skills} onValueChange={value => update('skills', value)} placeholder="Espresso, latte art" editable={!publishing}/>
+      <Field label="Description" value={form.description} onValueChange={value => update('description', value)} placeholder="Describe the role, team, and what success looks like." editable={!publishing} multiline/>
+      <Pressable accessibilityRole="button" disabled={publishing} onPress={() => void publish()} style={[styles.primary, publishing && styles.disabled]}><Text style={styles.primaryText}>{publishing ? 'Saving…' : editing ? 'Save changes' : 'Publish job'}</Text></Pressable>
+      </>}
+    </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }
 
 function Field({ label, value, onValueChange, placeholder, multiline = false, ...props }: { label: string; value: string; onValueChange: (value: string) => void; placeholder: string; multiline?: boolean } & Omit<TextInputProps, 'value' | 'onChangeText' | 'placeholder' | 'multiline'>) {
-  return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput value={value} onChangeText={onValueChange} placeholder={placeholder} placeholderTextColor="#9b8d84" multiline={multiline} style={[styles.input, multiline && styles.textarea]} {...props} /></View>;
+  return <View style={styles.field}><Text style={styles.label}>{label}</Text><TextInput accessibilityLabel={label} value={value} onChangeText={onValueChange} placeholder={placeholder} placeholderTextColor="#9b8d84" multiline={multiline} style={[styles.input, multiline && styles.textarea]} {...props} /></View>;
 }
 
 const styles = StyleSheet.create({
