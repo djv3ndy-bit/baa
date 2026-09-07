@@ -31,7 +31,7 @@ const barista = { id: 'user-a', role: 'barista', display_name: 'Sample', avatar_
 const cafe = { id: 'user-a', role: 'cafe_owner_manager', cafe_name: 'Sample Café', avatar_url: 'photo', location: 'Miami, FL', bio: 'About', cafe_address: '1 Main St', open_hours: 'Monday 8–4', shop_type: 'Coffee bar', barista_preferences: ['Teamwork'], visible_to_cafes: true, is_discoverable: true };
 const options = { locationCity: 'Miami', availability: ['Weekdays'], availabilityNotes: '', openHours: 'Monday 8–4' };
 
-function sessionClient({ role, profile, sessionError, profileError, sessions = ['user-a', 'user-a'], insertError, rpcResult = async () => ({ error: null }) } = {}) {
+function sessionClient({ role, profile, sessionError, profileError, sessions = ['user-a', 'user-a'], insertError, rpcResult = async () => ({ data: { user_id: 'user-a' }, error: null }) } = {}) {
   let calls = 0;
   const writes = [], rpcs = [];
   const client = {
@@ -83,7 +83,7 @@ test('saved café context waits for complimentary access and shares one initiali
   await flush();
   assert.equal(ready, false);
   assert.deepEqual(backend.rpcs, [{ name: 'ensure_cafe_subscription', header: 'Authorization', value: 'Bearer token-user-a' }]);
-  gate.resolve({ error: null });
+  gate.resolve({ data: { user_id: 'user-a' }, error: null });
   assert.equal((await first).role, 'cafe_owner_manager');
   assert.equal((await second).role, 'cafe_owner_manager');
   await session.getCurrentContext();
@@ -91,7 +91,7 @@ test('saved café context waits for complimentary access and shares one initiali
 });
 
 test('failed café access preparation blocks ready context and can be retried', async () => {
-  const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: async count => ({ error: count === 1 ? new Error('offline') : null }) });
+  const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: async count => ({ data: { user_id: 'user-a' }, error: count === 1 ? new Error('offline') : null }) });
   const session = compile('lib/session.ts', { client: backend.client });
   await assert.rejects(session.getCurrentContext(), /prepare your café workspace/);
   assert.equal((await session.getCurrentContext()).role, 'cafe_owner_manager');
@@ -135,9 +135,19 @@ test('a failed old account initialization does not evict a newer account pending
   const parallel = session.getCurrentContext(); await flush();
   assert.equal(backend.rpcs.length, 2);
   assert.deepEqual(backend.rpcs.map(call => call.value), ['Bearer token-user-a', 'Bearer token-user-b']);
-  second.resolve({ error: null });
+  second.resolve({ data: { user_id: 'user-b' }, error: null });
   assert.equal((await current).user.id, 'user-b');
   assert.equal((await parallel).user.id, 'user-b');
+});
+
+test('empty or mismatched café RPC responses cannot mark the account ready and remain retryable', async () => {
+  for (const data of [null, [], {}, { user_id: 'user-b' }, [{ user_id: 'user-a' }, { user_id: 'user-b' }]]) {
+    const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: async count => ({ data: count === 1 ? data : [{ user_id: 'user-a' }], error: null }) });
+    const session = compile('lib/session.ts', { client: backend.client });
+    await assert.rejects(session.getCurrentContext(), /prepare your café workspace/);
+    assert.equal((await session.getCurrentContext()).role, 'cafe_owner_manager');
+    assert.equal(backend.rpcs.length, 2);
+  }
 });
 
 test('real Supabase RPC keeps the captured café JWT when the shared auth provider returns another account token', async () => {
@@ -246,7 +256,7 @@ function profileBackend() {
   let saved = { ...cafe };
   const publicSave = deferred(), uploads = [];
   const client = { auth: { getSession: async () => ({ data: { session: { user: { id: 'user-a' }, access_token: 'token-user-a' } }, error: null }) },
-    rpc: () => ({ setHeader: () => Promise.resolve({ error: null }) }),
+    rpc: () => ({ setHeader: () => Promise.resolve({ data: { user_id: 'user-a' }, error: null }) }),
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: saved, error: null }) }) }), update: payload => ({ eq: () => ({ select: () => ({ single: async () => { const result = await publicSave.promise; if (result.error) return result; saved = { ...saved, ...payload, is_discoverable: false }; return { data: saved, error: null }; } }) }) }) }),
     storage: { from: () => ({ upload: async (path, bytes) => { uploads.push({ path, bytes }); return { error: null }; }, getPublicUrl: path => ({ data: { publicUrl: `https://images.example/${path}` } }) }) },
   };

@@ -13,9 +13,12 @@ async function prepareCafeAccess(userId: string, accessToken: string, client: ty
       // This idempotent server function applies the current complimentary-access
       // rules. Pin the original JWT: a shared client may switch accounts while
       // Supabase is resolving its auth token before the request is sent.
-      const { error } = await client.rpc('ensure_cafe_subscription')
+      const { data, error } = await client.rpc('ensure_cafe_subscription')
         .setHeader('Authorization', `Bearer ${accessToken}`);
-      if (error) throw new Error('Could not prepare your café workspace. Please try again.');
+      const row = Array.isArray(data) && data.length === 1 ? data[0] : data;
+      if (error || !row || row.user_id !== userId) {
+        throw new Error('Could not prepare your café workspace. Please try again.');
+      }
     })();
     preparation = { userId, accessToken, promise };
     cafeAccessPreparations.set(client, preparation);
