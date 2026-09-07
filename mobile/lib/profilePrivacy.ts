@@ -38,6 +38,15 @@ export function getProfileReadiness(profile: Record<string, any>, role: AppRole)
   return { complete, missing, visible: complete && profile.is_discoverable === true && profile.visible_to_cafes === true && !profile.suspended_at };
 }
 
+export function getProfileSaveMessage(profile: Record<string, any>, role: AppRole) {
+  const readiness = getProfileReadiness(profile, role);
+  if (readiness.visible) return 'Your profile is visible in discovery.';
+  if (profile.suspended_at) return 'Your changes are saved. Your profile stays hidden while your account is suspended. Your discovery preference has been saved.';
+  if (profile.visible_to_cafes !== true) return 'Your changes are saved. Discovery is switched off. Edit your profile to turn it on again.';
+  if (!readiness.complete) return `Your changes are saved. Your discovery preference is on, but your profile stays hidden until you complete: ${readiness.missing.join(', ')}.`;
+  return 'Your changes are saved. Your profile is currently hidden in discovery. Refresh your profile to check its availability.';
+}
+
 export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, options: {
   locationCity: string; availability: string[]; availabilityNotes: string; openHours: string;
 }) {
@@ -46,6 +55,7 @@ export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, 
   const payload: Record<string, any> = {
     location, bio: String(profile.bio || '').trim() || null,
     avatar_url: profile.avatar_url || null, video_path: profile.video_path || null,
+    visible_to_cafes: profile.visible_to_cafes === true,
   };
   if (role === 'barista') {
     if (!isEligibleBirthDate(profile.date_of_birth)) throw new Error('Enter a valid date of birth (YYYY-MM-DD). You must be at least 16. This stays private.');
@@ -73,7 +83,7 @@ export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, 
     });
   }
   payload.is_discoverable = getProfileReadiness({ ...profile, ...payload }, role).complete && !profile.suspended_at;
-  // Keep the saved opt-in. Actual visibility is confirmed from the returned row.
+  // Only an explicit checked choice opts in. Confirm actual visibility from the returned row.
   return payload;
 }
 

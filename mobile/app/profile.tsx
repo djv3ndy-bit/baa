@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -16,7 +17,7 @@ import {
 import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
-import { needsMediaLibraryPermission, normalizeOptionalGender, buildProfileUpdate, getProfileReadiness, persistProfileUpdate } from "@/lib/profilePrivacy";
+import { needsMediaLibraryPermission, normalizeOptionalGender, buildProfileUpdate, getProfileReadiness, getProfileSaveMessage, persistProfileUpdate } from "@/lib/profilePrivacy";
 import { getCurrentContext, requireCurrentUser, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import {
@@ -332,8 +333,7 @@ export default function Profile() {
       setSavedProfile(confirmed);
       restoreDraft(confirmed);
       setEditing(false);
-      const readiness = getProfileReadiness(confirmed, role);
-      Alert.alert("Profile saved", readiness.visible ? "Your profile is visible in discovery." : readiness.complete ? "Your changes are saved. Your profile is currently hidden in discovery. You can manage visibility in Settings." : `Your changes are saved. Complete these details to become discoverable: ${readiness.missing.join(", ")}.`);
+      Alert.alert("Profile saved", getProfileSaveMessage(confirmed, role));
     } catch (error: any) {
       if (stillCurrent()) Alert.alert("Could not finish saving", error?.message || "Check your connection and try again. Your draft is still here.");
     } finally {
@@ -404,6 +404,21 @@ export default function Profile() {
         <Text style={s.privateHelp}>{getProfileReadiness(savedProfile, role).visible ? "Visible in discovery" : "Hidden in discovery"} · {getProfileReadiness(savedProfile, role).complete ? "Profile complete" : `Still needed: ${getProfileReadiness(savedProfile, role).missing.join(", ")}`}</Text>
         {editing ? (
           <View pointerEvents={saving ? "none" : "auto"} style={s.card}>
+            <View style={s.visibilityCard}>
+              <View style={s.visibilityRow}>
+                <Text style={s.visibilityLabel}>Show my profile in discovery</Text>
+                <Switch
+                  accessibilityLabel="Show my profile in discovery"
+                  accessibilityHint="Save your profile to apply this choice."
+                  disabled={saving}
+                  value={profile.visible_to_cafes === true}
+                  onValueChange={(value) => set("visible_to_cafes", value)}
+                  trackColor={{ false: "#b7ada5", true: "#b75a1d" }}
+                />
+              </View>
+              <Text style={s.privateHelp}>Save your profile to apply this choice. Turning it off hides your profile from new discovery results. Existing matches and conversations stay available.</Text>
+              <Text style={s.privateHelp}>{savedProfile.suspended_at ? "Your profile stays hidden while your account is suspended, even when this preference is on." : "Your profile can appear only when all required details are complete and your account is active."}</Text>
+            </View>
             <Field
               editable={!saving}
               label={isBarista ? "Display name" : "Café name"}
@@ -828,6 +843,9 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 const s = StyleSheet.create({
+  visibilityCard: { padding: 15, borderWidth: 1, borderColor: "#e2d4c8", borderRadius: 14, backgroundColor: "#fffaf5", marginBottom: 18 },
+  visibilityRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  visibilityLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 21, color: "#321708", fontWeight: "800" },
   safe: { flex: 1, backgroundColor: "#fbf7f1" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
