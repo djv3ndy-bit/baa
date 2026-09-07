@@ -55,7 +55,8 @@ test('the HTTPS bridge and cold-start route use the canonical callback contract'
   assert.match(callbackScreen, /parseMobileAuthCallback/);
   assert.match(callbackScreen, /Linking\.getInitialURL\(\)/);
   assert.match(callbackScreen, /Linking\.addEventListener\(['"]url['"]/);
-  assert.match(callbackScreen, /supabase\.auth\.setSession/);
+  assert.match(callbackScreen, /completeMobileAuth/);
+  assert.match(read('mobile/lib/session.ts'), /supabase\.auth\.setSession/);
   assert.doesNotMatch(callbackScreen, /console\./);
   assert.doesNotMatch(callbackScreen, /error\.message/);
 });

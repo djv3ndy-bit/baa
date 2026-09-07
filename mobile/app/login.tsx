@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
-import { parseMobileAuthCallback } from '@/lib/authCallback';
+import { completeMobileAuth, getCurrentContext } from '@/lib/session';
 
 const oauthAppCallback = 'baristamatch://auth/callback';
 const oauthRedirect = 'https://www.baristajobmatch.com/mobile-auth-callback.html';
@@ -25,109 +25,53 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'apple' | null>(null);
 
-  async function routeSignedIn(user:any, knownRole?:string|null) {
-    let role = knownRole;
-    if (!role) {
-      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-      if (profileError) return Alert.alert('Could not open your account', 'Check your connection and try again.');
-      role = existingProfile?.role;
-    }
-    if (role !== 'barista' && role !== 'cafe_owner_manager') {
-      const metadataRole = user.user_metadata?.role;
-      const fullName = String(user.user_metadata?.full_name || user.user_metadata?.name || '').trim();
-      if (metadataRole === 'barista' || metadataRole === 'cafe_owner_manager') {
-        const storedName = String(metadataRole === 'barista' ? user.user_metadata?.display_name : user.user_metadata?.cafe_name).trim();
-        return createSocialProfile(user.id, metadataRole, storedName || fullName, String(user.user_metadata?.location || '').trim());
-      }
-      return Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
-        { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
-        { text: 'I am a barista', onPress: () => createSocialProfile(user.id, 'barista', fullName) },
-        { text: 'I manage a café', onPress: () => createSocialProfile(user.id, 'cafe_owner_manager', fullName) },
-      ]);
-    }
-    if (role === 'cafe_owner_manager') {
-      const { error } = await supabase.rpc('ensure_cafe_subscription');
-      if (error) return Alert.alert('Could not prepare your café account', 'Please try logging in again.');
-    }
-    router.replace('/home');
-  }
+  const request = useRef(false);
+  const active = useRef(false);
+  useFocusEffect(useCallback(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []));
 
-  useEffect(() => {
-    const subscription = Linking.addEventListener('url', ({ url }) => handleOAuth(url));
-    Linking.getInitialURL().then(handleOAuth);
-    return () => subscription.remove();
-  }, []);
-
-  async function handleOAuth(url: string | null) {
-    const callback = parseMobileAuthCallback(url);
-    if (!callback.ok) {
-      if (callback.reason === 'invalid_callback') return;
-      setSocialLoading(null);
-      return Alert.alert('Sign-in failed', 'The sign-in response could not be completed. Please try again.');
-    }
-    const { accessToken, refreshToken } = callback;
-    try {
-      const { data, error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-      setSocialLoading(null);
-      if (error) return Alert.alert('Sign-in failed', 'Please try signing in again.');
-      if (!data.user) return;
-      const { data: existingProfile, error: profileError } = await supabase.from('profiles').select('id,role').eq('id', data.user.id).maybeSingle();
-      if (profileError) return Alert.alert('Could not finish signing in', 'Check your connection and try again.');
-      if (existingProfile) return await routeSignedIn(data.user,existingProfile.role);
-      const fullName = String(data.user.user_metadata?.full_name || data.user.user_metadata?.name || '').trim();
-      Alert.alert('How will you use BaristaMatch?', 'Choose your account type. By continuing, you confirm you are at least 16, have guardian permission if under 18, and agree to the Terms and Privacy Policy.', [
-        { text: 'Cancel', style: 'cancel', onPress: () => supabase.auth.signOut() },
-        { text: 'I am a barista', onPress: () => createSocialProfile(data.user!.id, 'barista', fullName) },
-        { text: 'I manage a café', onPress: () => createSocialProfile(data.user!.id, 'cafe_owner_manager', fullName) },
-      ]);
-    } catch {
-      Alert.alert('Connection problem', 'Check your internet connection and try again.');
-    } finally {
-      setSocialLoading(null);
-    }
-  }
-
-  async function createSocialProfile(userId: string, role: 'barista' | 'cafe_owner_manager', name: string, location = '') {
-    const isCafe = role === 'cafe_owner_manager';
-    const { error } = await supabase.from('profiles').upsert({
-      id: userId,
-      role,
-      display_name: isCafe ? null : (name || null),
-      cafe_name: isCafe ? (name || null) : null,
-      location: location || null,
-    }, { onConflict: 'id' });
-    if (error) return Alert.alert('Could not finish your profile', error.message);
-    if(isCafe)await supabase.rpc('ensure_cafe_subscription');
-    router.replace('/home');
+  async function routeSignedIn(userId: string) {
+    const context = await getCurrentContext();
+    if (!active.current || context.user?.id !== userId) return;
+    router.replace(context.role ? '/home' : { pathname: '/signup', params: { complete: '1' } });
   }
 
   async function signIn() {
+    if (request.current) return;
     if (!email.trim() || !password) return Alert.alert('Missing information', 'Enter your email and password.');
+    request.current = true;
     setLoading(true);
     try {
-      const { data,error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
-      if (error) return Alert.alert('Unable to log in', error.message === 'Invalid login credentials' ? 'The email or password is incorrect.' : error.message);
-      if(data.user)await routeSignedIn(data.user);
-    } catch {
-      Alert.alert('Connection problem', 'Check your internet connection and try again.');
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
+      if (error) throw new Error(error.message === 'Invalid login credentials' ? 'The email or password is incorrect.' : error.message);
+      if (data.user) await routeSignedIn(data.user.id);
+    } catch (error: any) {
+      if (active.current) Alert.alert('Unable to log in', error?.message || 'Check your internet connection and try again.');
     } finally {
+      request.current = false;
       setLoading(false);
     }
   }
 
   async function signInWithProvider(provider: 'google' | 'apple') {
+    if (request.current) return;
+    request.current = true;
     setSocialLoading(provider);
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect, skipBrowserRedirect: true } });
-      if (error || !data.url) {
-        return Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, error?.message || 'Please try again.');
-      }
+      if (error || !data.url) throw new Error('provider_unavailable');
       const brandedAuthUrl = `${oauthStart}#${encodeURIComponent(data.url)}`;
       const result = await WebBrowser.openAuthSessionAsync(brandedAuthUrl, oauthAppCallback, { preferEphemeralSession: false });
-      if (result.type === 'success') await handleOAuth(result.url);
+      if (result.type === 'success') {
+        const user = await completeMobileAuth(result.url);
+        await routeSignedIn(user.id);
+      }
     } catch {
-      Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, 'Unable to open the secure sign-in page.');
+      if (active.current) Alert.alert(`${provider === 'google' ? 'Google' : 'Apple'} sign-in unavailable`, 'The secure sign-in could not finish. Please try again.');
     } finally {
+      request.current = false;
       setSocialLoading(null);
     }
   }
@@ -137,7 +81,7 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.page}>
+        <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
           <View style={[styles.hero, { flexBasis: short ? '30%' : compact ? '37%' : '41%' }, compact && styles.heroCompact, short && styles.heroShort]}>
             <View style={styles.heroGlow} />
             <Image source={require('../assets/website-favicon.png')} resizeMode="contain" style={[styles.logo, compact && styles.logoCompact, short && styles.logoShort]} />
@@ -151,19 +95,19 @@ export default function LoginScreen() {
             <Text style={[styles.label, compact && styles.labelCompact, short && styles.labelShort]}>Email</Text>
             <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort]}>
               <Text style={[styles.fieldIcon, short && styles.fieldIconShort]}>✉</Text>
-              <TextInput allowFontScaling={false} maxFontSizeMultiplier={1} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" returnKeyType="next" textContentType="emailAddress" value={email} onChangeText={setEmail} style={[styles.input, short && styles.inputShort]} placeholder="Enter your email" placeholderTextColor="#8b8885" />
+              <TextInput editable={!busy} allowFontScaling={false} maxFontSizeMultiplier={1} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" returnKeyType="next" textContentType="emailAddress" value={email} onChangeText={setEmail} style={[styles.input, short && styles.inputShort]} placeholder="Enter your email" placeholderTextColor="#8b8885" />
             </View>
 
             <Text style={[styles.label, compact && styles.labelCompact, short && styles.labelShort]}>Password</Text>
             <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort]}>
               <View style={styles.lockIcon}><View style={styles.lockShackle} /><View style={styles.lockBody} /></View>
-              <TextInput allowFontScaling={false} maxFontSizeMultiplier={1} secureTextEntry={!passwordVisible} autoComplete="current-password" returnKeyType="go" textContentType="password" onSubmitEditing={signIn} value={password} onChangeText={setPassword} style={[styles.input, short && styles.inputShort]} placeholder="Enter your password" placeholderTextColor="#8b8885" />
+              <TextInput editable={!busy} allowFontScaling={false} maxFontSizeMultiplier={1} secureTextEntry={!passwordVisible} autoComplete="current-password" returnKeyType="go" textContentType="password" onSubmitEditing={signIn} value={password} onChangeText={setPassword} style={[styles.input, short && styles.inputShort]} placeholder="Enter your password" placeholderTextColor="#8b8885" />
               <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} onPress={() => setPasswordVisible(value => !value)} style={styles.eyeButton}>
                 <View style={styles.eye}><View style={styles.eyePupil} /></View>
               </Pressable>
             </View>
 
-            <Pressable accessibilityRole="link" onPress={() => router.push('/forgot-password')} style={[styles.forgotButton, short && styles.forgotButtonShort]}><Text style={[styles.forgotText, short && styles.forgotTextShort]}>Forgot password?</Text></Pressable>
+            <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push('/forgot-password')} style={[styles.forgotButton, short && styles.forgotButtonShort]}><Text style={[styles.forgotText, short && styles.forgotTextShort]}>Forgot password?</Text></Pressable>
 
             <Pressable onPress={signIn} disabled={busy} style={({ pressed }) => [styles.primary, compact && styles.primaryCompact, short && styles.primaryShort, pressed && styles.pressed, busy && styles.disabled]}>
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Log in</Text>}
@@ -180,9 +124,9 @@ export default function LoginScreen() {
                 <Text numberOfLines={1} style={[styles.socialText, short && styles.socialTextShort]}>{short ? 'Apple' : 'Continue with Apple'}</Text>
               </Pressable>
             </View>
-            <Pressable accessibilityRole="link" onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact, short && styles.createButtonShort]}><Text style={[styles.createText, short && styles.createTextShort]}>Create an account</Text></Pressable>
+            <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact, short && styles.createButtonShort]}><Text style={[styles.createText, short && styles.createTextShort]}>Create an account</Text></Pressable>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -199,7 +143,7 @@ function GoogleMark() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff4e8' }, flex: { flex: 1 }, page: { flex: 1, backgroundColor: '#fff4e8', overflow: 'hidden' },
+  safe: { flex: 1, backgroundColor: '#fff4e8' }, flex: { flex: 1 }, page: { flexGrow: 1, backgroundColor: '#fff4e8' },
   hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 16, paddingBottom: 40, overflow: 'hidden' },
   heroCompact: { paddingTop: 6, paddingBottom: 28 },
   heroShort: { paddingTop: 2, paddingBottom: 12 },

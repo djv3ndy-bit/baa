@@ -1,16 +1,40 @@
-import { Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
 
 export default function VerifyEmailScreen() {
+  const params = useLocalSearchParams<{ email?: string }>();
+  const email = typeof params.email === 'string' ? params.email : '';
+  const [sending, setSending] = useState(false);
+  const pending = useRef(false);
+  const active = useRef(false);
+  useFocusEffect(useCallback(() => { active.current = true; return () => { active.current = false; }; }, []));
+  async function resend() {
+    if (pending.current || !email) return;
+    pending.current = true;
+    setSending(true);
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE } });
+      if (!active.current) return;
+      if (error) Alert.alert('Could not resend', 'Please wait a moment, check your connection, and try again.');
+      else Alert.alert('Check your inbox', 'If this address needs confirmation, a new link will arrive shortly.');
+    } catch {
+      if (active.current) Alert.alert('Connection problem', 'Check your connection and try again.');
+    } finally { pending.current = false; setSending(false); }
+  }
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.content}>
         <View style={styles.card}>
           <View style={styles.icon}><Text style={styles.iconText}>✓</Text></View>
-          <Text style={styles.kicker}>ACCOUNT CREATED</Text>
-          <Text style={styles.title}>You’re signed up!</Text>
-          <Text style={styles.message}>Please verify your email. Once verified, log in to open your dashboard.</Text>
+          <Text style={styles.kicker}>EMAIL VERIFICATION</Text>
+          <Text style={styles.title}>Check your email</Text>
+          <Text style={styles.message}>If your address needs verification, use the link in your email. Once verified, log in to open your account. Already registered? Log in or reset your password.</Text>
           <Pressable accessibilityRole="button" onPress={() => router.replace('/login')} style={styles.button}><Text style={styles.buttonText}>Go to log in</Text></Pressable>
+          {email ? <Pressable accessibilityRole="button" disabled={sending} onPress={resend}><Text style={styles.help}>{sending ? "Sending…" : "Resend verification email"}</Text></Pressable> : null}
+          <Pressable accessibilityRole="link" onPress={() => router.replace("/forgot-password")}><Text style={styles.help}>Reset password</Text></Pressable>
           <Text style={styles.help}><Text style={styles.helpStrong}>Check your inbox</Text> — and your spam folder — for the verification email.</Text>
         </View>
       </View>

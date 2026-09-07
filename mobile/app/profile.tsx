@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,15 +13,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
-import { needsMediaLibraryPermission, normalizeOptionalGender } from "@/lib/profilePrivacy";
-import { getCurrentContext, AppRole } from "@/lib/session";
+import { needsMediaLibraryPermission, normalizeOptionalGender, buildProfileUpdate, getProfileReadiness, persistProfileUpdate } from "@/lib/profilePrivacy";
+import { getCurrentContext, requireCurrentUser, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import {
   floridaCityFromLocation,
-  normalizeFloridaLocation,
 } from "@/lib/floridaLocation";
 
 const PREFERENCES = [
@@ -63,20 +62,11 @@ const AVAILABILITY_OPTIONS = [
   "Part-time",
   "Flexible",
 ];
-const SEARCH_AREAS = [10, 25, 50, 100];
 const GENDER_OPTIONS = [
   { value: "", label: "Prefer not to say" },
   { value: "female", label: "Female" },
   { value: "male", label: "Male" },
 ];
-const parseDate = (value?: string | null) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return null;
-  const date = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return null;
-  const normalized = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  return normalized === value ? date : null;
-};
-const maximumBirthDate = () => { const date = new Date(); date.setFullYear(date.getFullYear() - 16); date.setHours(12, 0, 0, 0); return date; };
 type SelectedMedia = {
   uri: string;
   name: string;
@@ -135,37 +125,60 @@ export default function Profile() {
     [profilePhoto, setProfilePhoto] = useState<SelectedMedia | null>(null),
     [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
     [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
-  useEffect(() => {
-    load();
-  }, []);
-  async function load() {
+  const [loadError, setLoadError] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<any>({});
+  const accountId = useRef<string | null>(null);
+  const saveInProgress = useRef(false);
+  const active = useRef(false);
+  const generation = useRef(0);
+  useFocusEffect(useCallback(() => {
+    active.current = true;
+    const version = ++generation.current;
+    void load(version);
+    return () => { active.current = false; generation.current += 1; };
+  }, []));
+  function restoreDraft(saved: any) {
+    setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: floridaCityFromLocation(saved.preferred_city) });
+    setLocationCity(floridaCityFromLocation(saved.location));
+    setOpenHours(parseOpeningHours(saved.open_hours));
+    const value = parseAvailability(saved.availability);
+    setAvailability(value.selected);
+    setAvailabilityNotes(value.notes);
+    setProfilePhoto(null); setBarPicture(null); setCoffeeVideo(null);
+  }
+  async function load(version = ++generation.current) {
+    setLoading(true); setLoadError(false); setEditing(false);
+    try {
     const { user, profile: p, role: r } = await getCurrentContext();
+    if (!active.current || generation.current !== version) return;
     if (!user) return router.replace("/login");
+    if (!r) return router.replace({ pathname: "/signup", params: { complete: "1" } });
     const demographicsResult = r === "barista"
       ? await supabase.from("profile_demographics").select("date_of_birth,gender_identity").eq("user_id", user.id).maybeSingle()
       : { data: null, error: null };
     const { data: demographics, error: demographicsError } = demographicsResult;
-    if (demographicsError) {
-      setLoading(false);
-      return Alert.alert(
-        "Could not load private profile details",
-        demographicsError.message,
-      );
+    if (demographicsError) throw demographicsError;
+    await requireCurrentUser(user.id);
+    if (!active.current || generation.current !== version) return;
+    const saved = { ...p, ...demographics };
+    accountId.current = user.id;
+    setSavedProfile(saved);
+    restoreDraft(saved);
+    setRole(r);
+    } catch {
+      if (active.current && generation.current === version) setLoadError(true);
+    } finally {
+      if (active.current && generation.current === version) setLoading(false);
     }
-    setProfile({
-      ...(p || {}),
-      ...(demographics || {}),
-      preferred_city: floridaCityFromLocation(p?.preferred_city),
-    });
-    setLocationCity(floridaCityFromLocation(p?.location));
-    setOpenHours(parseOpeningHours(p?.open_hours));
-    const savedAvailability = parseAvailability(p?.availability);
-    setAvailability(savedAvailability.selected);
-    setAvailabilityNotes(savedAvailability.notes);
-    setRole(r || "barista");
-    setLoading(false);
+  }
+  function toggleEditing() {
+    if (saveInProgress.current) return;
+    generation.current += 1;
+    restoreDraft(savedProfile);
+    setEditing(value => !value);
   }
   function set(k: string, v: any) {
+    if (saveInProgress.current) return;
     setProfile((p: any) => ({ ...p, [k]: v }));
   }
   function togglePreference(value: string) {
@@ -181,6 +194,8 @@ export default function Profile() {
     );
   }
   async function pickMedia(kind: "photo" | "bar" | "video") {
+    if (saveInProgress.current) return;
+    const version = generation.current;
     try {
       // Use the system picker without broad library access on Android and for photos.
       // Original iOS videos require permission with SDK 54 pass-through export.
@@ -216,7 +231,7 @@ export default function Profile() {
             ? ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current
             : ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
-      if (result.canceled) return;
+      if (result.canceled || !active.current || generation.current !== version || saveInProgress.current) return;
 
       const picked = result.assets?.[0];
       if (!picked?.uri) throw new Error("No media was selected. Please try again.");
@@ -240,6 +255,7 @@ export default function Profile() {
       else if (kind === "bar") setBarPicture(asset);
       else setCoffeeVideo(asset);
     } catch (error: any) {
+      if (!active.current || generation.current !== version) return;
       Alert.alert(
         "Could not open Photos",
         error?.message || "Please try choosing your photo or video again.",
@@ -254,6 +270,8 @@ export default function Profile() {
     const response = await fetch(asset.uri);
     if (!response.ok) throw new Error("The selected file could not be opened.");
     const bytes = await response.arrayBuffer();
+    const limit = bucket === "coffee-videos" ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!bytes.byteLength || bytes.byteLength > limit) throw new Error("Choose a nonempty file within the displayed size limit.");
     const { error } = await supabase.storage.from(bucket).upload(path, bytes, {
       contentType: asset.mimeType || undefined,
       upsert: true,
@@ -271,175 +289,63 @@ export default function Profile() {
     });
   }
   async function save() {
-    const locationInput =
-      locationCity.trim() ||
-      (role === "barista" ? profile.preferred_city : "");
-    const normalizedLocation = normalizeFloridaLocation(locationInput);
-    if (!normalizedLocation)
-      return Alert.alert(
-        "Florida city required",
-        "Enter a city such as Miami. Florida is selected automatically.",
-      );
-    const normalizedPreferredLocation = role === "barista"
-      ? normalizeFloridaLocation(profile.preferred_city || locationCity)
-      : null;
-    if (role === "barista" && !normalizedPreferredLocation)
-      return Alert.alert(
-        "Preferred work city required",
-        "Enter a Florida city where you want to work, such as Miami.",
-      );
-    if (role === "barista" && !profile.date_of_birth)
-      return Alert.alert("Date of birth required", "Choose your date of birth to continue. It remains private and is never shown to cafés.");
-    const birthDate = role === "barista" ? parseDate(profile.date_of_birth) : null;
-    if (role === "barista" && !birthDate)
-      return Alert.alert("Valid date required", "Enter your complete date of birth using YYYY-MM-DD, for example 1998-04-23.");
-    if (role === "barista" && birthDate && birthDate > maximumBirthDate())
-      return Alert.alert("Age requirement", "BaristaMatch accounts are available to people age 16 or older.");
-    let genderIdentity: "female" | "male" | null = null;
-    if (role === "barista") {
-      try { genderIdentity = normalizeOptionalGender(profile.gender_identity); }
-      catch { return Alert.alert("Check optional gender", "Choose Female, Male, or Prefer not to say."); }
-    }
-    setSaving(true);
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-    if (!user) {
-      setSaving(false);
-      return Alert.alert(
-        "Session expired",
-        userError?.message || "Please log in again.",
-      );
-    }
-    let avatarUrl = profile.avatar_url || null;
-    let barPictureUrl = profile.bar_picture_url || null;
-    let videoPath = profile.video_path || null;
-    try {
-      if (profilePhoto) {
-        const ext = (profilePhoto.name.split(".").pop() || "jpg").toLowerCase();
-        const path = `${user.id}/${role === "barista" ? "avatar" : "profile"}.${ext}`;
-        await uploadAsset(profilePhoto, "cafe-images", path);
-        const publicUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
-          .data.publicUrl;
-        avatarUrl = `${publicUrl}?v=${Date.now()}`;
-      }
-      if (role === "cafe_owner_manager" && barPicture) {
-        const ext = (barPicture.name.split(".").pop() || "jpg").toLowerCase();
-        const path = `${user.id}/bar.${ext}`;
-        await uploadAsset(barPicture, "cafe-images", path);
-        barPictureUrl = supabase.storage.from("cafe-images").getPublicUrl(path)
-          .data.publicUrl;
-      }
-      if (coffeeVideo) {
-        const ext = (coffeeVideo.name.split(".").pop() || "mp4").toLowerCase();
-        const path = `${user.id}/coffee-showcase.${ext}`;
-        await uploadAsset(coffeeVideo, "coffee-videos", path);
-        videoPath = path;
-      }
-    } catch (error: any) {
-      setSaving(false);
-      return Alert.alert(
-        "Could not upload file",
-        error?.message || "Please try again.",
-      );
-    }
-    const payload: any = {
-      location: normalizedLocation,
-      bio: profile.bio || null,
+    if (saveInProgress.current || !editing || !accountId.current) return;
+    const userId = accountId.current;
+    const version = generation.current;
+    const stillCurrent = () => active.current && generation.current === version;
+    const assertCurrent = async () => {
+      if (!stillCurrent()) throw new Error("The profile editor was closed. Reopen it to continue.");
+      await requireCurrentUser(userId);
+      if (!stillCurrent()) throw new Error("The profile editor was closed. Reopen it to continue.");
     };
-    if (role === "barista") {
-      payload.display_name = profile.display_name || null;
-      payload.availability =
-        [...availability, availabilityNotes.trim()]
-          .filter(Boolean)
-          .join(" · ") || null;
-      payload.pay_expectation = profile.pay_expectation || null;
-      payload.experience = profile.experience || null;
-      payload.preferred_city = floridaCityFromLocation(
-        normalizedPreferredLocation,
-      );
-      payload.preferred_state = "FL";
-      payload.preferred_postal_code = profile.preferred_postal_code || null;
-      payload.preferred_radius_miles = Number(
-        profile.preferred_radius_miles || 25,
-      );
-      payload.avatar_url = avatarUrl;
-      payload.video_path = videoPath;
-      payload.skills = String(
-        profile.skills_text || profile.skills?.join(", ") || "",
-      )
-        .split(",")
-        .map((x: string) => x.trim())
-        .filter(Boolean);
-      payload.is_discoverable =
-        [
-          payload.display_name,
-          payload.location,
-          payload.bio,
-          payload.experience,
-          payload.availability,
-          payload.pay_expectation,
-        ].every(Boolean) && payload.skills.length > 0;
-    } else {
-      payload.cafe_name = profile.cafe_name || null;
-      payload.skills = [];
-      payload.experience = null;
-      payload.cafe_address = profile.cafe_address || null;
-      payload.open_hours = formatOpeningHours(openHours) || null;
-      payload.shop_type = profile.shop_type || null;
-      payload.barista_preferences = profile.barista_preferences || [];
-      payload.avatar_url = avatarUrl;
-      payload.bar_picture_url = barPictureUrl;
-      payload.is_discoverable =
-        [
-          payload.cafe_name,
-          payload.location,
-          payload.bio,
-          payload.cafe_address,
-          payload.open_hours,
-          payload.shop_type,
-        ].every(Boolean) && payload.barista_preferences.length > 0;
+    // Capture every draft field before uploads; no asynchronous step reads a newer draft.
+    let payload: Record<string, any>;
+    try {
+      payload = buildProfileUpdate(profile, role, { locationCity, availability: [...availability], availabilityNotes, openHours: formatOpeningHours({ ...openHours }) });
+    } catch (error: any) {
+      return Alert.alert("Check your profile", error.message);
     }
-    const { error } = await supabase
-      .from("profiles")
-      .update(payload)
-      .eq("id", user.id);
-    const { error: demographicsError } = error || role !== "barista"
-      ? { error }
-      : await supabase.from("profile_demographics").upsert(
-          {
-            user_id: user.id,
-            date_of_birth: profile.date_of_birth,
-            gender_identity: genderIdentity,
-            age_range: null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
-    setSaving(false);
-    if (error || demographicsError)
-      return Alert.alert(
-        "Could not save profile",
-        (error || demographicsError)?.message,
-      );
-    setProfile((p: any) => ({
-      ...p,
-      ...payload,
-      skills_text: payload.skills?.join(", "),
-    }));
-    setLocationCity(floridaCityFromLocation(normalizedLocation));
-    setProfilePhoto(null);
-    setBarPicture(null);
-    setCoffeeVideo(null);
-    setEditing(false);
-    Alert.alert(
-      "Profile saved",
-      profilePhoto
-        ? "Your profile picture and profile details are now updated."
-        : "Your profile details are now updated.",
-    );
+    const demographics = { date_of_birth: profile.date_of_birth, gender_identity: role === "barista" ? normalizeOptionalGender(profile.gender_identity) : null };
+    const media = { photo: profilePhoto, bar: barPicture, video: coffeeVideo };
+    saveInProgress.current = true;
+    setSaving(true);
+    try {
+      await assertCurrent();
+      for (const kind of ["photo", "bar", "video"] as const) {
+        const asset = media[kind];
+        if (!asset || (kind === "bar" && role === "barista")) continue;
+        const ext = (asset.name.split(".").pop() || (kind === "video" ? "mp4" : "jpg")).toLowerCase();
+        const allowed = kind === "video" ? ["mp4", "mov", "m4v", "webm"] : ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+        if (!allowed.includes(ext)) throw new Error("Choose a supported image or video format.");
+        const bucket = kind === "video" ? "coffee-videos" : "cafe-images";
+        const path = `${userId}/${kind}-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+        await assertCurrent();
+        await uploadAsset(asset, bucket, path);
+        await assertCurrent();
+        const value = kind === "video" ? path : supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+        payload[kind === "video" ? "video_path" : kind === "bar" ? "bar_picture_url" : "avatar_url"] = value;
+      }
+      payload.is_discoverable = getProfileReadiness({ ...profile, ...payload }, role).complete && !profile.suspended_at;
+      const saved = await persistProfileUpdate(supabase, userId, role, payload, demographics, assertCurrent);
+      if (!stillCurrent()) return;
+      const confirmed = { ...saved, ...(role === "barista" ? demographics : {}) };
+      setSavedProfile(confirmed);
+      restoreDraft(confirmed);
+      setEditing(false);
+      const readiness = getProfileReadiness(confirmed, role);
+      Alert.alert("Profile saved", readiness.visible ? "Your profile is visible in discovery." : readiness.complete ? "Your changes are saved. Your profile is currently hidden in discovery. You can manage visibility in Settings." : `Your changes are saved. Complete these details to become discoverable: ${readiness.missing.join(", ")}.`);
+    } catch (error: any) {
+      if (stillCurrent()) Alert.alert("Could not finish saving", error?.message || "Check your connection and try again. Your draft is still here.");
+    } finally {
+      saveInProgress.current = false;
+      setSaving(false);
+    }
   }
+  if (loadError) return <SafeAreaView style={s.safe}><View style={s.center}>
+    <Text style={s.sub}>Your profile could not be loaded. Check your connection and try again.</Text>
+    <Pressable accessibilityRole="button" onPress={() => void load()} style={s.primary}><Text style={s.primaryText}>Try again</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={() => router.replace("/login")}><Text style={s.sub}>Return to login</Text></Pressable>
+  </View></SafeAreaView>;
   if (loading)
     return (
       <SafeAreaView style={s.safe}>
@@ -464,7 +370,7 @@ export default function Profile() {
               : "Show baristas what makes your café special"}
           </Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open account settings" onPress={() => router.push("/settings")} style={s.settings}>
+        <Pressable disabled={saving} accessibilityRole="button" accessibilityLabel="Open account settings" onPress={() => router.push("/settings")} style={s.settings}>
           <Text allowFontScaling={false} style={{ fontSize: 20 }}>⚙</Text>
         </Pressable>
       </View>
@@ -489,15 +395,17 @@ export default function Profile() {
           <Text style={s.location}>
             {profile.location || "Add your location"}
           </Text>
-          <Pressable style={s.edit} onPress={() => setEditing((x) => !x)}>
+          <Pressable disabled={saving} accessibilityRole="button" style={s.edit} onPress={toggleEditing}>
             <Text style={s.editText}>
-              {editing ? "Cancel" : "Edit profile"}
+              {saving ? "Saving profile…" : editing ? "Cancel" : "Edit profile"}
             </Text>
           </Pressable>
         </View>
+        <Text style={s.privateHelp}>{getProfileReadiness(savedProfile, role).visible ? "Visible in discovery" : "Hidden in discovery"} · {getProfileReadiness(savedProfile, role).complete ? "Profile complete" : `Still needed: ${getProfileReadiness(savedProfile, role).missing.join(", ")}`}</Text>
         {editing ? (
-          <View style={s.card}>
+          <View pointerEvents={saving ? "none" : "auto"} style={s.card}>
             <Field
+              editable={!saving}
               label={isBarista ? "Display name" : "Café name"}
               value={
                 isBarista ? profile.display_name || "" : profile.cafe_name || ""
@@ -527,6 +435,7 @@ export default function Profile() {
               }
             />
             <Field
+              editable={!saving}
               label="City"
               value={locationCity}
               onChange={setLocationCity}
@@ -543,6 +452,7 @@ export default function Profile() {
                 <Text style={s.privateTitle}>Private account information</Text>
                 <Text style={s.label}>Date of birth</Text>
                 <TextInput
+                  editable={!saving}
                   accessibilityLabel="Date of birth"
                   value={profile.date_of_birth || ""}
                   onChangeText={(value) => set("date_of_birth", value.replace(/[^0-9-]/g, "").slice(0, 10))}
@@ -568,6 +478,7 @@ export default function Profile() {
             {isBarista ? (
               <>
                 <Field
+              editable={!saving}
                   label="Preferred work city (optional)"
                   value={profile.preferred_city || ""}
                   onChange={(v) => set("preferred_city", v)}
@@ -580,26 +491,16 @@ export default function Profile() {
                   editable={false}
                 />
                 <Field
+              editable={!saving}
                   label="Preferred ZIP code"
                   value={profile.preferred_postal_code || ""}
                   onChange={(v) => set("preferred_postal_code", v)}
                 />
-                <Text style={s.label}>Search area</Text>
-                <View style={s.choiceWrap}>
-                  {SEARCH_AREAS.map((miles) => (
-                    <Choice
-                      key={miles}
-                      label={`Within about ${miles} miles`}
-                      selected={
-                        Number(profile.preferred_radius_miles || 25) === miles
-                      }
-                      onPress={() => set("preferred_radius_miles", miles)}
-                    />
-                  ))}
-                </View>
+                <Text style={s.privateHelp}>Discovery uses your saved city and optional exact ZIP code. Distance-based searching is not available yet.</Text>
               </>
             ) : null}
             <Field
+              editable={!saving}
               label={isBarista ? "About you" : "About your café"}
               value={profile.bio || ""}
               onChange={(v) => set("bio", v)}
@@ -608,9 +509,10 @@ export default function Profile() {
             {isBarista ? (
               <>
                 <Field
+              editable={!saving}
                   label="Skills"
                   value={
-                    profile.skills_text || profile.skills?.join(", ") || ""
+                    profile.skills_text ?? profile.skills?.join(", ") ?? ""
                   }
                   onChange={(v) => set("skills_text", v)}
                 />
@@ -628,17 +530,20 @@ export default function Profile() {
                   ))}
                 </View>
                 <Field
+              editable={!saving}
                   label="Other availability details (optional)"
                   value={availabilityNotes}
                   onChange={setAvailabilityNotes}
                 />
                 <Field
+              editable={!saving}
                   label="Experience"
                   value={profile.experience || ""}
                   onChange={(v) => set("experience", v)}
                   multiline
                 />
                 <Field
+              editable={!saving}
                   label="Desired pay"
                   value={profile.pay_expectation || ""}
                   onChange={(v) => set("pay_expectation", v)}
@@ -663,6 +568,7 @@ export default function Profile() {
             ) : (
               <>
                 <Field
+              editable={!saving}
                   label="Café address"
                   value={profile.cafe_address || ""}
                   onChange={(v) => set("cafe_address", v)}
@@ -704,6 +610,7 @@ export default function Profile() {
                         </Pressable>
                         {selected ? (
                           <TextInput
+                  editable={!saving}
                             value={openHours[day]}
                             onChangeText={(value) =>
                               setOpenHours((current) => ({

@@ -87,36 +87,25 @@ test('repeated submit while sign-in is pending sends only one request', async ()
   await pending;
 });
 
-const ts = require('../mobile/node_modules/typescript');
-const { parseMobileAuthCallback } = require(process.env.AUTH_CALLBACK_MODULE);
-const nativeSource = readFileSync(new URL('../mobile/app/login.tsx', import.meta.url), 'utf8');
-const start = nativeSource.indexOf('  async function handleOAuth(');
-const end = nativeSource.indexOf('  async function createSocialProfile', start);
-const nativeHandler = ts.transpileModule(nativeSource.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
-function nativeHarness(setSession) {
-  const alerts = [], loading = [];
-  const context = { parseMobileAuthCallback, supabase: { auth: { setSession } },
-    Alert: { alert: (...args) => alerts.push(args) }, setSocialLoading: value => loading.push(value) };
-  vm.createContext(context);
-  vm.runInContext(nativeHandler, context);
-  return { ...context, alerts, loading };
-}
-test('native login rejects callback lookalikes before creating a session', async () => {
+const { createMobileCallbackExchange } = require(process.env.AUTH_CALLBACK_MODULE);
+test('shared native callback rejects lookalikes before creating a session', async () => {
   let calls = 0;
-  const h = nativeHarness(async () => { calls++; });
-  await h.handleOAuth('baristamatch://auth/callback.evil#access_token=a&refresh_token=b');
+  const exchange = createMobileCallbackExchange(async () => { calls++; });
+  await assert.rejects(exchange('baristamatch://auth/callback.evil#access_token=a&refresh_token=b'));
   assert.equal(calls, 0);
 });
-test('native login recovers from a thrown session request', async () => {
-  const h = nativeHarness(reject);
-  await h.handleOAuth('baristamatch://auth/callback#access_token=a&refresh_token=b');
-  assert.equal(h.loading.at(-1), null);
-  assert.equal(h.alerts[0][0], 'Connection problem');
+test('shared native callback permits retry after a thrown session request', async () => {
+  let attempts = 0;
+  const exchange = createMobileCallbackExchange(async () => { attempts++; if (attempts === 1) throw new Error('offline'); return 'signed-in'; });
+  const url = 'baristamatch://auth/callback#access_token=a&refresh_token=b';
+  await assert.rejects(exchange(url));
+  assert.equal(await exchange(url), 'signed-in');
+  assert.equal(attempts, 2);
 });
-test('native login handles malformed provider text without displaying it or throwing', async () => {
-  const h = nativeHarness(reject);
-  await h.handleOAuth('baristamatch://auth/callback#error_description=private%25detail');
-  assert.equal(h.loading.at(-1), null);
-  assert.equal(h.alerts[0][0], 'Sign-in failed');
-  assert.doesNotMatch(JSON.stringify(h.alerts), /private/);
+test('shared native callback handles malformed provider text without exposing it', async () => {
+  const exchange = createMobileCallbackExchange(reject);
+  await assert.rejects(exchange('baristamatch://auth/callback#error_description=private%25detail'), error => {
+    assert.doesNotMatch(error.message, /private/);
+    return true;
+  });
 });

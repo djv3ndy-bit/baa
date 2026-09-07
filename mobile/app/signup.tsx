@@ -1,66 +1,112 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
+import { createExplicitProfile, getCurrentContext, savedAppRole } from '@/lib/session';
 import { normalizeFloridaLocation } from '@/lib/floridaLocation';
 
 type Role = 'barista' | 'cafe_owner_manager';
 
 export default function SignupScreen() {
-  const params = useLocalSearchParams<{ role?: string }>();
-  const initialRole: Role = params.role === 'cafe_owner_manager' ? 'cafe_owner_manager' : 'barista';
-  const [role, setRole] = useState<Role>(initialRole);
+  const params = useLocalSearchParams<{ role?: string; complete?: string }>();
+  const [role, setRole] = useState<Role | null>(savedAppRole(params.role));
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [setupUserId, setSetupUserId] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const request = useRef(false);
+  const active = useRef(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  useFocusEffect(useCallback(() => {
+    let current = true;
+    active.current = true;
+    setChecking(true);
+    setLoadError(false);
+    void getCurrentContext().then(context => {
+      if (!current) return;
+      if (context.role) return router.replace('/home');
+      if (params.complete === '1' && !context.user) return router.replace('/login');
+      setSetupUserId(context.user?.id ?? null);
+      setChecking(false);
+    }).catch(() => { if (current) { setChecking(false); setLoadError(true); } });
+    return () => { current = false; active.current = false; };
+  }, [params.complete]));
+
   async function signUp() {
-    if (!name.trim() || !location.trim() || !email.trim() || password.length < 10) {
-      return Alert.alert('Check your information', 'Enter your name, location, email, and a password with at least 10 characters.');
+    if (request.current || checking || loadError) return;
+    if (!role) return Alert.alert('Choose your account type', 'Select Barista or Café to continue.');
+    if (!name.trim() || !location.trim() || (!setupUserId && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 10))) {
+      return Alert.alert('Check your information', 'Enter your name and city, plus a valid email and a password with at least 10 characters when creating an email account.');
     }
+    if (!setupUserId && password !== confirmPassword) return Alert.alert('Passwords do not match', 'Enter the same password in both fields.');
     const normalizedLocation = normalizeFloridaLocation(location);
     if (!normalizedLocation) return Alert.alert('Florida city required', 'Enter a city such as Miami. Florida is selected automatically.');
     if (!ageConfirmed) return Alert.alert('Age confirmation required', 'Confirm that you are at least 16 years old and, if you are under 18, have permission from a parent or legal guardian.');
-    const isCafe = role === 'cafe_owner_manager';
-    const profile = {
-      id: '',
-      role,
-      display_name: isCafe ? null : name.trim(),
-      cafe_name: isCafe ? name.trim() : null,
-      location: normalizedLocation,
-    };
+    const draft = { role, display_name: role === 'barista' ? name.trim() : null, cafe_name: role === 'cafe_owner_manager' ? name.trim() : null, location: normalizedLocation };
+    const cleanEmail = email.trim().toLowerCase();
+    request.current = true;
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE,
-        data: { role, display_name: profile.display_name, cafe_name: profile.cafe_name, location: profile.location },
-      },
-    });
-    if (!error && data.user) {
-      await supabase.from('profiles').upsert({ ...profile, id: data.user.id }, { onConflict: 'id' });
+    try {
+      const context = await getCurrentContext();
+      if (!active.current) return;
+      if (setupUserId) {
+        if (context.user?.id !== setupUserId) throw new Error('Your session changed. Return to login before continuing.');
+        await createExplicitProfile(setupUserId, draft);
+        if (active.current) router.replace('/profile');
+        return;
+      }
+      if (context.user) {
+        // A prior successful signup may have returned before profile confirmation.
+        // Resume that session explicitly; never replace it with a second signup.
+        setSetupUserId(context.user.id);
+        if (context.role) router.replace('/home');
+        return;
+      }
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: { emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE, data: draft },
+      });
+      if (error) throw error;
+      if (!active.current) return;
+      if (data.session && data.user) {
+        setSetupUserId(data.user.id);
+        await createExplicitProfile(data.user.id, draft);
+        if (active.current) router.replace('/profile');
+      } else {
+        // With email confirmation enabled the server trigger creates the profile.
+        // The unauthenticated client must not write or infer account existence.
+        router.replace({ pathname: '/verify-email', params: { email: cleanEmail } });
+      }
+    } catch (error: any) {
+      if (active.current) Alert.alert('Unable to finish account setup', error?.message || 'Check your connection and try again. Your details are still here.');
+    } finally {
+      request.current = false;
+      setLoading(false);
     }
-    setLoading(false);
-    if (error) return Alert.alert('Unable to create account', error.message);
-    if(data.session){if(isCafe)await supabase.rpc('ensure_cafe_subscription');return router.replace('/home')}
-    router.replace('/verify-email');
   }
+
+  const busy = loading || checking;
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={() => router.back()}><Text style={styles.back}>‹ Back to log in</Text></Pressable>
+          <Pressable disabled={loading} onPress={() => router.replace("/login")}><Text style={styles.back}>‹ Back to log in</Text></Pressable>
           <Text style={styles.kicker}>JOIN BARISTAMATCH</Text>
-          <Text style={styles.title}>{role === 'barista' ? 'Build your barista profile.' : 'Build your café team.'}</Text>
+          <Text style={styles.title}>{!role ? 'Choose your account type.' : role === 'barista' ? 'Build your barista profile.' : 'Build your café team.'}</Text>
           <Text style={styles.subtitle}>{role === 'barista' ? 'Discover nearby cafés and connect when the fit feels right.' : 'Discover nearby baristas and connect when there’s mutual interest.'}</Text>
 
-          <View style={styles.roleRow}>
+          {loadError ? <Text accessibilityRole="alert" style={styles.helper}>Your session could not be checked. Return to login and try again.</Text> : null}
+          {checking ? <Text style={styles.helper}>Checking your session…</Text> : null}
+          <View pointerEvents={busy ? 'none' : 'auto'} style={styles.roleRow}>
             {(['barista','cafe_owner_manager'] as Role[]).map(item => (
               <Pressable key={item} onPress={() => setRole(item)} style={[styles.role, role === item && styles.roleActive]}>
                 <Text style={[styles.roleText, role === item && styles.roleTextActive]}>{item === 'barista' ? '☕ Barista' : '🏪 Café'}</Text>
@@ -69,22 +115,26 @@ export default function SignupScreen() {
           </View>
 
           <Text style={styles.label}>{role === 'barista' ? 'Your name' : 'Café name'}</Text>
-          <TextInput value={name} onChangeText={setName} style={styles.input} placeholder={role === 'barista' ? 'Your full name' : 'Your café name'} />
+          <TextInput editable={!busy} value={name} onChangeText={setName} style={styles.input} placeholder={role === 'barista' ? 'Your full name' : 'Your café name'} />
           <Text style={styles.label}>City</Text>
-          <TextInput accessibilityLabel="City" autoCapitalize="words" autoComplete="postal-address-locality" textContentType="addressCity" value={location} onChangeText={setLocation} style={styles.input} placeholder="Miami" />
+          <TextInput editable={!busy} accessibilityLabel="City" autoCapitalize="words" autoComplete="postal-address-locality" textContentType="addressCity" value={location} onChangeText={setLocation} style={styles.input} placeholder="Miami" />
           <Text style={styles.label}>State</Text>
           <TextInput accessibilityLabel="State" value="Florida (FL)" editable={false} style={[styles.input, styles.inputDisabled]} />
           <Text style={styles.helper}>Florida is selected automatically while BaristaMatch launches statewide.</Text>
+          {!setupUserId ? <>
           <Text style={styles.label}>Email</Text>
-          <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" />
+          <TextInput editable={!busy} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" />
           <Text style={styles.label}>Password</Text>
-          <TextInput secureTextEntry value={password} onChangeText={setPassword} style={styles.input} placeholder="At least 10 characters" />
+          <TextInput editable={!busy} secureTextEntry value={password} onChangeText={setPassword} style={styles.input} placeholder="At least 10 characters" />
+          <Text style={styles.label}>Confirm password</Text>
+          <TextInput editable={!busy} secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} style={styles.input} placeholder="Repeat your password" />
+          </> : <Text style={styles.helper}>You are signed in. Choose an account type and finish your profile.</Text>}
 
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: ageConfirmed }} onPress={() => setAgeConfirmed(value => !value)} style={styles.confirmRow}>
+          <Pressable disabled={busy} accessibilityRole="checkbox" accessibilityState={{ checked: ageConfirmed }} onPress={() => setAgeConfirmed(value => !value)} style={styles.confirmRow}>
             <View style={[styles.checkbox, ageConfirmed && styles.checkboxChecked]}><Text style={styles.checkmark}>{ageConfirmed ? '✓' : ''}</Text></View>
             <Text style={styles.confirmText}>I confirm that I am at least 16. If I am under 18, I have permission from a parent or legal guardian.</Text>
           </Pressable>
-          <Pressable onPress={signUp} disabled={loading} style={[styles.primary, loading && styles.disabled]}><Text style={styles.primaryText}>{loading ? 'Creating account…' : 'Create account'}</Text></Pressable>
+          <Pressable onPress={signUp} disabled={busy || loadError} style={[styles.primary, loading && styles.disabled]}><Text style={styles.primaryText}>{loading ? 'Saving account…' : setupUserId ? 'Finish account setup' : 'Create account'}</Text></Pressable>
           <Text style={styles.legal}>By creating an account, you agree to the following:</Text>
           <View style={styles.legalLinks}><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/terms.html')}><Text style={styles.legalLink}>Terms of Service</Text></Pressable><Text style={styles.legalSeparator}> · </Text><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/privacy.html')}><Text style={styles.legalLink}>Privacy Policy</Text></Pressable></View>
         </ScrollView>
