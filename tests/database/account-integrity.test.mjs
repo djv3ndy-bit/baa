@@ -7,7 +7,7 @@ const barista='00000000-0000-4000-8000-000000000001', cafe='00000000-0000-4000-8
 const stranger='00000000-0000-4000-8000-000000000003', otherCafe='00000000-0000-4000-8000-000000000004';
 const job='10000000-0000-4000-8000-000000000001', otherJob='10000000-0000-4000-8000-000000000002', legacyJob='10000000-0000-4000-8000-000000000003';
 const match='20000000-0000-4000-8000-000000000001', otherMatch='20000000-0000-4000-8000-000000000002';
-const migration=readFileSync(new URL('../../supabase/migrations/20260907045304_repair_account_integrity_and_discovery_notifications.sql',import.meta.url),'utf8');
+const migration=readFileSync(new URL('../../supabase/migrations/20260907050656_repair_account_integrity_and_discovery_notifications.sql',import.meta.url),'utf8');
 let db;
 const sql = (text,params=[])=>db.query(text,params);
 async function asUser(id){await db.exec('reset role');await sql("select set_config('request.jwt.claim.sub',$1,true)",[id]);await db.exec('set local role authenticated');}
