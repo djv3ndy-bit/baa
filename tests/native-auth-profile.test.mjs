@@ -24,21 +24,22 @@ function compile(name, mocks = {}, cache = new Map()) {
 }
 const plain = value => JSON.parse(JSON.stringify(value));
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
-const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+const flush = () => new Promise(resolve => setImmediate(resolve));
 const privacy = compile('lib/profilePrivacy.ts');
 const callback = compile('lib/authCallback.ts');
 const barista = { id: 'user-a', role: 'barista', display_name: 'Sample', avatar_url: 'photo', location: 'Miami, FL', bio: 'About', experience: 'One year', availability: 'Weekdays', pay_expectation: '$20', skills: ['Espresso'], date_of_birth: '2000-01-01', visible_to_cafes: true, is_discoverable: true };
 const cafe = { id: 'user-a', role: 'cafe_owner_manager', cafe_name: 'Sample Café', avatar_url: 'photo', location: 'Miami, FL', bio: 'About', cafe_address: '1 Main St', open_hours: 'Monday 8–4', shop_type: 'Coffee bar', barista_preferences: ['Teamwork'], visible_to_cafes: true, is_discoverable: true };
 const options = { locationCity: 'Miami', availability: ['Weekdays'], availabilityNotes: '', openHours: 'Monday 8–4' };
 
-function sessionClient({ role, profile, sessionError, profileError, sessions = ['user-a', 'user-a'], insertError } = {}) {
+function sessionClient({ role, profile, sessionError, profileError, sessions = ['user-a', 'user-a'], insertError, rpcResult = async () => ({ error: null }) } = {}) {
   let calls = 0;
-  const writes = [];
+  const writes = [], rpcs = [];
   const client = {
-    auth: { getSession: async () => ({ data: { session: sessions[Math.min(calls++, sessions.length - 1)] ? { user: { id: sessions[Math.min(calls - 1, sessions.length - 1)], user_metadata: { role: 'barista' } } } : null }, error: sessionError }), setSession: async () => ({ data: { user: { id: 'user-a' } }, error: null }) },
+    auth: { getSession: async () => ({ data: { session: sessions[Math.min(calls++, sessions.length - 1)] ? { access_token: `token-${sessions[Math.min(calls - 1, sessions.length - 1)]}`, user: { id: sessions[Math.min(calls - 1, sessions.length - 1)], user_metadata: { role: 'barista' } } } : null }, error: sessionError }), setSession: async () => ({ data: { user: { id: 'user-a' } }, error: null }) },
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: profile === undefined ? role === undefined ? null : { id: 'user-a', role } : profile, error: profileError }) }) }), insert: async value => { writes.push(value); profile = { ...value }; return { error: insertError }; } }),
+    rpc: name => ({ setHeader: (header, value) => { rpcs.push({ name, header, value }); return rpcResult(rpcs.length); } }),
   };
-  return { client, writes };
+  return { client, writes, rpcs };
 }
 
 test('saved account role is authoritative; missing and unknown profiles never default to barista', async () => {
@@ -70,6 +71,89 @@ test('explicit setup inserts only for the same user and never overwrites an exis
   const switched = sessionClient({ sessions: ['user-b'] });
   await assert.rejects(compile('lib/session.ts', { client: switched.client }).createExplicitProfile('user-a', draft));
   assert.equal(switched.writes.length, 0);
+});
+
+test('saved café context waits for complimentary access and shares one initialization across concurrent callers', async () => {
+  const gate = deferred();
+  const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: () => gate.promise });
+  const session = compile('lib/session.ts', { client: backend.client });
+  let ready = false;
+  const first = session.getCurrentContext().then(context => { ready = true; return context; });
+  const second = session.getCurrentContext();
+  await flush();
+  assert.equal(ready, false);
+  assert.deepEqual(backend.rpcs, [{ name: 'ensure_cafe_subscription', header: 'Authorization', value: 'Bearer token-user-a' }]);
+  gate.resolve({ error: null });
+  assert.equal((await first).role, 'cafe_owner_manager');
+  assert.equal((await second).role, 'cafe_owner_manager');
+  await session.getCurrentContext();
+  assert.equal(backend.rpcs.length, 1);
+});
+
+test('failed café access preparation blocks ready context and can be retried', async () => {
+  const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: async count => ({ error: count === 1 ? new Error('offline') : null }) });
+  const session = compile('lib/session.ts', { client: backend.client });
+  await assert.rejects(session.getCurrentContext(), /prepare your café workspace/);
+  assert.equal((await session.getCurrentContext()).role, 'cafe_owner_manager');
+  assert.equal(backend.rpcs.length, 2);
+});
+
+test('café creation initializes only after saving the explicit role; other roles never call the café RPC', async () => {
+  const backend = sessionClient();
+  const session = compile('lib/session.ts', { client: backend.client });
+  const draft = { role: 'cafe_owner_manager', display_name: null, cafe_name: 'Sample Café', location: 'Miami, FL' };
+  assert.equal((await session.createExplicitProfile('user-a', draft)).role, draft.role);
+  assert.equal(backend.writes.length, 1);
+  assert.equal(backend.rpcs.length, 1);
+  for (const role of [undefined, 'unsupported', 'barista']) {
+    const other = sessionClient({ role });
+    await compile('lib/session.ts', { client: other.client }).getCurrentContext();
+    assert.equal(other.rpcs.length, 0);
+  }
+});
+
+test('session changes before café initialization prevent the RPC, and changes during it reject stale completion', async () => {
+  const before = sessionClient({ role: 'cafe_owner_manager', sessions: ['user-a', 'user-b'] });
+  await assert.rejects(compile('lib/session.ts', { client: before.client }).getCurrentContext(), /session changed/);
+  assert.equal(before.rpcs.length, 0);
+  const during = sessionClient({ role: 'cafe_owner_manager', sessions: ['user-a', 'user-a', 'user-b'] });
+  await assert.rejects(compile('lib/session.ts', { client: during.client }).getCurrentContext(), /session changed/);
+  assert.deepEqual(during.rpcs.map(call => call.value), ['Bearer token-user-a']);
+});
+
+test('a failed old account initialization does not evict a newer account pending request', async () => {
+  let userId = 'user-a';
+  const first = deferred(), second = deferred();
+  const backend = sessionClient({ role: 'cafe_owner_manager', rpcResult: count => count === 1 ? first.promise : second.promise });
+  backend.client.auth.getSession = async () => ({ data: { session: { user: { id: userId }, access_token: `token-${userId}` } }, error: null });
+  const session = compile('lib/session.ts', { client: backend.client });
+  const old = session.getCurrentContext();
+  const oldRejected = assert.rejects(old, /prepare your café workspace/);
+  await flush(); userId = 'user-b';
+  const current = session.getCurrentContext(); await flush();
+  first.resolve({ error: new Error('offline') }); await oldRejected;
+  const parallel = session.getCurrentContext(); await flush();
+  assert.equal(backend.rpcs.length, 2);
+  assert.deepEqual(backend.rpcs.map(call => call.value), ['Bearer token-user-a', 'Bearer token-user-b']);
+  second.resolve({ error: null });
+  assert.equal((await current).user.id, 'user-b');
+  assert.equal((await parallel).user.id, 'user-b');
+});
+
+test('real Supabase RPC keeps the captured café JWT when the shared auth provider returns another account token', async () => {
+  const { createClient } = requireMobile('@supabase/supabase-js');
+  const requests = [];
+  const transport = createClient('https://example.invalid', 'sb_publishable_test', {
+    accessToken: async () => 'token-user-b',
+    global: { fetch: async (url, init) => {
+      requests.push({ url: String(url), authorization: new Headers(init.headers).get('Authorization') });
+      return new Response(JSON.stringify({ user_id: 'user-a', complimentary_access: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } },
+  });
+  const backend = sessionClient({ role: 'cafe_owner_manager' });
+  backend.client.rpc = transport.rpc.bind(transport);
+  await compile('lib/session.ts', { client: backend.client }).getCurrentContext();
+  assert.deepEqual(requests, [{ url: 'https://example.invalid/rest/v1/rpc/ensure_cafe_subscription', authorization: 'Bearer token-user-a' }]);
 });
 
 test('duplicate OAuth delivery exchanges once; concurrent other callbacks cannot switch the session', async () => {
@@ -161,7 +245,8 @@ function screen(name, mocks) {
 function profileBackend() {
   let saved = { ...cafe };
   const publicSave = deferred(), uploads = [];
-  const client = { auth: { getSession: async () => ({ data: { session: { user: { id: 'user-a' } } }, error: null }) },
+  const client = { auth: { getSession: async () => ({ data: { session: { user: { id: 'user-a' }, access_token: 'token-user-a' } }, error: null }) },
+    rpc: () => ({ setHeader: () => Promise.resolve({ error: null }) }),
     from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: saved, error: null }) }) }), update: payload => ({ eq: () => ({ select: () => ({ single: async () => { const result = await publicSave.promise; if (result.error) return result; saved = { ...saved, ...payload, is_discoverable: false }; return { data: saved, error: null }; } }) }) }) }),
     storage: { from: () => ({ upload: async (path, bytes) => { uploads.push({ path, bytes }); return { error: null }; }, getPublicUrl: path => ({ data: { publicUrl: `https://images.example/${path}` } }) }) },
   };
