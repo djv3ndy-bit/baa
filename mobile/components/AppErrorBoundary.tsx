@@ -27,7 +27,7 @@ export class AppErrorBoundary extends Component<Props, State> {
       <View style={styles.screen}>
         <Text style={styles.logo}>☕</Text>
         <Text style={styles.title}>Let’s try that again</Text>
-        <Text style={styles.copy}>BaristaMatch recovered safely. Your account and information are unchanged.</Text>
+        <Text style={styles.copy}>This screen could not load. Reopen BaristaMatch to try again.</Text>
         <Pressable accessibilityRole="button" onPress={this.recover} style={styles.button}>
           <Text style={styles.buttonText}>Reopen BaristaMatch</Text>
         </Pressable>

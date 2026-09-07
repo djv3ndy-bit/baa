@@ -51,3 +51,31 @@ export function parseMobileAuthCallback(url: string | null): MobileAuthCallbackR
 
   return { ok: true, accessToken, refreshToken };
 }
+
+// Expo can deliver the same callback to both the browser result and the deep-link
+// route. Share the in-flight exchange so a one-use refresh token is not replayed.
+export function createMobileCallbackExchange<T>(exchange: (tokens: { access_token: string; refresh_token: string }) => Promise<T>) {
+  let pending: { token: string; promise: Promise<T> } | null = null;
+  let completed: { token: string; result: T } | null = null;
+  return (url: string | null): Promise<T> => {
+    const parsed = parseMobileAuthCallback(url);
+    if (!parsed.ok) return Promise.reject(new Error('The sign-in link is incomplete or expired. Please try again.'));
+    if (pending) return pending.token === parsed.accessToken ? pending.promise : Promise.reject(new Error('Another sign-in is finishing. Please try again.'));
+    if (completed?.token === parsed.accessToken) return Promise.resolve(completed.result);
+    const promise = exchange({ access_token: parsed.accessToken, refresh_token: parsed.refreshToken }).then(result => {
+      completed = { token: parsed.accessToken, result };
+      return result;
+    }).finally(() => { pending = null; });
+    pending = { token: parsed.accessToken, promise };
+    return promise;
+  };
+}
+
+// Expo Router preserves URL fragments under the '#' search parameter. Reading
+// the current route also handles warm email links delivered before this screen mounts.
+export function mobileCallbackUrlFromParams(params: Record<string, unknown>): string | null {
+  if (typeof params['#'] === 'string' && params['#']) return `${MOBILE_AUTH_CALLBACK_PREFIX}#${params['#']}`;
+  if (params.error || params.error_code || params.error_description) return `${MOBILE_AUTH_CALLBACK_PREFIX}?error=provider_error`;
+  if (typeof params.access_token !== 'string' || typeof params.refresh_token !== 'string') return null;
+  return `${MOBILE_AUTH_CALLBACK_PREFIX}?${new URLSearchParams({ access_token: params.access_token, refresh_token: params.refresh_token })}`;
+}

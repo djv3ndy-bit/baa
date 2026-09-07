@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
-import { normalizeOptionalGender, needsMediaLibraryPermission } from '../mobile/lib/profilePrivacy.ts';
+import { floridaCityFromLocation, normalizeFloridaLocation } from '../mobile/lib/floridaLocation.ts';
+const privacySource = readFileSync(new URL('../mobile/lib/profilePrivacy.ts', import.meta.url), 'utf8');
+const privacyCode = stripTypeScriptTypes(privacySource.replace(/^import .*$/gm, '').replace(/^export /gm, ''));
+const { normalizeOptionalGender, needsMediaLibraryPermission } = vm.runInNewContext(privacyCode + '\n;({ normalizeOptionalGender, needsMediaLibraryPermission })', { floridaCityFromLocation, normalizeFloridaLocation, Date });
 const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 const native = read('mobile/app/profile.tsx');
 const web = read('dashboard.html');
@@ -32,7 +35,7 @@ function pickerHarness(platform, options = {}) {
     },
     Alert: { alert: (...args) => alerts.push(args) }, Linking: { openSettings() {} },
     setProfilePhoto: asset => selected.push(asset), setBarPicture: asset => selected.push(asset), setCoffeeVideo: asset => selected.push(asset),
-    Date,
+    Date, saveInProgress: { current: false }, active: { current: true }, generation: { current: 1 },
   };
   vm.createContext(context);vm.runInContext(stripTypeScriptTypes(pickerCode), context);
   return { calls, selected, alerts, run: kind => context.pickMedia(kind) };
@@ -94,10 +97,10 @@ test('web still rejects invalid optional gender values before writes', async () 
   const h=webHarness('invalid');await h.run();assert.equal(h.rows.length, 0);assert.match(h.status.textContent,/Prefer not to say/);
 });
 test('native and web keep DOB required but never require gender', () => {
-  assert.match(native,/normalizeOptionalGender\(profile.gender_identity\)/);assert.match(native,/gender_identity: genderIdentity/);
+  assert.match(native,/normalizeOptionalGender\(profile.gender_identity\)/);assert.match(native,/gender_identity: role === "barista" \? normalizeOptionalGender/);
   assert.match(native,/Gender \(optional\)/);assert.doesNotMatch(native,/Gender required/);
   assert.match(web,/form.gender_identity.required=false/);assert.match(web,/form.date_of_birth.required=isBarista/);
-  assert.match(native,/Date of birth required/);assert.doesNotMatch(visibilityCode,/gender_identity/);
+  assert.match(privacySource,/Enter a valid date of birth/);assert.doesNotMatch(visibilityCode,/gender_identity/);
 });
 test('privacy notice matches optional demographics and offers external deletion', () => {
   const policy=read('privacy.html');assert.match(policy,/Gender is optional/);assert.match(policy,/href="\/delete-account.html"/);

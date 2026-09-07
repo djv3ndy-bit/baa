@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { listenForPhoneNotifications, registerForPhoneNotifications } from '@/lib/pushNotifications';
 import { supabase } from '@/lib/supabase';
+import { authenticatedApi } from '@/lib/api';
 
 export default function RootLayout() {
   const pathname=usePathname();
@@ -19,7 +20,7 @@ export default function RootLayout() {
     let cancelled=false;
     supabase.auth.getSession().then(({data})=>{
       if(cancelled||!data.session?.access_token)return;
-      fetch('https://www.baristajobmatch.com/api/analytics',{method:'POST',headers:{Authorization:`Bearer ${data.session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify({channel:'app',platform:Platform.OS,path:pathname||'/'})}).catch(()=>{});
+      authenticatedApi('/analytics', {channel:'app',platform:Platform.OS,path:(pathname||'/').replace(/^\/chat\/[^/]+/, '/chat/conversation')}, 'POST', data.session.user.id).catch(()=>{});
     }).catch(()=>{});
     return()=>{cancelled=true};
   },[pathname]);

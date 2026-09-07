@@ -13,9 +13,9 @@ import {
 
 import { AppBottomNav } from '@/components/AppBottomNav';
 import { getTimeGreeting } from '@/lib/timeGreeting';
+import type { DashboardCounts } from '@/lib/homeSummary';
 
 type Role = 'barista' | 'cafe_owner_manager';
-type DashboardCounts = { jobs: number; matches: number; alerts: number; candidates: number };
 
 type QuietFocusHomeProps = {
   role: Role;
@@ -25,6 +25,7 @@ type QuietFocusHomeProps = {
   counts: DashboardCounts;
   refreshing: boolean;
   cafePlanCopy: string;
+  error?: string;
   onRefresh: () => void;
   onOpenSettings: () => void;
 };
@@ -40,6 +41,7 @@ export function QuietFocusHome({
   counts,
   refreshing,
   cafePlanCopy,
+  error,
   onRefresh,
   onOpenSettings,
 }: QuietFocusHomeProps) {
@@ -47,14 +49,15 @@ export function QuietFocusHome({
   const place = location?.trim() || 'your saved work area';
   const activity = isCafe
     ? [
-        { icon: '▣', value: counts.jobs, label: 'Active jobs' },
-        { icon: '♙', value: counts.candidates, label: 'Candidates' },
-        { icon: '♡', value: counts.matches, label: 'Matches' },
+        { icon: '▣', value: counts.jobs, label: 'Active jobs', path: '/jobs' },
+        { icon: '♙', value: counts.candidates, label: 'Candidates', path: '/candidates' },
+        { icon: '♡', value: counts.matches, label: 'Matches', path: '/matches' },
+        { icon: '◌', value: counts.messages, label: 'Unread messages', path: '/messages' },
       ]
     : [
-        { icon: '⌕', value: counts.jobs, label: 'Open jobs' },
-        { icon: '♡', value: counts.matches, label: 'Matches' },
-        { icon: '●', value: counts.alerts, label: 'Alerts' },
+        { icon: '⌕', value: counts.jobs, label: 'Open jobs', path: '/discover' },
+        { icon: '♡', value: counts.matches, label: 'Matches', path: '/matches' },
+        { icon: '◌', value: counts.messages, label: 'Unread messages', path: '/messages' },
       ];
 
   return (
@@ -78,6 +81,8 @@ export function QuietFocusHome({
             <Text allowFontScaling={false} style={styles.settingsIcon}>⚙</Text>
           </Pressable>
         </View>
+
+        {error ? <View style={styles.refreshError}><Text accessibilityRole="alert" style={styles.refreshErrorText}>Showing your last loaded details. {error}</Text><Pressable accessibilityRole="button" onPress={onRefresh}><Text style={styles.refreshRetry}>Try again</Text></Pressable></View> : null}
 
         {isCafe ? <Text style={styles.eyebrow}>GOOD TO SEE YOU</Text> : null}
         <Text style={[styles.greeting, !isCafe && styles.guidedGreeting]}>{getTimeGreeting()}, {firstName}.</Text>
@@ -130,15 +135,17 @@ export function QuietFocusHome({
         </View>
         {isCafe ? <View style={styles.activityRow}>
           {activity.map((item) => (
-            <View key={item.label} style={styles.activityCard}>
+            <Pressable key={item.label} accessibilityRole="button" accessibilityLabel={`${item.value} ${item.label}`} onPress={() => router.push(item.path as never)} style={styles.activityCard}>
               <Text style={styles.activityIcon}>{item.icon}</Text>
               <Text style={styles.activityValue}>{item.value}</Text>
               <Text numberOfLines={1} style={styles.activityLabel}>{item.label}</Text>
-            </View>
+            </Pressable>
           ))}
         </View> : <View style={styles.guidedActivity}>
-          <ActionRow label="Matches" detail="See your connections" onPress={() => router.push('/matches')} />
-          <ActionRow label="Messages" detail="Open your conversations" onPress={() => router.push('/messages')} />
+          <ActionRow label="Open jobs" detail={`${counts.jobs} roles in your saved work area`} onPress={() => router.push('/discover')} />
+          <ActionRow label="Applications & interests" detail={`${counts.applications} sent · Track your progress`} onPress={() => router.push('/discover?tab=sent' as never)} />
+          <ActionRow label="Matches" detail={`${counts.matches} connections`} onPress={() => router.push('/matches')} />
+          <ActionRow label="Messages" detail={counts.messages ? `${counts.messages} unread messages` : 'Open your conversations'} onPress={() => router.push('/messages')} />
           <ActionRow label="My Profile" detail="Manage your information" onPress={() => router.push('/profile')} />
         </View>}
 
@@ -154,8 +161,8 @@ export function QuietFocusHome({
               <View style={styles.planBody}>
                 <Text style={styles.planEyebrow}>YOUR CAFÉ PLAN</Text>
                 <View style={styles.planNameRow}>
-                  <Text style={styles.planName}>Free</Text>
-                  <Text style={styles.activePill}>ACTIVE</Text>
+                  <Text style={styles.planName}>Café plan</Text>
+                  <Text style={styles.activePill}>DETAILS</Text>
                 </View>
                 <Text style={styles.planCopy}>{cafePlanCopy}</Text>
               </View>
@@ -215,6 +222,9 @@ function ActionRow({ label, detail, onPress }: { label: string; detail: string; 
 const editorialFont = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
 const styles = StyleSheet.create({
+  refreshError: { padding: 14, borderRadius: 12, backgroundColor: '#fff4e8', marginBottom: 16 },
+  refreshErrorText: { fontSize: 13, color: '#84341f', lineHeight: 19 },
+  refreshRetry: { fontSize: 14, color: '#321708', fontWeight: '800', paddingTop: 12 },
   guidedGreeting: { fontSize: 28, lineHeight: 33, marginTop: 0 },
   guidedSubtitle: { fontFamily: undefined, fontSize: 16, lineHeight: 23, marginBottom: 18 },
   guidedSearch: { flexDirection: 'row', gap: 8 },
@@ -254,8 +264,8 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 },
   sectionTitle: { color: '#17110d', fontFamily: editorialFont, fontSize: 20, fontWeight: '700' },
   sectionHint: { color: '#8b7e75', fontSize: 9 },
-  activityRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  activityCard: { flex: 1, minWidth: 0, minHeight: 85, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#eee7df', borderRadius: 13, backgroundColor: '#fffdfa', paddingHorizontal: 5 },
+  activityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  activityCard: { flex: 1, minWidth: '44%', minHeight: 85, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#eee7df', borderRadius: 13, backgroundColor: '#fffdfa', paddingHorizontal: 5 },
   activityIcon: { color: '#b76022', fontSize: 19, lineHeight: 23 },
   activityValue: { color: '#17110d', fontFamily: editorialFont, fontSize: 17, fontWeight: '700', marginTop: 2 },
   activityLabel: { color: '#4f443d', fontSize: 11, marginTop: 1, maxWidth: '100%' },

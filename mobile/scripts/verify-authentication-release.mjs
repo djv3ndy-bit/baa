@@ -49,6 +49,7 @@ const eas = readJson('eas.json');
 const packageJson = readJson('package.json');
 const authCallback = read('lib/authCallback.ts');
 const callbackScreen = read('app/auth/callback.tsx');
+const session = read('lib/session.ts');
 const signupScreen = read('app/signup.tsx');
 const releaseWorkflow = read('.eas/workflows/authentication-ios-testflight.yml');
 
@@ -72,9 +73,13 @@ includes(authCallback, 'export function parseMobileAuthCallback', 'Authenticatio
 includes(authCallback, "reason: 'invalid_callback' | 'provider_error' | 'missing_session'", 'Authentication callback parser');
 
 includes(callbackScreen, 'parseMobileAuthCallback', 'Authentication callback screen');
-includes(callbackScreen, 'supabase.auth.setSession', 'Authentication callback screen');
-includes(callbackScreen, "router.replace('/home')", 'Authentication callback screen');
-includes(callbackScreen, "supabase.auth.signOut({ scope: 'local' })", 'Authentication callback screen');
+includes(callbackScreen, 'completeMobileAuth', 'Authentication callback screen');
+includes(callbackScreen, "context.role ? '/home'", 'Authentication callback screen');
+includes(callbackScreen, "pathname: '/signup'", 'Authentication callback screen');
+includes(session, 'supabase.auth.setSession', 'Shared authentication completion');
+includes(session, 'createMobileCallbackExchange', 'Shared authentication completion');
+includes(session, 'savedAppRole(profile?.role)', 'Saved account role routing');
+excludes(callbackScreen, 'supabase.auth.signOut', 'Authentication callback screen');
 excludes(callbackScreen, 'console.log', 'Authentication callback screen');
 excludes(callbackScreen, 'error_description', 'Authentication callback screen');
 

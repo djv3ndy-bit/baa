@@ -2,9 +2,9 @@
   "expo": {
     "name": "BaristaMatch",
     "slug": "baristamatch",
-    "description": "Connect with local cafés and baristas, discover opportunities, match, and message securely.",
+    "description": "Connect with local caf\u00e9s and baristas, discover opportunities, match, and message securely.",
     "scheme": "baristamatch",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "primaryColor": "#b75a1d",
     "icon": "./assets/icon.png",
     "orientation": "portrait",

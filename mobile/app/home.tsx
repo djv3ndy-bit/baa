@@ -1,90 +1,73 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, AppState, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { QuietFocusHome } from '@/components/QuietFocusHome';
 import { supabase } from '@/lib/supabase';
+import { getCurrentContext } from '@/lib/session';
+import { getProfileReadiness } from '@/lib/profilePrivacy';
+import { workAreaLabel } from '@/lib/floridaLocation';
+import { DashboardCounts, emptyDashboardCounts, loadHomeSummary } from '@/lib/homeSummary';
+import { LatestMessageRequest, messageError, withMessageDeadline } from '@/lib/messaging';
 
-type Role = 'barista' | 'cafe_owner_manager';
-type Profile = { role?: Role; display_name?: string | null; cafe_name?: string | null; avatar_url?:string|null; location?:string|null; bio?:string|null; skills?:string[]|null; availability?:string|null; experience?:string|null; pay_expectation?:string|null; cafe_address?:string|null; open_hours?:string|null; shop_type?:string|null; barista_preferences?:string|null };
-type DashboardCounts = { jobs: number; matches: number; alerts: number; candidates: number };
 const CAFE_PLAN_COPY = 'Your first job and first hire are included.';
 
-function completion(profile:Profile){
-  const fields=profile.role==='cafe_owner_manager'
-    ? [profile.cafe_name,profile.avatar_url,profile.location,profile.bio,profile.cafe_address,profile.open_hours,profile.shop_type,profile.barista_preferences]
-    : [profile.display_name,profile.avatar_url,profile.location,profile.bio,profile.skills,profile.availability,profile.experience,profile.pay_expectation];
-  const completed=fields.filter(value=>Array.isArray(value)?value.length>0:Boolean(String(value||'').trim())).length;
-  return Math.round((completed/fields.length)*100);
-}
-
 export default function HomeScreen() {
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [profile, setProfile] = useState<Profile>({});
-  const [counts, setCounts] = useState<DashboardCounts>({ jobs: 0, matches: 0, alerts: 0, candidates:0 });
-  const role: Role = profile.role === 'cafe_owner_manager' ? 'cafe_owner_manager' : 'barista';
-  const isCafe = role === 'cafe_owner_manager';
-  const name = profile.cafe_name || profile.display_name || (isCafe ? 'Your café' : 'Barista');
-  const firstName = name.trim().split(/\s+/)[0] || 'there';
-  const profileProgress = completion(profile);
+  const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);
+  const [profile, setProfile] = useState<Record<string, any> | null>(null);
+  const [counts, setCounts] = useState<DashboardCounts>(emptyDashboardCounts);
+  const [profileProgress, setProfileProgress] = useState(0), [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
 
-  useEffect(() => { load(true); }, []);
-
-  async function load(fullScreen = false) {
-    if (fullScreen) setLoading(true); else setRefreshing(true);
-    try {
-      const { data: auth, error: authError } = await supabase.auth.getSession();
-      if (authError) throw authError;
-      const user = auth.session?.user;
-      if (!user) { router.replace('/login'); return; }
-      const { data: p, error: profileError } = await supabase.from('profiles').select('role,display_name,cafe_name,avatar_url,location,bio,skills,availability,experience,pay_expectation,cafe_address,open_hours,shop_type,barista_preferences').eq('id', user.id).maybeSingle();
-      if (profileError) throw profileError;
-      if (p) setProfile(p as Profile);
-      const cafe = p?.role === 'cafe_owner_manager';
-      if(cafe){
-        const [jobs,legacyMatches,alerts,mutualMatches,candidates]=await Promise.all([
-          supabase.from('jobs').select('*',{count:'exact',head:true}).eq('owner_id',user.id).eq('active',true),
-          supabase.from('applications').select('*,jobs!inner(owner_id)',{count:'exact',head:true}).eq('jobs.owner_id',user.id).eq('status','matched'),
-          supabase.from('notifications').select('*',{count:'exact',head:true}).eq('recipient_id',user.id).is('read_at',null),
-          supabase.from('discovery_matches').select('*',{count:'exact',head:true}).eq('cafe_id',user.id),
-          supabase.from('applications').select('*,jobs!inner(owner_id)',{count:'exact',head:true}).eq('jobs.owner_id',user.id).eq('status','interested'),
+  useFocusEffect(useCallback(() => {
+    let live = true, userId = '';
+    const requests = new LatestMessageRequest();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    async function load() {
+      const current = requests.begin();
+      setRefreshing(true);
+      try {
+        const context = await withMessageDeadline(getCurrentContext());
+        if (!live || !current()) return;
+        if (!context.user) { router.replace('/login'); return; }
+        if (!context.role || !context.profile) { router.replace('/signup'); return; }
+        userId = context.user.id;
+        const [summary, demographics] = await Promise.all([
+          loadHomeSummary(supabase, userId, context.role, context.profile),
+          context.role === 'barista' ? withMessageDeadline(supabase.from('profile_demographics').select('date_of_birth').eq('user_id', userId).maybeSingle()) : Promise.resolve({ data: null, error: null }),
         ]);
-        setCounts({jobs:jobs.count||0,matches:(legacyMatches.count||0)+(mutualMatches.count||0),alerts:alerts.count||0,candidates:candidates.count||0});
-      }else{
-        const [jobs,legacyMatches,alerts,mutualMatches]=await Promise.all([
-          supabase.from('jobs').select('*',{count:'exact',head:true}).eq('active',true),
-          supabase.from('applications').select('*',{count:'exact',head:true}).eq('barista_id',user.id).eq('status','matched'),
-          supabase.from('notifications').select('*',{count:'exact',head:true}).eq('recipient_id',user.id).is('read_at',null),
-          supabase.from('discovery_matches').select('*',{count:'exact',head:true}).eq('barista_id',user.id),
-        ]);
-        setCounts({jobs:jobs.count||0,matches:(legacyMatches.count||0)+(mutualMatches.count||0),alerts:alerts.count||0,candidates:0});
-      }
-    } catch (error) {
-      console.error('Dashboard load failed', error);
-      Alert.alert('Could not refresh your dashboard', 'Your app is still safe. Check your connection and try again.');
-    } finally {
-      setLoading(false); setRefreshing(false);
+        if (demographics.error) throw demographics.error;
+        if (!live || !current()) return;
+        const readiness = getProfileReadiness({ ...context.profile, date_of_birth: demographics.data?.date_of_birth }, context.role);
+        const required = context.role === 'barista' ? 9 : 8;
+        setProfile(context.profile); setProfileProgress(Math.round((required - readiness.missing.length) / required * 100)); setCounts(summary); setError('');
+        if (!channel) {
+          channel = supabase.channel(`mobile-home-${userId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, () => { void load(); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'discovery_message_notifications', filter: `recipient_id=eq.${userId}` }, () => { void load(); })
+            .subscribe();
+        }
+      } catch (cause) { if (live && current()) setError(messageError(cause, 'Your dashboard could not refresh. Check your connection and try again.')); }
+      finally { if (live && current()) { setLoading(false); setRefreshing(false); } }
     }
-  }
+    void load();
+    const appState = AppState.addEventListener('change', state => { if (state === 'active') void load(); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (userId && (event === 'SIGNED_OUT' || (session && session.user.id !== userId))) {
+        live = false; requests.invalidate(); setProfile(null); setCounts(emptyDashboardCounts); router.replace('/login');
+      }
+    });
+    return () => { live = false; requests.invalidate(); appState.remove(); subscription.unsubscribe(); if (channel) void supabase.removeChannel(channel); };
+  }, [attempt]));
 
-  if (loading) return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator size="large" color="#b75a1d" /></View></SafeAreaView>;
-
-  return (
-    <QuietFocusHome
-      cafePlanCopy={CAFE_PLAN_COPY}
-      counts={counts}
-      firstName={firstName}
-      location={profile.location}
-      onOpenSettings={() => router.push('/settings')}
-      onRefresh={() => load(false)}
-      profileProgress={profileProgress}
-      refreshing={refreshing}
-      role={role}
-    />
-  );
+  const refresh = () => setAttempt(value => value + 1);
+  if (loading) return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator size="large" color="#b75a1d" /><Text style={s.copy}>Loading your dashboard…</Text></View></SafeAreaView>;
+  if (!profile) return <SafeAreaView style={s.safe}><View style={s.center}><Text style={s.title}>Your dashboard is unavailable</Text><Text accessibilityRole="alert" style={s.copy}>{error || 'Please sign in to open your account.'}</Text><Pressable accessibilityRole="button" onPress={refresh} style={s.button}><Text style={s.buttonText}>Try again</Text></Pressable><Pressable accessibilityRole="button" onPress={() => router.replace('/login')}><Text style={s.copy}>Back to login</Text></Pressable></View></SafeAreaView>;
+  const cafe = profile.role === 'cafe_owner_manager';
+  const displayName = (cafe ? profile.cafe_name : profile.display_name) || (cafe ? 'Your café' : 'there');
+  return <QuietFocusHome
+    cafePlanCopy={CAFE_PLAN_COPY} counts={counts} firstName={cafe ? displayName : displayName.trim().split(/\s+/)[0]}
+    location={cafe ? profile.location : workAreaLabel(profile)} error={error}
+    onOpenSettings={() => router.push('/settings')} onRefresh={refresh}
+    profileProgress={profileProgress} refreshing={refreshing} role={profile.role}
+  />;
 }
-
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fffdf9' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-});
+const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: '#fffdf9' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 26 }, title: { fontSize: 23, fontWeight: '800', color: '#321708', textAlign: 'center' }, copy: { color: '#746a61', fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 14 }, button: { marginTop: 20, backgroundColor: '#321708', padding: 15, borderRadius: 12 }, buttonText: { color: '#fff', fontWeight: '800' } });

@@ -36,8 +36,14 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393 }
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return native;
-    if (name === 'expo-router') return { router: { push: path => routes.push(path), replace: path => routes.push(path), back: () => routes.push('back') }, useLocalSearchParams: () => ({ id: 'test-match', kind: 'discovery' }) };
+    if (name === 'expo-router') return { useFocusEffect() {}, router: { push: path => routes.push(path), replace: path => routes.push(path), back: () => routes.push('back') }, useLocalSearchParams: () => ({ id: 'test-match', kind: 'discovery' }) };
     if (/\.(png|jpg)$/.test(name)) return 1;
+    if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => ({ ready: true, error: '', retry: async () => {} }) };
+    if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
+    if (name.endsWith('/profilePrivacy')) return { getProfileReadiness: () => ({ complete: false, missing: ['Profile picture'], visible: false }), normalizeOptionalGender: () => null };
+    if (name.endsWith('/floridaLocation')) return { workAreaLabel: () => 'Miami, FL', floridaCityFromLocation: () => 'Miami' };
+    if (name.endsWith('/jobEditor')) return { blankJobDraft: { title: '', description: '', street_address: '', city: '', postal_code: '', pay_min: '', pay_max: '' } };
+    if (name.endsWith('/marketplace')) return { applicationStatus: () => 'Awaiting review', formatJobPay: () => '$18–22/hr', interestState: () => ({ disabled: false, label: 'Send interest' }) };
     if (name.endsWith('/timeGreeting')) return { getTimeGreeting: () => 'Good morning' };
     // Async effects are not run. Stubs must not be used as production services.
     return {};
@@ -135,7 +141,7 @@ function assertContained(result, context, checkTargets = true) {
   }
   assert.ok(root.getComputedHeight() > 0);
 }
-const homeProps = { role: 'cafe_owner_manager', firstName: 'A very long café name', location: 'Miami, Florida', profileProgress: 80, counts: { jobs: 3, matches: 5, alerts: 1, candidates: 999 }, refreshing: false, cafePlanCopy: 'First hire free', onRefresh() {} };
+const homeProps = { role: 'cafe_owner_manager', firstName: 'A very long café name', location: 'Miami, Florida', profileProgress: 80, counts: { jobs: 3, matches: 5, alerts: 1, candidates: 999, applications: 12, messages: 5 }, refreshing: false, cafePlanCopy: 'First hire free', onRefresh() {} };
 const cases = [
   { name: 'café profile', file: 'mobile/app/profile.tsx', states: { 0: false, 3: 'cafe_owner_manager' } },
   { name: 'barista profile', file: 'mobile/app/profile.tsx', states: { 0: false } },

@@ -2,7 +2,7 @@
 
 > Current execution status and remaining gates: [Launch checklist](docs/LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
 
-Reviewed September 6, 2026 for version 1.0.3. This is a preparation record, not confirmation that any console form, signed build, or Apple review has passed.
+Updated September 7, 2026 for version 1.0.4. See [the current app audit](docs/APP-AUDIT-2026-09-07.md) for fixes and release evidence. This is a preparation record, not confirmation that any console form, signed build, or Apple review has passed.
 
 ## Legal and listing identity
 

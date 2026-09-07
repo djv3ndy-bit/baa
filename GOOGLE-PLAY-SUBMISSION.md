@@ -2,7 +2,7 @@
 
 > Current execution status and remaining gates: [Launch checklist](docs/LAUNCH-CHECKLIST.md). This preparation/audit record is not itself proof of store approval.
 
-Prepared September 6, 2026. No Play Console submission, organization verification or Android release is certified by this document.
+Updated September 7, 2026 for version **1.0.4**; see the [current app audit](docs/APP-AUDIT-2026-09-07.md). No Play Console submission, organization verification or Android release is certified by this document.
 
 ## Identity and public resources
 
@@ -16,6 +16,10 @@ Prepared September 6, 2026. No Play Console submission, organization verificatio
 - Public support email: `hello@baristajobmatch.com`
 
 The deletion page supports requests without reinstalling the app. Its email/support process needs actual owner verification, fulfillment and confirmation. Do not mark a request complete merely because it arrived.
+
+## Verified preparation gaps
+
+EAS signing credentials exist, but no Android submission service account or FCM V1 push credential is assigned, and the production environment has no Firebase client configuration. There are no EAS Android submissions in the current history. Manual Play Console uploads and organization verification remain unknown. Production Android builds now stop until a real matching Firebase client file is configured; see [Android setup](mobile/docs/android-push-build-configuration.md).
 
 ## Technical and account requirements
 
