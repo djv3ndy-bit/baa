@@ -83,19 +83,29 @@ function showSocialCompletion(session){
   setStatus('You are signed in. Complete the details below to create your profile.');
 }
 async function finishSocialSignup(session){
-  if(!session||completingSocial)return false;
-  completingSocial=true;
+  if(!session||completingSocial||signupBusy)return false;
+  completingSocial=true;signupBusy=true;
+  showSocialCompletion(session);
+  const controls=[...form.querySelectorAll('input,button')],disabledBefore=controls.map(input=>input.disabled);
+  controls.forEach(input=>input.disabled=true);
+  form.querySelector('[type="submit"]').textContent='Saving…';
+  setStatus('Finishing your account setup…');
   try{
     const existing=await findProfile(session.user);
     if(existing){clearPendingSignup();location.replace('/dashboard.html');return true}
     const pending=readPendingSignup();
-    if(!pending){showSocialCompletion(session);return false}
-    showSocialCompletion(session);
+    if(!pending){setStatus('You are signed in. Complete the details below to create your profile.');return false}
     form.querySelector(`[value="${pending.role}"]`).checked=true;
     form.elements.name.value=pending.name;form.elements.location.value=pending.location;form.elements.terms.checked=true;updateNameLabel();
     const saved=await saveStarterProfile(session.user,pending.role,pending.name,pending.location);
     clearPendingSignup();location.replace(saved.role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return true;
-  }finally{completingSocial=false}
+  }catch(error){
+    setStatus(error.message||'Your profile setup could not finish. Please try again.',true);return false;
+  }finally{
+    completingSocial=false;signupBusy=false;
+    controls.forEach((input,index)=>input.disabled=disabledBefore[index]);
+    form.querySelector('[type="submit"]').textContent='Save and continue';
+  }
 }
 async function initialize(){
   try{
