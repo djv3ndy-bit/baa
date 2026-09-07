@@ -866,7 +866,7 @@ document.getElementById('profile-form').onsubmit=async event=>{
     currentProfile=confirmedProfile;
     const discoverable=currentProfile.is_discoverable===true,visibleToCafes=discoverable&&currentProfile.visible_to_cafes===true;
     status.textContent=isBarista?(ready?(visibleToCafes?'Profile saved and visible to café owners.':discoverable?'Profile saved. Your profile stays hidden until you turn visibility on.':'Profile saved. Discovery is not available yet. Review your account requirements or contact support.'):'Profile saved. Complete all required details before turning visibility on.'):(discoverable?'Café profile saved and ready for discovery.':ready?'Café profile saved, but discovery is not available yet. Please contact support.':'Café profile saved. Complete all required details to publish jobs.');
-    try{await refreshMarketplaceAfterProfileSave()}catch{status.textContent+=' Your search results could not refresh. Reload to try again.';return}
+    try{if(await refreshMarketplaceAfterProfileSave()===false){status.textContent+=' Your search results could not refresh. Reload to try again.';return}}catch{status.textContent+=' Your search results could not refresh. Reload to try again.';return}
     if(ready&&!discoverable)return;
     document.getElementById('profile-dialog').close();
     if(currentSection===sectionAtStart&&currentSection!=='Messages')openSection(currentSection,currentView,currentRole)

@@ -47,7 +47,7 @@ function profileSaveHarness(options={}){
  Object.assign(c,{currentUser:{id:'test'},currentSection:options.section||'Café Profile',currentView:{},document:{getElementById:id=>elements[id]},FormData:class{
   constructor(){this.snapshot={...fields};if(nameInput.disabled)delete this.snapshot.name}
   get(key){return this.snapshot[key]||''}getAll(){return ['Espresso']}
- },isFloridaPlace:()=>true,collectOpeningHours:()=>hours.value,refreshMarketplaceAfterProfileSave:async()=>{refreshes++;await options.refresh?.()},setTimeout:callback=>timers.push(callback),openSection:section=>renders.push(section),activeClient:{
+ },isFloridaPlace:()=>true,collectOpeningHours:()=>hours.value,refreshMarketplaceAfterProfileSave:async()=>{refreshes++;return await options.refresh?.()},setTimeout:callback=>timers.push(callback),openSection:section=>renders.push(section),activeClient:{
   storage:{from:()=>({upload:async()=>options.upload?options.upload():{error:null},getPublicUrl:()=>({data:{publicUrl:'/uploaded.png'}})})},
   from:()=>({update:payload=>({eq:()=>({select:()=>({single:async()=>{writes.push(payload);const result=await options.write?.(writes.length,payload);return result||{data:{...profile,...payload,is_discoverable:Boolean(options.discoverable)}}}})})})})
  }});
@@ -89,4 +89,8 @@ test('profile completion does not replace a subsequently opened Messages convers
 });
 test('profile completion never rebuilds Messages even when it was the originating section',async()=>{
  const h=profileSaveHarness({discoverable:true,section:'Messages'});await h.submit();assert.deepEqual(h.renders,[]);assert.equal(h.closes,1);
+});
+test('a saved profile with failed marketplace refresh retains its confirmation and retry guidance',async()=>{
+ const h=profileSaveHarness({discoverable:true,refresh:async()=>false});await h.submit();
+ assert.equal(h.c.currentProfile.is_discoverable,true);assert.match(h.status.textContent,/profile saved/i);assert.match(h.status.textContent,/results could not refresh/);assert.equal(h.dialog.open,true);assert.equal(h.button.disabled,false);
 });

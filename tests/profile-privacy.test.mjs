@@ -64,11 +64,12 @@ test('picker failure is recoverable and oversized files are rejected', async () 
 const visibilityCode = web.match(/const profileFields=[^\n]+/)[0]+'\n'+web.slice(web.indexOf('function validBaristaBirthDate'),web.indexOf('function trustBanner'));
 const saveCode = web.slice(web.indexOf("document.getElementById('profile-form').onsubmit"), web.indexOf("document.getElementById('job-cancel')"));
 function webHarness(gender, previousGender = null) {
-  const rows = [], status = { textContent: '' }, button = {}, form = { querySelector: () => button };
+  const rows = [], status = { textContent: '' }, button = {}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button],setAttribute(){},removeAttribute(){} };
   const values = { location:'Miami, FL', date_of_birth:'2000-01-01', gender_identity:gender, name:'Test barista', bio:'Coffee experience', skills:'Espresso', experience:'2 years', pay_expectation:'20' };
   const profile = { display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
   const context = {
-    document:{getElementById:id => id==='profile-form' ? form : status},
+    document:{getElementById:id => id==='profile-form' ? form : id==='profile-dialog'?dialog:status},
+    profileSaveInProgress:false,currentSection:'My Profile',currentView:{},openSection(){},
     currentRole:'barista', currentUser:{id:'test-user'}, currentProfile:profile,
     currentDemographics:{ date_of_birth:'2000-01-01', gender_identity:previousGender },
     FormData:class { get(key) {return values[key] ?? null} set(key,value){values[key]=value} getAll(){return []} },
