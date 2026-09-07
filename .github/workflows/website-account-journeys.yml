@@ -5,6 +5,7 @@ on:
     paths:
       - '*.html'
       - 'dashboard-quiet-focus.*'
+      - 'cafe-account-gate.js'
       - 'api/**'
       - 'supabase/migrations/**'
       - 'tests/**'
@@ -15,6 +16,7 @@ on:
     paths:
       - '*.html'
       - 'dashboard-quiet-focus.*'
+      - 'cafe-account-gate.js'
       - 'api/**'
       - 'supabase/migrations/**'
       - 'tests/**'

@@ -5,11 +5,12 @@ import vm from 'node:vm';
 
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
-test('public homepage loads the Warm Editorial layout without removing pricing', () => {
+test('public homepage keeps the Warm Editorial layout without public café pricing', () => {
   const homepage = read('index.html');
   assert.match(homepage, /href="\/warm-editorial\.css"/);
   assert.match(homepage, /src="\/warm-editorial\.js"/);
-  assert.match(homepage, /href="\/pricing\.html">Pricing<\/a>/);
+  assert.doesNotMatch(homepage, /href="\/(?:pricing|cafe-trial)(?:\.html)?/);
+  assert.doesNotMatch(homepage, /Your first job and first hire are free\.|\$9\.99/);
   assert.ok(fs.existsSync(new URL('../assets/warm-editorial-cafe-v2.jpg', import.meta.url)));
 });
 

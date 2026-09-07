@@ -3,119 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Start hiring free with BaristaMatch, then upgrade to Café Pro for $9.99 per month.">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Access your BaristaMatch café account.">
   <link rel="icon" href="/assets/favicon-32-v2.png">
-  <title>Café pricing — BaristaMatch</title>
+  <title>Café account — BaristaMatch</title>
   <style>
-    :root{--brown:#321708;--dark:#3b1b0b;--orange:#d8641e;--cream:#fffaf3;--paper:#fff;--muted:#746a61;--line:#e3d4c8;--green:#4f7445}
-    *{box-sizing:border-box}
-    html{background:var(--cream)}
-    body{margin:0;background:radial-gradient(circle at 82% 7%,#efd0b655 0,transparent 26%),var(--cream);color:#27150d;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}
-    a{text-decoration:none;color:inherit}
-    button,a{font:inherit}
-    .wrap{width:min(1120px,calc(100% - 34px));margin:auto}
-    header{position:sticky;top:0;z-index:20;border-bottom:1px solid #eadfd5;background:#fffaf3ed;backdrop-filter:blur(14px)}
-    nav{min-height:72px;display:flex;align-items:center;gap:18px}
-    .brand{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:900}
-    .brand img{width:42px;height:42px;object-fit:contain}
-    .brand b{color:#b9561c}
-    .navlinks{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px;font-weight:800}
-    .button{display:inline-flex;align-items:center;justify-content:center;min-height:45px;padding:11px 17px;border:1px solid #c9ad99;border-radius:12px;background:#fff;color:var(--brown);font-weight:900}
-    .button.dark{border-color:var(--brown);background:var(--brown);color:#fff}
-    .hero{max-width:790px;margin:auto;padding:76px 0 42px;text-align:center}
-    .eyebrow{font-size:11px;font-weight:900;letter-spacing:.17em;color:#b75a1d}
-    h1{margin:12px 0 16px;font:700 clamp(42px,7vw,67px)/1.03 Georgia,serif;letter-spacing:-.035em;color:var(--brown)}
-    .hero p{max-width:680px;margin:auto;color:var(--muted);font-size:18px;line-height:1.6}
-    .plans{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:18px;align-items:stretch;padding-bottom:24px}
-    .plan{display:flex;flex-direction:column;position:relative;overflow:hidden;min-width:0;padding:30px;border-radius:26px}
-    .free{border:1px solid var(--line);background:#fff;box-shadow:0 13px 36px #3217080d}
-    .pro{border:1px solid #3b1b0b;background:linear-gradient(145deg,#3b1b0b,#54240d);color:#fff;box-shadow:0 22px 58px #32170828}
-    .pro:after{content:"";position:absolute;right:-90px;bottom:-105px;width:270px;height:270px;border-radius:50%;background:#d8641e22}
-    .plan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;position:relative;z-index:1}
-    .plan-label{font-size:12px;font-weight:900;letter-spacing:.16em;color:#6f5c50}
-    .pro .plan-label{color:#e2bd9f}
-    .price{display:flex;align-items:flex-end;margin-top:7px}
-    .price strong{font:700 48px/1 Georgia,serif;letter-spacing:-.025em;color:var(--brown)}
-    .pro .price strong{color:#fff}
-    .price small{margin:0 0 6px 6px;color:#817269;font-size:13px;font-weight:800}
-    .pro .price small{color:#e4cbb9}
-    .pill{display:inline-block;padding:7px 10px;border-radius:999px;background:#edf3e8;color:var(--green);font-size:9px;font-weight:900;letter-spacing:.07em;white-space:nowrap}
-    .founder{background:#f8e8dc;color:#692f10}
-    .description{position:relative;z-index:1;min-height:44px;margin:12px 0 22px;color:#66574f;font-size:15px;line-height:1.5}
-    .pro .description{color:#e8d6c8}
-    .features{position:relative;z-index:1;display:grid;gap:13px;list-style:none;margin:0 0 27px;padding:0;flex:1}
-    .features li{display:flex;align-items:center;font-size:14px;line-height:1.4;font-weight:750}
-    .features li:before{content:"✓";display:grid;place-items:center;width:22px;height:22px;margin-right:10px;border-radius:50%;background:#edf3e8;color:var(--green);font-size:12px;font-weight:900;flex:0 0 auto}
-    .pro .features li:before{background:#ff9b5b;color:var(--brown)}
-    .plan .button{position:relative;z-index:1;width:100%}
-    .pro-button{border:0;color:#fff;background:var(--orange);cursor:pointer}
-    .fine{position:relative;z-index:1;margin:12px 0 0;text-align:center;color:#8b7c72;font-size:11px;line-height:1.55}
-    .pro .fine{color:#c9ad99}
-    .preview-status{min-height:18px;margin:10px 0 0;text-align:center;color:#ffd4ba;font-size:11px;font-weight:800}
-    .barista-note{display:flex;align-items:center;justify-content:center;gap:15px;margin:18px auto 72px;padding:24px;border:1px solid var(--line);border-radius:22px;background:#fff;text-align:left}
-    .barista-note span{font-size:32px}
-    .barista-note strong{display:block;color:var(--brown);font-size:18px}
-    .barista-note p{margin:4px 0 0;color:var(--muted);font-size:13px}
-    footer{display:flex;justify-content:space-between;gap:18px;padding:28px 0;border-top:1px solid var(--line);color:var(--muted);font-size:13px}
-    @media(max-width:780px){.plans{grid-template-columns:1fr;max-width:610px;margin:auto}.description{min-height:0}.hero{padding-top:54px}}
-    @media(max-width:560px){.navlinks a:not(.button){display:none}.wrap{width:min(100% - 28px,1120px)}.plan{padding:23px 20px}.price strong{font-size:43px}.hero p{font-size:16px}.barista-note{margin-bottom:46px}footer{display:grid}}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#fffaf3;color:#321708;font-family:Arial,sans-serif}main{width:min(480px,100%);padding:32px;border:1px solid #e3d4c8;border-radius:24px;background:#fff;text-align:center}img{width:52px;height:52px}h1{font:700 32px Georgia,serif}p{color:#746a61;line-height:1.6}.actions{display:flex;justify-content:center;flex-wrap:wrap;gap:12px}a,button{padding:12px 18px;border:1px solid #c9ad99;border-radius:12px;color:#321708;background:#fff;font:700 14px Arial,sans-serif;text-decoration:none;cursor:pointer}[hidden]{display:none!important}
   </style>
-  <script defer src="/analytics.js"></script>
 </head>
 <body>
-  <header>
-    <nav class="wrap">
-      <a class="brand" href="/"><img src="/assets/favicon-transparent-v2.png" alt="BaristaMatch logo"><span>Barista<b>Match</b></span></a>
-      <div class="navlinks"><a href="/">Home</a><a href="/#cafes">For Cafés</a><a class="button dark" href="/signup.html?role=cafe_owner_manager">Start free</a></div>
-    </nav>
-  </header>
-
-  <main class="wrap">
-    <section class="hero">
-      <div class="eyebrow">SIMPLE CAFÉ PRICING</div>
-      <h1>Make your first hire free.</h1>
-      <p>Start with everything you need for one successful hire. Upgrade only when your café is ready to hire again.</p>
-    </section>
-
-    <section class="plans" aria-label="Café plans">
-      <article class="plan free">
-        <div class="plan-head">
-          <div><div class="plan-label">FREE</div><div class="price"><strong>$0</strong><small>forever</small></div></div>
-          <span class="pill">START HERE</span>
-        </div>
-        <p class="description">Your first job and first hire are on us.</p>
-        <ul class="features">
-          <li>Post your first job free</li>
-          <li>View applicants and full profiles</li>
-          <li>Message your matches</li>
-          <li>Hire your first barista</li>
-        </ul>
-        <a class="button" href="/signup.html?role=cafe_owner_manager">Create a free café account</a>
-        <p class="fine">No credit card required.</p>
-      </article>
-
-      <article class="plan pro">
-        <div class="plan-head">
-          <div><div class="plan-label">PRO</div><div class="price"><strong>$9.99</strong><small>/ month</small></div></div>
-          <span class="pill founder">FOUNDER PRICE</span>
-        </div>
-        <p class="description">For cafés that are growing their team.</p>
-        <ul class="features">
-          <li>Up to 3 active jobs</li>
-          <li>Unlimited candidate profile viewing</li>
-          <li>Unlimited messaging</li>
-          <li>Smart candidate matches</li>
-          <li>Save baristas for later</li>
-          <li>Full hiring dashboard</li>
-        </ul>
-        <a class="button pro-button" href="/signup.html?role=cafe_owner_manager">Start free, then choose Pro →</a>
-        <p class="fine">Cancel anytime. Founder pricing stays with you while your subscription remains active.</p>
-      </article>
-    </section>
-
-    <section class="barista-note"><span aria-hidden="true">☕</span><div><strong>Baristas stay free.</strong><p>BaristaMatch never charges baristas to find work.</p></div></section>
+  <main>
+    <a href="/" aria-label="BaristaMatch home"><img src="/assets/favicon-transparent-v2.png" alt=""></a>
+    <h1>Your café account</h1>
+    <p id="status" role="status">Checking your account…</p>
+    <div class="actions"><button id="retry" type="button" hidden>Try again</button><a href="/login.html">Log in</a><a href="/signup.html?role=cafe_owner_manager">Create a café account</a></div>
+    <noscript><p>Enable JavaScript and log in to access your café account.</p></noscript>
   </main>
-
-  <footer class="wrap"><div>© BaristaMatch · Swipe. Match. Brew.</div><div>hello@baristajobmatch.com</div></footer>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+  <script src="/cafe-account-gate.js"></script>
+  <script>
+    async function openCafePricing(){
+      const status=document.getElementById('status'),retry=document.getElementById('retry');retry.hidden=true;status.textContent='Checking your account…';
+      try{const account=await window.BaristaMatchCafeGate.authorize();if(account)location.replace('/dashboard.html?section=subscription')}
+      catch(error){status.textContent=error.message||'We could not open your account. Please try again.';retry.hidden=false}
+    }
+    document.getElementById('retry').onclick=openCafePricing;
+    openCafePricing();
+  </script>
 </body>
 </html>

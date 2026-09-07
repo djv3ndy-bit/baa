@@ -88,7 +88,7 @@ for(const token of ['barista-image-field','preferred_city','preferred_state','pr
 if(dashboard.includes(".wow-stat:nth-child(4) .profile-info{font-size:12px;color:#a95820;vertical-align:1px}.wow-stat-label{color:#dbcbbc}")) throw new Error('Dashboard has global wow-stat label color bleed');
 const homepage=fs.readFileSync('index.html','utf8');
 if(!homepage.includes('href="/support.html">Help Center</a>')||!homepage.includes('href="/support.html">Contact Us</a>')) throw new Error('Homepage support links are not routed to support page');
-if(!homepage.includes('href="/pricing.html">Pricing</a>')||!homepage.includes('Your first job and first hire are free.'))throw new Error('Homepage café pricing entry points are out of sync');
+if(/href=["'][^"']*(?:pricing|cafe-trial)/i.test(homepage)||homepage.includes('Your first job and first hire are free.')||homepage.includes('$9.99'))throw new Error('Café pricing must not appear on the public homepage');
 
 // Mobile interaction regressions.
 const mobileHome=fs.readFileSync('mobile/app/home.tsx','utf8');
@@ -154,7 +154,7 @@ if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API 
 
 // Café pricing synchronization. Historical SQL migrations may retain old trial
 // language, but every current customer-facing surface must use this offer.
-const pricingFiles=['pricing.html','cafe-trial.html','mobile/app/subscription.tsx','mobile/app/cafe-trial.tsx','PRICING-DECISION.md'];
+const pricingFiles=['cafe-trial.html','mobile/app/subscription.tsx','mobile/app/cafe-trial.tsx','PRICING-DECISION.md'];
 const pricingTokens=['$9.99','3 active jobs','first job','first hire','founder price'];
 for(const file of pricingFiles){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
@@ -169,7 +169,10 @@ if(!stripeCheckout.includes('monthlyPriceCents: 999')||!stripeCheckout.includes(
 if(!stripeCheckout.includes('currentPeriodEnd: subscription?.current_period_end')||!stripeCheckout.includes('connectedToBilling'))throw new Error('Billing status omits paying-café renewal details');
 if(/async function createPortal[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeCheckout)||/async function stripeWebhook[\s\S]*?if \(BILLING_PAUSED\)/.test(stripeWebhook))throw new Error('Billing pause blocks existing customers from managing or canceling subscriptions');
 const publicPricing=fs.readFileSync('pricing.html','utf8');
-if(!publicPricing.includes('/signup.html?role=cafe_owner_manager')||publicPricing.includes('Founder checkout is not active yet'))throw new Error('Public pricing must route cafés through an authenticated account before Checkout');
+if(!publicPricing.includes('/signup.html?role=cafe_owner_manager')||!publicPricing.includes('BaristaMatchCafeGate.authorize()')||!publicPricing.includes('/dashboard.html?section=subscription')||/\$\d|class="plans"/.test(publicPricing))throw new Error('The old public pricing route must be an account gateway without prices');
+const cafeAccess=fs.readFileSync('cafe-trial.html','utf8'),cafeGate=fs.readFileSync('cafe-account-gate.js','utf8');
+if(!cafeAccess.includes('id="cafe-plans" hidden')||!cafeAccess.includes('[hidden]{display:none!important}')||!cafeAccess.includes('BaristaMatchCafeGate.authorize()')||!cafeAccess.includes("event==='SIGNED_OUT'"))throw new Error('Café welcome pricing must stay hidden until café authorization and hide on sign-out');
+if(!cafeGate.includes("profile.role!=='cafe_owner_manager'")||!cafeGate.includes(".select('role')")||!cafeGate.includes('client.auth.getSession()'))throw new Error('Pricing access must verify the saved café account role');
 if(ownerDashboardScript.includes("metric('Free trials'")||!ownerDashboardScript.includes('Free and Pro plan displays are synchronized'))throw new Error('Private subscription analytics uses stale launch-plan labels');
 const mobileSubscription=fs.readFileSync('mobile/app/subscription.tsx','utf8');
 if(!mobileSubscription.includes("role !== 'cafe_owner_manager'")||!mobileSubscription.includes("router.replace('/home')"))throw new Error('Mobile subscription route is not protected from barista accounts');
