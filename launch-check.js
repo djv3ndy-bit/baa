@@ -109,7 +109,8 @@ const mobileLogin=fs.readFileSync('mobile/app/login.tsx','utf8');
 if(!mobileLogin.includes("router.push('/forgot-password')")) throw new Error('Mobile login is missing password recovery');
 if(!/finally\s*\{[^}]*setSocialLoading\(null\)/.test(mobileLogin)) throw new Error('Mobile social login can remain stuck after cancellation');
 if(!mobileLogin.includes('<ScrollView') || !mobileLogin.includes('KeyboardAvoidingView')) throw new Error('Mobile login controls must remain reachable above the keyboard and with large text');
-if(!mobileLogin.includes('height < 900')||!mobileLogin.includes('height < 720')||!mobileLogin.includes('styles.sheetShort')) throw new Error('Mobile login responsive layouts do not cover all supported iPhone heights');
+// Viewport-sized photo header replaces the previous fixed breakpoint styles.
+if(!mobileLogin.includes('useWindowDimensions') || !mobileLogin.includes('useSafeAreaInsets') || !/height:\s*heroHeight/.test(mobileLogin) || !mobileLogin.includes('keyboardVisible') || !/minHeight:\s*inputHeight/.test(mobileLogin)) throw new Error('Mobile login must size its hero and inputs for the viewport, safe areas, larger text and keyboard');
 // First-time OAuth users complete the same explicit role and consent form as email users.
 if(!mobileLogin.includes("pathname: '/signup'")) throw new Error('New mobile OAuth accounts must complete signup');
 const mobileSignup=fs.readFileSync('mobile/app/signup.tsx','utf8');
