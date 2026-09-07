@@ -133,7 +133,7 @@
         <p class="quiet-meta">⌖ ${escapeHtml(cafe)} · ${escapeHtml(location)}</p>
         <div class="quiet-tags">${tagList(job.schedule)}</div>
         <p>${escapeHtml(job.description || 'Open the listing to learn more about this local café opportunity.')}</p>
-        <button class="quiet-primary" type="button" data-go="Discover">View job <span aria-hidden="true">→</span></button>
+        <button class="quiet-primary" type="button" data-view-job="${escapeHtml(job.id)}">View job <span aria-hidden="true">→</span></button>
       </div>
     </article>`;
   }
@@ -163,7 +163,7 @@
     const rows = context.marketJobs.slice(1, 3);
     if (!rows.length) return '';
     return `<section class="quiet-more"><div class="quiet-section-heading"><h3>${isCafe ? 'More job posts' : 'More jobs for you'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">See all <span aria-hidden="true">→</span></button></div><div class="quiet-more-grid">${rows
-      .map((job) => `<button class="quiet-mini-job" type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}"><span class="quiet-mini-photo" aria-hidden="true"></span><span><strong>${escapeHtml(job.title || 'Barista role')}</strong><small>${escapeHtml(isCafe ? (job.location || 'Florida') : (job.owner?.cafe_name || 'Local café'))}</small></span><b>${escapeHtml(money(job))}</b></button>`)
+      .map((job) => `<button class="quiet-mini-job" type="button" ${isCafe ? 'data-go="Job Posts"' : `data-view-job="${escapeHtml(job.id)}"`}><span class="quiet-mini-photo" aria-hidden="true"></span><span><strong>${escapeHtml(job.title || 'Barista role')}</strong><small>${escapeHtml(isCafe ? (job.location || 'Florida') : (job.owner?.cafe_name || 'Local café'))}</small></span><b>${escapeHtml(money(job))}</b></button>`)
       .join('')}</div></section>`;
   }
 
@@ -178,7 +178,9 @@
     const unreadMessages = context.notificationRows.filter((item) => item.type === 'message' && !item.read_at).length;
     const feature = isCafe ? cafeFeature(context) : baristaFeature(context);
     const activeJobs = context.marketJobs.filter((item) => item.active !== false).length;
-    const interested = context.applications.filter((item) => item.status === 'interested').length;
+    const interests = context.discoveryInterests || [];
+    const interested = context.applications.filter((item) => item.status === 'interested').length + interests.filter((item) => item.target_id === profile.id && !context.discoveryMatches.some((match) => match.barista_id === item.sender_id)).length;
+    const sentInterests = interests.filter((item) => item.sender_id === profile.id).length;
     const activity = isCafe
       ? [
           activityTile({ icon: '▣', value: activeJobs, label: 'Job posts', copy: 'Manage active roles', section: 'Job Posts' }),
@@ -188,7 +190,7 @@
         ]
       : [
           activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse nearby cafés', section: 'Discover' }),
-          activityTile({ icon: '↗', value: context.applications.length, label: 'Applications', copy: 'Track your progress', section: 'Applications' }),
+          activityTile({ icon: '↗', value: context.applications.length + sentInterests, label: 'Applications & interests', copy: 'Track your progress', section: 'Applications' }),
           activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];
 
@@ -196,7 +198,7 @@
       ${hero({ name: firstName, location, isCafe })}
       <div class="quiet-layout">
         <div class="quiet-primary-column">
-          <div class="quiet-section-heading"><h3>${isCafe ? 'Your hiring focus' : 'Best match for you'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">${isCafe ? 'Manage jobs' : 'See all jobs'} <span aria-hidden="true">→</span></button></div>
+          <div class="quiet-section-heading"><h3>${isCafe ? 'Your hiring focus' : 'Latest job in your work area'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">${isCafe ? 'Manage jobs' : 'See all jobs'} <span aria-hidden="true">→</span></button></div>
           ${feature}
           ${moreJobs(context, isCafe)}
         </div>
@@ -204,7 +206,7 @@
           <h3>Your activity</h3>
           <div class="quiet-activity-grid">${activity.join('')}</div>
           ${isCafe ? '' : `<div class="quiet-guided-activity">${[
-            ['↗', 'Applications', 'Applications'],
+            ['↗', 'Applications & interests', 'Applications'],
             ['eye', 'Profile Views', 'Profile Views'],
             ['◎', 'My Profile', 'My Profile']
           ].map(([icon, label, section]) => `<button type="button" data-go="${section}">${iconSvg(icon)}<span>${label}</span><span aria-hidden="true">›</span></button>`).join('')}</div>`}
