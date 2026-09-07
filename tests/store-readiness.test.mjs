@@ -62,9 +62,14 @@ test('public deletion resource is usable without the app or scripts', () => {
   assert.match(html, /Backup copies/);
   assert.doesNotMatch(html, /<script\b/i);
 });
-test('Android root respects all system-bar and cutout insets; iOS keeps per-screen insets', () => {
+test('Android root protects insets; the photo login owns its safe areas on both platforms', () => {
   const layout = read('mobile/app/_layout.tsx');
   assert.match(layout, /import \{ SafeAreaView \} from 'react-native-safe-area-context'/);
-  assert.match(layout, /Platform\.OS === 'android' \? \['top', 'right', 'bottom', 'left'\] : \[\]/);
+  assert.match(layout, /Platform\.OS === 'android' && !isLogin \? \['top', 'right', 'bottom', 'left'\] : \[\]/);
+  assert.match(layout, /const isLogin = pathname === '\/login'/);
+  const login = read('mobile/app/login.tsx');
+  assert.match(login, /useSafeAreaInsets/);
+  assert.match(login, /paddingTop: insets\.top \+ 12/);
+  assert.match(login, /paddingBottom: Math\.max\(insets\.bottom, 16\)/);
   assert.match(layout, /<Stack screenOptions/);
 });

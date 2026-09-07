@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text as NativeText, TextInput, TextProps, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
@@ -17,8 +18,23 @@ function Text(props: TextProps) {
 
 export default function LoginScreen() {
   const { width, height, fontScale } = useWindowDimensions();
-  const short = height < 720 || width < 350 || fontScale > 1.25;
-  const compact = short || height < 900 || width < 390;
+  const insets = useSafeAreaInsets();
+  const compact = height < 740 || width < 375;
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const passwordInput = useRef<TextInput>(null);
+  // An explicit hero height remains stable inside a scrolling content container.
+  // The form keeps its touch targets and scrolls on small screens or large text.
+  const heroHeight = keyboardVisible
+    ? insets.top + 110
+    : Math.max(insets.top + 156, Math.min(360, height * 0.38, height - 490));
+  const inputHeight = Math.max(48, 48 * Math.min(fontScale, 1.5));
+
+  useEffect(() => {
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -79,115 +95,162 @@ export default function LoginScreen() {
   const busy = loading || socialLoading !== null;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-          <View style={[styles.hero, { flexBasis: short ? '30%' : compact ? '37%' : '41%' }, compact && styles.heroCompact, short && styles.heroShort]}>
-            <View style={styles.heroGlow} />
-            <Image source={require('../assets/website-favicon.png')} resizeMode="contain" style={[styles.logo, compact && styles.logoCompact, short && styles.logoShort]} />
-            <Text adjustsFontSizeToFit numberOfLines={1} style={[styles.brand, compact && styles.brandCompact, short && styles.brandShort]}>Barista<Text style={styles.brandAccent}>Match</Text></Text>
-            <Text style={[styles.tagline, compact && styles.taglineCompact, short && styles.taglineShort]}>Where cafés meet baristas.</Text>
-            <View style={[styles.accentLine, compact && styles.accentLineCompact, short && styles.accentLineShort]} />
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.page}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.hero, { height: heroHeight, paddingTop: insets.top + 12 }]}>
+            <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
+            <View pointerEvents="none" style={styles.heroShade} />
+            <View style={[styles.brandBlock, compact && styles.brandBlockCompact]}>
+              {!keyboardVisible && <Image accessible={false} source={require('../assets/brand-mark.png')} resizeMode="contain" style={styles.logo} />}
+              <Text accessibilityRole="header" adjustsFontSizeToFit numberOfLines={1} style={[styles.brand, compact && styles.brandCompact]}>
+                Barista<Text style={styles.brandAccent}>Match</Text>
+              </Text>
+              <Text style={styles.tagline}>Where cafés meet baristas.</Text>
+            </View>
           </View>
 
-          <View style={[styles.sheet, compact && styles.sheetCompact, short && styles.sheetShort]}>
-            <View style={[styles.handle, compact && styles.handleCompact, short && styles.handleShort]} />
-            <Text style={[styles.label, compact && styles.labelCompact, short && styles.labelShort]}>Email</Text>
-            <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort]}>
-              <Text style={[styles.fieldIcon, short && styles.fieldIconShort]}>✉</Text>
-              <TextInput editable={!busy} allowFontScaling={false} maxFontSizeMultiplier={1} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" returnKeyType="next" textContentType="emailAddress" value={email} onChangeText={setEmail} style={[styles.input, short && styles.inputShort]} placeholder="Enter your email" placeholderTextColor="#8b8885" />
-            </View>
+          <View style={[styles.sheet, compact && styles.sheetCompact, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={styles.form}>
+              <Text accessibilityRole="header" style={[styles.heading, compact && styles.headingCompact]}>Welcome back.</Text>
+              <Text style={styles.subtitle}>Where cafés meet baristas.</Text>
 
-            <Text style={[styles.label, compact && styles.labelCompact, short && styles.labelShort]}>Password</Text>
-            <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort]}>
-              <View style={styles.lockIcon}><View style={styles.lockShackle} /><View style={styles.lockBody} /></View>
-              <TextInput editable={!busy} allowFontScaling={false} maxFontSizeMultiplier={1} secureTextEntry={!passwordVisible} autoComplete="current-password" returnKeyType="go" textContentType="password" onSubmitEditing={signIn} value={password} onChangeText={setPassword} style={[styles.input, short && styles.inputShort]} placeholder="Enter your password" placeholderTextColor="#8b8885" />
-              <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} onPress={() => setPasswordVisible(value => !value)} style={styles.eyeButton}>
-                <View style={styles.eye}><View style={styles.eyePupil} /></View>
+              <Text style={styles.label}>Email</Text>
+              <View style={[styles.inputShell, { minHeight: inputHeight }, focusedField === 'email' && styles.inputFocused]}>
+                <View accessible={false} style={styles.fieldIcon}><View style={styles.envelope}><View style={styles.envelopeFlap} /></View></View>
+                <TextInput
+                  accessibilityLabel="Email"
+                  editable={!busy}
+                  maxFontSizeMultiplier={1.5}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  submitBehavior="submit"
+                  textContentType="emailAddress"
+                  onSubmitEditing={() => passwordInput.current?.focus()}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
+                  value={email}
+                  onChangeText={setEmail}
+                  style={styles.input}
+                  placeholder="Enter your email"
+                  placeholderTextColor="#77706a"
+                />
+              </View>
+
+              <Text style={[styles.label, styles.passwordLabel]}>Password</Text>
+              <View style={[styles.inputShell, { minHeight: inputHeight }, focusedField === 'password' && styles.inputFocused]}>
+                <View accessible={false} style={styles.fieldIcon}><View style={styles.lockShackle} /><View style={styles.lockBody} /></View>
+                <TextInput
+                  ref={passwordInput}
+                  accessibilityLabel="Password"
+                  editable={!busy}
+                  maxFontSizeMultiplier={1.5}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  secureTextEntry={!passwordVisible}
+                  autoComplete="current-password"
+                  returnKeyType="go"
+                  textContentType="password"
+                  onSubmitEditing={signIn}
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField(null)}
+                  value={password}
+                  onChangeText={setPassword}
+                  style={styles.input}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#77706a"
+                />
+                <Pressable accessibilityRole="button" accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'} disabled={busy} onPress={() => setPasswordVisible(value => !value)} style={styles.eyeButton}>
+                  <View style={styles.eye}><View style={styles.eyePupil} /></View>
+                </Pressable>
+              </View>
+
+              <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push('/forgot-password')} style={styles.forgotButton}>
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </Pressable>
+
+              <Pressable accessibilityRole="button" accessibilityLabel="Log in" accessibilityState={{ disabled: busy, busy: loading }} onPress={signIn} disabled={busy} style={({ pressed }) => [styles.primary, pressed && styles.pressed, busy && styles.disabled]}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Log in</Text>}
+              </Pressable>
+
+              <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.or}>or continue with</Text><View style={styles.dividerLine} /></View>
+              <View style={styles.socialRow}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" accessibilityState={{ disabled: busy, busy: socialLoading === 'google' }} onPress={() => signInWithProvider('google')} disabled={busy} style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, busy && styles.disabled]}>
+                  {socialLoading === 'google' ? <ActivityIndicator color="#321708" /> : <Image accessible={false} source={require('../assets/google-sign-in.png')} style={styles.socialMark} />}
+                  <Text style={styles.socialText}>Google</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Continue with Apple" accessibilityState={{ disabled: busy, busy: socialLoading === 'apple' }} onPress={() => signInWithProvider('apple')} disabled={busy} style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, busy && styles.disabled]}>
+                  {socialLoading === 'apple' ? <ActivityIndicator color="#111" /> : <Image accessible={false} source={require('../assets/apple-sign-in.png')} style={styles.appleMark} />}
+                  <Text style={styles.socialText}>Apple</Text>
+                </Pressable>
+              </View>
+              <Pressable accessibilityRole="link" accessibilityLabel="Create an account" disabled={busy} onPress={() => router.push('/signup')} style={styles.createButton}>
+                <Text style={styles.createPrompt}>New here? <Text style={styles.createText}>Create an account</Text></Text>
               </Pressable>
             </View>
-
-            <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push('/forgot-password')} style={[styles.forgotButton, short && styles.forgotButtonShort]}><Text style={[styles.forgotText, short && styles.forgotTextShort]}>Forgot password?</Text></Pressable>
-
-            <Pressable onPress={signIn} disabled={busy} style={({ pressed }) => [styles.primary, compact && styles.primaryCompact, short && styles.primaryShort, pressed && styles.pressed, busy && styles.disabled]}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Log in</Text>}
-            </Pressable>
-
-            <View style={[styles.divider, compact && styles.dividerCompact, short && styles.dividerShort]}><View style={styles.dividerLine} /><Text style={styles.or}>or</Text><View style={styles.dividerLine} /></View>
-            <View style={styles.socialRow}>
-              <Pressable accessibilityRole="button" accessibilityLabel="Continue with Google" onPress={() => signInWithProvider('google')} disabled={busy} style={({ pressed }) => [styles.socialButton, compact && styles.socialButtonCompact, short && styles.socialButtonShort, pressed && styles.pressed, busy && styles.disabled]}>
-                {socialLoading === 'google' ? <ActivityIndicator color="#321708" /> : <GoogleMark />}
-                <Text numberOfLines={1} style={[styles.socialText, short && styles.socialTextShort]}>{short ? 'Google' : 'Continue with Google'}</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel="Continue with Apple" onPress={() => signInWithProvider('apple')} disabled={busy} style={({ pressed }) => [styles.socialButton, compact && styles.socialButtonCompact, short && styles.socialButtonShort, pressed && styles.pressed, busy && styles.disabled]}>
-                {socialLoading === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.appleMark}></Text>}
-                <Text numberOfLines={1} style={[styles.socialText, short && styles.socialTextShort]}>{short ? 'Apple' : 'Continue with Apple'}</Text>
-              </Pressable>
-            </View>
-            <Pressable accessibilityRole="link" disabled={busy} onPress={() => router.push('/signup')} style={[styles.createButton, compact && styles.createButtonCompact, short && styles.createButtonShort]}><Text style={[styles.createText, short && styles.createTextShort]}>Create an account</Text></Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
-
-function GoogleMark() {
-  return (
-    <View accessibilityElementsHidden style={styles.googleMark}>
-      <Text style={[styles.googlePart, styles.googleBlue]}>G</Text>
-      <View style={styles.googleWhiteCutout} />
-      <View style={styles.googleBar} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#fff4e8' }, flex: { flex: 1 }, page: { flexGrow: 1, backgroundColor: '#fff4e8' },
-  hero: { alignItems: 'center', justifyContent: 'center', paddingTop: 16, paddingBottom: 40, overflow: 'hidden' },
-  heroCompact: { paddingTop: 6, paddingBottom: 28 },
-  heroShort: { paddingTop: 2, paddingBottom: 12 },
-  heroGlow: { position: 'absolute', width: 520, height: 320, borderRadius: 260, bottom: -205, backgroundColor: '#f4dcc6', opacity: 0.48 },
-  logo: { width: 90, height: 90, marginBottom: 5 },
-  logoCompact: { width: 70, height: 70, marginBottom: 1 },
-  logoShort: { width: 48, height: 48, marginBottom: 0 },
-  brand: { color: '#4a2412', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 34, letterSpacing: -1 },
-  brandCompact: { fontSize: 29, letterSpacing: -.7, paddingHorizontal: 16 },
-  brandShort: { fontSize: 24, letterSpacing: -.5, paddingHorizontal: 10 },
-  brandAccent: { color: '#b86525' }, tagline: { marginTop: 6, color: '#2f211a', fontSize: 16, fontWeight: '500' },
-  taglineCompact: { marginTop: 3, fontSize: 14 },
-  taglineShort: { marginTop: 1, fontSize: 12 },
-  accentLine: { width: 72, height: 3, borderRadius: 3, backgroundColor: '#b86525', marginTop: 16 },
-  accentLineCompact: { width: 68, marginTop: 12 },
-  accentLineShort: { width: 52, height: 2, marginTop: 6 },
-  sheet: { flex: 1, marginTop: -24, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, paddingHorizontal: 26, paddingTop: 12, paddingBottom: 12, shadowColor: '#321708', shadowOpacity: 0.08, shadowRadius: 20, shadowOffset: { width: 0, height: -6 } },
-  sheetCompact: { marginTop: -22, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 8, borderTopLeftRadius: 26, borderTopRightRadius: 26 },
-  sheetShort: { marginTop: -18, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, borderTopLeftRadius: 22, borderTopRightRadius: 22 },
-  handle: { width: 48, height: 5, borderRadius: 5, alignSelf: 'center', backgroundColor: '#c9c7c5', marginBottom: 14 },
-  handleCompact: { width: 44, height: 4, marginBottom: 10 },
-  handleShort: { width: 36, height: 3, marginBottom: 6 },
-  label: { color: '#1e1b19', fontSize: 15, fontWeight: '700', marginBottom: 7, marginTop: 4 },
-  labelCompact: { fontSize: 14, marginBottom: 5, marginTop: 2 },
-  labelShort: { fontSize: 12, marginBottom: 3, marginTop: 1 },
-  inputShell: { height: 52, borderWidth: 1, borderColor: '#d7d4d1', borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, marginBottom: 10 },
-  inputShellCompact: { height: 48, paddingHorizontal: 10, marginBottom: 8 },
-  inputShellShort: { height: 40, paddingHorizontal: 8, marginBottom: 5 },
-  fieldIcon: { width: 31, color: '#a85216', fontSize: 22, textAlign: 'center' }, input: { flex: 1, height: '100%', paddingHorizontal: 10, color: '#231913', fontSize: 16 },
-  fieldIconShort: { width: 27, fontSize: 19 }, inputShort: { paddingHorizontal: 8, fontSize: 14 },
-  lockIcon: { width: 31, height: 25, alignItems: 'center', justifyContent: 'flex-end' }, lockShackle: { position: 'absolute', top: 1, width: 12, height: 12, borderWidth: 1.8, borderColor: '#a85216', borderRadius: 7 }, lockBody: { width: 17, height: 15, borderWidth: 1.8, borderColor: '#a85216', borderRadius: 3, backgroundColor: '#fff' },
-  eyeButton: { height: 44, width: 42, alignItems: 'center', justifyContent: 'center' }, eye: { width: 23, height: 15, borderWidth: 1.6, borderColor: '#3a3836', borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, eyePupil: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#3a3836' },
-  primary: { height: 50, marginTop: 3, borderRadius: 9, backgroundColor: '#a9571f', alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  primaryCompact: { height: 48, marginTop: 2 },
-  primaryShort: { height: 42, marginTop: 1 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 13, marginVertical: 14 }, dividerLine: { height: 1, flex: 1, backgroundColor: '#ddd9d5' }, or: { color: '#645d57', fontSize: 14 },
-  dividerCompact: { marginVertical: 11 },
-  dividerShort: { marginVertical: 6 },
-  socialRow: { flexDirection: 'row', gap: 10 }, socialButton: { flex: 1, minWidth: 0, height: 48, borderWidth: 1, borderColor: '#d5d1ce', borderRadius: 9, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 6 },
-  socialButtonCompact: { height: 44, gap: 5, paddingHorizontal: 5 },
-  socialButtonShort: { height: 38, gap: 4, paddingHorizontal: 4 },
-  socialText: { color: '#171311', fontSize: 11, fontWeight: '600', flexShrink: 1 },
-  socialTextShort: { fontSize: 10 },
-  googleMark: { width: 23, height: 23, position: 'relative', overflow: 'hidden' }, googlePart: { position: 'absolute', left: 0, top: -2, fontSize: 24, lineHeight: 27, fontWeight: '900' }, googleBlue: { color: '#4285f4' }, googleWhiteCutout: { position: 'absolute', right: 0, top: 2, width: 9, height: 9, backgroundColor: '#fff' }, googleBar: { position: 'absolute', right: 0, top: 10, width: 11, height: 4, backgroundColor: '#4285f4', borderRadius: 1 },
-  appleMark: { color: '#050505', fontSize: 25, lineHeight: 27 },
-  forgotButton:{alignSelf:'flex-end',paddingVertical:8},forgotButtonShort:{paddingVertical:4},forgotText:{color:'#a44f18',fontSize:12,fontWeight:'700'},forgotTextShort:{fontSize:11},createButton: { alignSelf: 'center', paddingHorizontal: 18, paddingVertical: 12, marginTop: 6 }, createButtonCompact: { paddingVertical: 8, marginTop: 2 }, createButtonShort: { paddingVertical: 4, marginTop: 0 }, createText: { color: '#a44f18', fontSize: 16, fontWeight: '600' }, createTextShort: { fontSize: 14 }, pressed: { opacity: 0.8 }, disabled: { opacity: 0.55 },
+  safe: { flex: 1, backgroundColor: '#fbf6ee' },
+  flex: { flex: 1 },
+  page: { flexGrow: 1, backgroundColor: '#fbf6ee' },
+  hero: { justifyContent: 'center', paddingBottom: 30, backgroundColor: '#352114', overflow: 'hidden', flexShrink: 0 },
+  heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(28, 14, 6, 0.26)' },
+  brandBlock: { alignItems: 'flex-start', marginHorizontal: 28, maxWidth: 440 },
+  brandBlockCompact: { marginHorizontal: 22 },
+  logo: { width: 64, height: 64, marginLeft: 44, marginBottom: 4, tintColor: '#fff2df' },
+  brand: { color: '#fff6e8', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontWeight: '700', fontSize: 31, letterSpacing: -1, textShadowColor: '#241307', textShadowRadius: 8, textShadowOffset: { width: 0, height: 1 } },
+  brandCompact: { fontSize: 28 },
+  brandAccent: { color: '#e5a166' },
+  tagline: { color: '#fff6e8', marginTop: 3, fontSize: 13, fontWeight: '500', textShadowColor: '#241307', textShadowRadius: 6, textShadowOffset: { width: 0, height: 1 } },
+  sheet: { flexGrow: 1, marginTop: -26, backgroundColor: '#fbf6ee', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 26, paddingTop: 22, justifyContent: 'center' },
+  sheetCompact: { paddingHorizontal: 22, paddingTop: 18 },
+  form: { width: '100%', maxWidth: 440, alignSelf: 'center' },
+  heading: { color: '#351b0d', fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif', fontSize: 36, fontWeight: '700', letterSpacing: -1 },
+  headingCompact: { fontSize: 32 },
+  subtitle: { color: '#706055', fontSize: 17, marginTop: 2, marginBottom: 18 },
+  label: { color: '#30231a', fontSize: 14, fontWeight: '600', marginBottom: 6 },
+  passwordLabel: { marginTop: 12 },
+  inputShell: { borderWidth: 1, borderColor: '#d5c8bb', borderRadius: 11, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', paddingLeft: 12, paddingRight: 4 },
+  inputFocused: { borderColor: '#a45722', backgroundColor: '#fffdf9' },
+  input: { flex: 1, minWidth: 0, minHeight: 46, paddingVertical: 10, paddingHorizontal: 10, color: '#30231a', fontSize: 16 },
+  fieldIcon: { width: 22, height: 26, alignItems: 'center', justifyContent: 'center' },
+  envelope: { width: 19, height: 14, borderWidth: 1.6, borderColor: '#a45620', borderRadius: 2, overflow: 'hidden' },
+  envelopeFlap: { width: 12, height: 12, borderRightWidth: 1.6, borderBottomWidth: 1.6, borderColor: '#a45620', transform: [{ rotate: '45deg' }], position: 'absolute', top: -7, left: 2 },
+  lockShackle: { position: 'absolute', top: 2, width: 11, height: 13, borderWidth: 1.6, borderColor: '#a45620', borderRadius: 7 },
+  lockBody: { position: 'absolute', bottom: 2, width: 17, height: 15, borderWidth: 1.6, borderColor: '#a45620', borderRadius: 3, backgroundColor: '#fff' },
+  eyeButton: { minHeight: 44, width: 44, alignItems: 'center', justifyContent: 'center' },
+  eye: { width: 22, height: 14, borderWidth: 1.6, borderColor: '#62594f', borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  eyePupil: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#62594f' },
+  forgotButton: { alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center', paddingLeft: 12 },
+  forgotText: { color: '#95501f', fontSize: 13, fontWeight: '600' },
+  primary: { minHeight: 50, paddingVertical: 12, borderRadius: 11, backgroundColor: '#a85a23', alignItems: 'center', justifyContent: 'center' },
+  primaryText: { color: '#fff', fontSize: 19, fontWeight: '700' },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 18 },
+  dividerLine: { height: 1, flex: 1, backgroundColor: '#d8cbbd' },
+  or: { color: '#75685b', fontSize: 12 },
+  socialRow: { flexDirection: 'row', gap: 10 },
+  socialButton: { flex: 1, minWidth: 0, minHeight: 48, paddingVertical: 9, paddingHorizontal: 8, borderWidth: 1, borderColor: '#d5c8bb', borderRadius: 11, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  socialMark: { width: 23, height: 23 },
+  appleMark: { width: 29, height: 29 },
+  socialText: { color: '#201914', fontSize: 16, fontWeight: '600', flexShrink: 1 },
+  createButton: { alignSelf: 'center', minHeight: 48, justifyContent: 'center', paddingHorizontal: 6, paddingVertical: 12, marginTop: 9 },
+  createPrompt: { color: '#75685b', fontSize: 13, textAlign: 'center' },
+  createText: { color: '#95501f', fontWeight: '700' },
+  pressed: { opacity: 0.8 },
+  disabled: { opacity: 0.55 },
 });

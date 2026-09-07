@@ -10,6 +10,7 @@ import { authenticatedApi } from '@/lib/api';
 
 export default function RootLayout() {
   const pathname=usePathname();
+  const isLogin = pathname === '/login';
   useEffect(() => {
     const stopListening=listenForPhoneNotifications();
     registerForPhoneNotifications().catch(error=>console.warn('Phone notification registration failed',error?.message||error));
@@ -26,10 +27,10 @@ export default function RootLayout() {
   },[pathname]);
   return (
     <AppErrorBoundary>
-      <StatusBar style="dark" />
+      <StatusBar style={isLogin ? 'light' : 'dark'} />
       {/* Android 16 is edge-to-edge. RN's per-screen SafeAreaView is iOS-only.
-          Expo Router supplies the safe-area provider. Keep existing iOS insets. */}
-      <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'android' ? ['top', 'right', 'bottom', 'left'] : []}>
+          Expo Router supplies the safe-area provider. The login screen handles its own photo-header insets on both platforms. */}
+      <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
       </SafeAreaView>
     </AppErrorBoundary>
