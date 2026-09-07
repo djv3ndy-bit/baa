@@ -95,11 +95,12 @@ test('sent café interests appear alongside applications and homepage links pres
   assert.match(ctx.applicationsHtml(), /Test Café/);
   assert.match(ctx.applicationsHtml(), /Interest sent/);
   vm.runInContext(quietFocus, ctx);
-  const home = ctx.window.BaristaMatchQuietFocus.render({ role: 'barista', profile: ctx.currentProfile, marketJobs: ctx.marketJobs, applications: [], discoveryInterests: ctx.discoveryInterests, discoveryMatches: [], notificationRows: [], profileStrength: 100 });
+  const home = ctx.window.BaristaMatchQuietFocus.render({ role: 'barista', profile: ctx.currentProfile, marketJobs: ctx.marketJobs, applications: [], discoveryInterests: ctx.discoveryInterests, discoveryMatches: [], notificationRows: [], profileStrength: 100, workAreaLabel: 'Orlando, FL' });
   assert.match(home, /<strong>1<\/strong><b>Applications &amp; interests/);
   assert.match(home, /data-view-job="job-1"/);
   assert.match(home, /data-view-job="job-2"/);
   assert.doesNotMatch(home, /Best match for you/);
+  assert.match(home, /<span>Orlando, FL<\/span>/, 'search shows saved work area instead of home city');
 });
 
 test('a partially completed reciprocal match remains retryable', async () => {

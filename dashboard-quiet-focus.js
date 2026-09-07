@@ -172,7 +172,7 @@
     const profile = context.profile || {};
     const displayName = context.profileName || (isCafe ? 'Your café' : 'there');
     const firstName = isCafe ? displayName : String(displayName).trim().split(/\s+/)[0] || 'there';
-    const location = profile.location || (isCafe ? 'Add your café location' : 'Set your work area');
+    const location = isCafe ? (profile.location || 'Add your café location') : (context.workAreaLabel || profile.preferred_city || profile.location || 'Set your work area');
     const legacyMatches = context.applications.filter((item) => item.status === 'matched').length;
     const matches = legacyMatches + context.discoveryMatches.length;
     const unreadMessages = context.notificationRows.filter((item) => item.type === 'message' && !item.read_at).length;
@@ -189,7 +189,7 @@
           activityTile({ icon: '◌', value: unreadMessages, label: 'Messages', copy: 'Open conversations', section: 'Messages' }),
         ]
       : [
-          activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse nearby cafés', section: 'Discover' }),
+          activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse your work area', section: 'Discover' }),
           activityTile({ icon: '↗', value: context.applications.length + sentInterests, label: 'Applications & interests', copy: 'Track your progress', section: 'Applications' }),
           activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];

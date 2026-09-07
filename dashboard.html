@@ -489,7 +489,7 @@ return `<section class="cafe-wow"><div class="cafe-wow-head"><div class="cafe-wo
 const legacyOverviewHtml=overviewHtml;
 overviewHtml=function quietFocusOverviewHtml(view){
   if(!window.BaristaMatchQuietFocus?.render)return legacyOverviewHtml(view);
-  return window.BaristaMatchQuietFocus.render({role:currentRole,profile:currentProfile,profileName:profileName(),profileStrength:profileStrength(),marketJobs,applications,discoveryInterests,discoveryMatches,notificationRows});
+  return window.BaristaMatchQuietFocus.render({role:currentRole,profile:currentProfile,profileName:profileName(),profileStrength:profileStrength(),workAreaLabel:workAreaLabel(),marketJobs,applications,discoveryInterests,discoveryMatches,notificationRows});
 };
 function profileHtml(){
   const score=profileStrength();
@@ -526,7 +526,7 @@ function workArea(profile){
   const state=normalizePlace(profile.preferred_state||home.state||'fl');
   return {city:preferred.city||home.city,state:state==='florida'?'fl':state,postal:normalizePlace(profile.preferred_postal_code).slice(0,5)};
 }
-function workAreaLabel(){const area=workArea(currentProfile);return area.postal?`ZIP ${area.postal}`:area.city?`${area.city}, FL`:'Set your Florida work city'}
+function workAreaLabel(){const area=workArea(currentProfile),city=area.city.replace(/\b[a-z]/g,letter=>letter.toUpperCase());return area.postal?`ZIP ${area.postal}`:city?`${city}, FL`:'Set your Florida work city'}
 function jobMatchesBaristaLocation(job){
   if(currentRole!=='barista')return true;
   const area=workArea(currentProfile),legacy=floridaPlaceParts(job.location),city=normalizePlace(job.city||legacy.city),state=normalizePlace(job.state||legacy.state),postal=normalizePlace(job.postal_code||legacy.postal).slice(0,5);
