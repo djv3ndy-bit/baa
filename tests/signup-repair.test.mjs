@@ -85,3 +85,12 @@ test('failed automatic OAuth setup unlocks details for a corrected-role retry wi
  h.inputs.name.value='Corrected Cafe';await h.send();
  assert.equal(signups,0);assert.equal(h.writes.length,2);assert.equal(h.writes[1].role,'cafe_owner_manager');assert.equal(h.writes[1].cafe_name,'Corrected Cafe');assert.deepEqual(h.redirects,['/cafe-trial.html']);assert.equal(h.storage.size,0);
 });
+
+test('signup waits for session initialization and preserves pending OAuth details before either auth action',async()=>{
+ const session=deferred();let signups=0,providers=0;
+ const h=await harness({pending:{role:'cafe_owner_manager',name:'Pending Cafe',location:'Miami, FL',termsAccepted:true,createdAt:Date.now()},authOverrides:{getSession:()=>session.promise,signUp:async()=>{signups++;return {}},signInWithOAuth:async()=>{providers++;return {}}}});
+ await h.send();await h.ids['google-signup'].listeners.click();await h.ids['apple-signup'].listeners.click();
+ assert.equal(signups,0);assert.equal(providers,0);assert.equal(h.writes.length,0);assert.equal(h.storage.size,1);assert.match(h.ids.status.textContent,/still loading/);
+ session.resolve({data:{session:signupSession}});await settle();
+ assert.equal(h.writes.length,1);assert.equal(h.writes[0].role,'cafe_owner_manager');assert.equal(h.writes[0].cafe_name,'Pending Cafe');assert.deepEqual(h.redirects,['/cafe-trial.html']);
+});
