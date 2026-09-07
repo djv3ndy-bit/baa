@@ -50,3 +50,7 @@ test('OAuth failure clears pending details and enables retry',async()=>{
 test('profile insert failure keeps the signed-in member on setup with an actionable error',async()=>{
  const h=await harness({session:signupSession,insertError:{code:'42501'}});await h.send();assert.deepEqual(h.redirects,[]);assert.match(h.ids.status.textContent,/setup could not be saved/);assert.equal(h.submit.disabled,false);
 });
+test('pending OAuth profile failure retries profile setup without creating another auth account',async()=>{
+ let signups=0;const h=await harness({session:signupSession,pending:{role:'barista',name:'Pending Person',location:'Miami, FL',termsAccepted:true,createdAt:Date.now()},insertError:{code:'42501'},authOverrides:{signUp:async()=>{signups++;return {}}}});
+ assert.equal(h.inputs.password.disabled,true);assert.match(h.submit.textContent,/Save and continue/);await h.send();assert.equal(signups,0);assert.equal(h.writes.length,2);assert.deepEqual(h.redirects,[]);
+});

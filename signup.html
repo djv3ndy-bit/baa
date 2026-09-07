@@ -90,6 +90,9 @@ async function finishSocialSignup(session){
     if(existing){clearPendingSignup();location.replace('/dashboard.html');return true}
     const pending=readPendingSignup();
     if(!pending){showSocialCompletion(session);return false}
+    showSocialCompletion(session);
+    form.querySelector(`[value="${pending.role}"]`).checked=true;
+    form.elements.name.value=pending.name;form.elements.location.value=pending.location;form.elements.terms.checked=true;updateNameLabel();
     const saved=await saveStarterProfile(session.user,pending.role,pending.name,pending.location);
     clearPendingSignup();location.replace(saved.role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return true;
   }finally{completingSocial=false}

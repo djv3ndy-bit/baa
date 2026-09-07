@@ -28,6 +28,12 @@ test('an unknown signup role is never silently assigned to barista',async()=>{
  assert.equal(await c.ensureProfileFromMetadata({id:'test',user_metadata:{}},{}),null);
  assert.deepEqual(redirects,['/signup.html?complete=1']);assert.equal(c.normalizeRole('owner_admin'),null);
 });
+test('visibility banner respects persisted availability while preserving opt-out control',()=>{
+ const c=completionContext({...base,visible_to_cafes:true,is_discoverable:false,suspended_at:'2026-09-07'});
+ vm.runInContext(html.slice(html.indexOf('function trustBanner'),html.indexOf('function overviewHtml')),c);
+ assert.match(c.trustBanner(),/Hidden from café-owner discovery/);assert.match(c.trustBanner(),/Contact support/);assert.match(c.trustBanner(),/data-toggle-profile-visibility="false"/);assert.doesNotMatch(c.trustBanner(),/Visible to café owners/);
+ c.currentProfile.suspended_at=null;c.currentProfile.is_discoverable=true;assert.match(c.trustBanner(),/Visible to café owners/);
+});
 test('profile save displays the database visibility and refreshes the saved search area',async()=>{
  const source=html.slice(html.indexOf("document.getElementById('profile-form').onsubmit"),html.indexOf("document.getElementById('job-cancel')"));
  const profile={cafe_name:'Cafe',avatar_url:'/photo.png',location:'Miami, FL',bio:'Coffee',cafe_address:'123 Street',open_hours:'Monday 7-5',shop_type:'Cafe',barista_preferences:['Espresso'],is_discoverable:false};
