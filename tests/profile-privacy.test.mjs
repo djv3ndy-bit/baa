@@ -61,20 +61,21 @@ test('picker failure is recoverable and oversized files are rejected', async () 
   await big.run('photo');assert.equal(big.selected.length, 0);assert.match(big.alerts[0][0], /too large/);
 });
 
-const visibilityCode = web.match(/function profileVisibilityReady\(\)\{[^\n]+/)[0];
+const visibilityCode = web.match(/const profileFields=[^\n]+/)[0]+'\n'+web.slice(web.indexOf('function validBaristaBirthDate'),web.indexOf('function trustBanner'));
 const saveCode = web.slice(web.indexOf("document.getElementById('profile-form').onsubmit"), web.indexOf("document.getElementById('job-cancel')"));
 function webHarness(gender, previousGender = null) {
-  const rows = [], status = { textContent: '' }, button = {}, form = { querySelector: () => button };
+  const rows = [], status = { textContent: '' }, button = {}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button],setAttribute(){},removeAttribute(){} };
   const values = { location:'Miami, FL', date_of_birth:'2000-01-01', gender_identity:gender, name:'Test barista', bio:'Coffee experience', skills:'Espresso', experience:'2 years', pay_expectation:'20' };
   const profile = { display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
   const context = {
-    document:{getElementById:id => id==='profile-form' ? form : status},
+    document:{getElementById:id => id==='profile-form' ? form : id==='profile-dialog'?dialog:status},
+    profileSaveInProgress:false,currentSection:'My Profile',currentView:{},openSection(){},
     currentRole:'barista', currentUser:{id:'test-user'}, currentProfile:profile,
     currentDemographics:{ date_of_birth:'2000-01-01', gender_identity:previousGender },
     FormData:class { get(key) {return values[key] ?? null} set(key,value){values[key]=value} getAll(){return []} },
     isFloridaPlace:() => true, maximumBaristaBirthDate:() => '2010-01-01',
-    collectAvailability:() => 'Full-time', setTimeout:() => {}, Date,
-    activeClient:{from:table=>({ update:payload=>({eq:async()=>{rows.push([table,payload]);return{error:null}}}),upsert:async payload=>{rows.push([table,payload]);return{error:null}} })},
+    collectAvailability:() => 'Full-time', refreshMarketplaceAfterProfileSave:async()=>{}, setTimeout:() => {}, Date,
+    activeClient:{from:table=>({ update:payload=>({eq:()=>({select:()=>({single:async()=>{rows.push([table,payload]);Object.assign(profile,payload);return{data:{...profile},error:null}}})})}),upsert:payload=>({select:()=>({single:async()=>{rows.push([table,payload]);return{data:payload,error:null}}})}) })},
   };
   vm.createContext(context);vm.runInContext(visibilityCode+'\n'+saveCode,context);
   return { rows, status, context, run:()=>form.onsubmit({preventDefault(){},currentTarget:form}) };

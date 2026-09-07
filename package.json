@@ -2,6 +2,10 @@
   "private": true,
   "type": "module",
   "engines": { "node": "22.x" },
-  "scripts": { "test": "node launch-check.js && node --test tests/*.test.js tests/*.test.mjs" },
+  "scripts": {
+    "test": "node launch-check.js && node --test tests/*.test.js tests/*.test.mjs",
+    "test:accounts": "node --test tests/*repair*.test.mjs tests/message-reliability.test.mjs",
+    "test:database": "node --test tests/database/account-integrity.test.mjs"
+  },
   "dependencies": { "stripe": "22.4.0" }
 }

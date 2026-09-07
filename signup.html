@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-v2.png">
 <title>Sign up — BaristaMatch</title>
 <style>
+[hidden]{display:none!important}.role input:focus-visible+label{outline:3px solid #287443;outline-offset:3px}
 :root{--brown:#321708;--caramel:#a95820;--cream:#fbf7f1;--muted:#746a61;--line:#e7ddd2;--green:#287443;--white:#fff}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#fbf7f1,#f2e5d9);color:#1c130e;font-family:Arial,sans-serif;min-height:100vh}a{color:inherit}.top{height:76px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(20px,calc((100% - 1120px)/2))}.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-size:22px;font-weight:800}.brand img{width:43px;height:43px;object-fit:contain}.brand b{color:var(--caramel)}.login-link{font-weight:700;color:var(--caramel)}main{max-width:1060px;margin:0 auto;padding:48px 22px 70px;display:grid;grid-template-columns:.8fr 1.2fr;gap:46px;align-items:start}.intro{padding-top:36px}.eyebrow{text-transform:uppercase;letter-spacing:.14em;color:var(--caramel);font-weight:800;font-size:12px}.intro h1{font:700 44px/1.05 Georgia,serif;margin:12px 0 16px}.intro p{color:var(--muted);font-size:18px;line-height:1.6}.benefits{display:grid;gap:13px;margin-top:28px}.benefit{display:flex;gap:11px;align-items:center;font-weight:700}.check{width:27px;height:27px;border-radius:50%;background:#e6f3e9;color:var(--green);display:grid;place-items:center}.panel{background:#fff;border:1px solid var(--line);border-radius:22px;padding:30px;box-shadow:0 22px 60px #32170814}.panel h2{font:700 31px Georgia,serif;margin:0 0 6px}.sub{color:var(--muted);margin:0 0 23px;line-height:1.5}.roles{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:21px}.role{position:relative}.role input{position:absolute;opacity:0}.role label{display:block;border:2px solid var(--line);border-radius:14px;padding:15px;cursor:pointer;height:100%}.role label strong,.role label small{display:block}.role label small{color:var(--muted);margin-top:5px;line-height:1.35}.role input:checked+label{border-color:var(--caramel);background:#fff8f2}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.wide{grid-column:1/-1}label.field{display:block;font-size:13px;font-weight:800}.field input{width:100%;margin-top:7px;padding:13px;border:1px solid var(--line);border-radius:10px;font:inherit}.field input:focus{outline:2px solid #d99666;outline-offset:1px}.terms{display:flex;gap:9px;align-items:flex-start;color:var(--muted);font-size:13px;line-height:1.45;margin:18px 0}.terms input{margin-top:2px}.button{width:100%;border:0;border-radius:11px;padding:14px;font:800 15px Arial,sans-serif;cursor:pointer}.primary{background:var(--brown);color:#fff}.google,.apple{background:#fff;color:#28160d;border:1px solid #bfae9f;display:flex;justify-content:center;align-items:center;gap:10px}.google span{font-weight:900;color:#4285f4;font-size:18px}.apple-mark{display:block;width:21px;height:21px;flex:0 0 21px;color:#111}.apple-mark path{fill:currentColor}.social-stack{display:grid;gap:10px}.divider{display:flex;align-items:center;gap:12px;color:#9a8b80;font-size:13px;margin:18px 0}.divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}.status{min-height:22px;margin:14px 0 0;font-size:14px;line-height:1.45;color:var(--green);font-weight:700}.status.error{color:#a52a2a}.button:disabled{opacity:.62;cursor:wait}.privacy{text-align:center;color:var(--muted);font-size:12px;margin:17px 0 0}@media(max-width:800px){main{grid-template-columns:1fr;padding-top:26px;gap:22px}.intro{padding-top:0}.intro h1{font-size:36px}.benefits{display:none}}@media(max-width:520px){.top{height:66px}.brand{font-size:19px}.brand img{width:38px;height:38px}.panel{padding:22px 18px;border-radius:17px}.roles,.grid{grid-template-columns:1fr}.wide{grid-column:auto}.intro h1{font-size:32px}}
 </style>
 <style>
@@ -24,7 +25,7 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
 <main>
   <section class="intro"><span class="eyebrow">Join BaristaMatch</span><h1 id="signup-headline">A better coffee career starts with a great profile.</h1><p id="signup-intro">Create your profile, discover nearby cafés, and connect when the fit feels right.</p><div class="benefits"><div class="benefit"><span class="check">✓</span>Free and simple to get started</div><div class="benefit"><span class="check">✓</span>Your information stays under your control</div><div class="benefit"><span class="check">✓</span>Built specifically for cafés and baristas</div></div></section>
   <section class="panel">
-    <h2>Sign up</h2><p class="sub">First, tell us which side of the coffee community you’re joining.</p>
+    <h2 id="signup-title">Sign up</h2><p class="sub" id="signup-copy">First, tell us which side of the coffee community you’re joining.</p>
     <form id="signup-form" method="post">
       <div class="roles">
         <div class="role"><input id="barista" type="radio" name="role" value="barista" required><label for="barista"><strong>☕ I’m a barista</strong><small>I want to find café opportunities.</small></label></div>
@@ -40,29 +41,119 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
       <label class="terms"><input name="terms" type="checkbox" required><span>I agree to the BaristaMatch <a href="/privacy.html">Privacy Policy</a> and <a href="/terms.html">Terms of Service</a>. I confirm I am at least 16 and, if I am under 18, have permission from a parent or legal guardian.</span></label>
       <button class="button primary" type="submit">Sign up</button>
     </form>
-    <div class="divider">or</div>
-    <div class="social-stack"><button class="button google" id="google-signup" type="button"><span>G</span>Continue with Google</button><button class="button apple" id="apple-signup" type="button"><svg class="apple-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.22.07 2.07.66 2.79.71 1.08-.22 2.11-.85 3.26-.77 1.38.11 2.42.66 3.11 1.64-2.84 1.7-2.17 5.44.44 6.49-.52 1.37-1.2 2.73-1.6 4.9zM12.03 7.25C11.88 5.21 13.55 3.53 15.45 3.37c.26 2.36-2.14 4.13-3.42 3.88z"/></svg>Continue with Apple</button></div>
+    <div class="divider" id="signup-divider">or</div>
+    <div class="social-stack" id="social-options"><button class="button google" id="google-signup" type="button"><span>G</span>Continue with Google</button><button class="button apple" id="apple-signup" type="button"><svg class="apple-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.22.07 2.07.66 2.79.71 1.08-.22 2.11-.85 3.26-.77 1.38.11 2.42.66 3.11 1.64-2.84 1.7-2.17 5.44.44 6.49-.52 1.37-1.2 2.73-1.6 4.9zM12.03 7.25C11.88 5.21 13.55 3.53 15.45 3.37c.26 2.36-2.14 4.13-3.42 3.88z"/></svg>Continue with Apple</button></div>
     <p class="status" id="status" role="status" aria-live="polite"></p>
     <p class="privacy">Secure sign-up. Your password stays private.</p>
   </section>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <script>
-const form=document.getElementById('signup-form'),status=document.getElementById('status'),googleButton=document.getElementById('google-signup'),appleButton=document.getElementById('apple-signup');let client;
+const form=document.getElementById('signup-form'),status=document.getElementById('status'),googleButton=document.getElementById('google-signup'),appleButton=document.getElementById('apple-signup');
+let client,signupReady=false,signupBusy=false,completingSocial=false,currentSignupSession=null;
 const setStatus=(message='',error=false)=>{status.textContent=message;status.classList.toggle('error',error)};
 const selectedRole=()=>form.querySelector('[name="role"]:checked')?.value||'';
+const supportedRole=role=>['barista','cafe_owner_manager'].includes(role);
 function updateNameLabel(){const cafe=selectedRole()==='cafe_owner_manager';document.getElementById('name-label').firstChild.textContent=cafe?'Café name':'Your name';form.elements.name.placeholder=cafe?'Your café name':'Your full name';document.getElementById('signup-headline').textContent=cafe?'Build your café team with the right people.':'A better coffee career starts with a great profile.';document.getElementById('signup-intro').textContent=cafe?'Create your café profile, discover nearby baristas, and connect when there’s mutual interest.':'Create your profile, discover nearby cafés, and connect when the fit feels right.'}
 form.querySelectorAll('[name="role"]').forEach(input=>input.addEventListener('change',updateNameLabel));
-const requestedRole=new URLSearchParams(location.search).get('role');if(['barista','cafe_owner_manager'].includes(requestedRole)){form.querySelector(`[value="${requestedRole}"]`).checked=true;updateNameLabel()}
-const isFloridaLocation=value=>/(^|,|\s)(fl|florida)(\s|$)/i.test(String(value||'').trim());
-form.addEventListener('submit',event=>{if(isFloridaLocation(form.elements.location.value))return;event.preventDefault();event.stopImmediatePropagation();form.elements.location.focus();setStatus('Enter a Florida location, such as Miami, FL.',true)},true);
-[googleButton,appleButton].forEach(button=>button.addEventListener('click',event=>{if(!form.elements.location.value.trim()||isFloridaLocation(form.elements.location.value))return;event.preventDefault();event.stopImmediatePropagation();form.elements.location.focus();setStatus('Enter a Florida location, such as Miami, FL.',true)},true));
-async function saveStarterProfile(user,role,name,location){const payload={id:user.id,role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location,updated_at:new Date().toISOString()};const {error}=await client.from('profiles').upsert(payload);if(error)console.warn('Starter profile will be completed in the dashboard.',error)}
-async function finishSocialSignup(session){const role=localStorage.getItem('baristamatch_pending_role');if(!session||!role)return false;const name=localStorage.getItem('baristamatch_pending_name')||session.user.user_metadata?.full_name||session.user.user_metadata?.name||'';const storedLocation=localStorage.getItem('baristamatch_pending_location')||'';await client.auth.updateUser({data:{role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location:storedLocation}});await saveStarterProfile(session.user,role,name,storedLocation);['baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key));window.location.replace(role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return true}
-async function initialize(){try{const response=await fetch('/api/config',{cache:'no-store'}),config=await response.json().catch(()=>({}));if(!response.ok||!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('Account signup is temporarily unavailable. Please try again shortly.');client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);const {data:{session}}=await client.auth.getSession();if(await finishSocialSignup(session))return;client.auth.onAuthStateChange(async(event,nextSession)=>{if(event==='SIGNED_IN')await finishSocialSignup(nextSession)})}catch(error){setStatus(error.message||'Account signup is temporarily unavailable. Please try again shortly.',true)}}
-form.addEventListener('submit',async event=>{event.preventDefault();setStatus();if(!client)return setStatus('Signup is still loading. Please try again.',true);const data=new FormData(form),role=data.get('role'),name=String(data.get('name')).trim(),locationValue=String(data.get('location')).trim(),password=String(data.get('password'));if(password.length<10)return setStatus('Use a password with at least 10 characters.',true);if(password!==data.get('confirmPassword'))return setStatus('The passwords do not match. Please enter them again.',true);const button=form.querySelector('[type="submit"]');button.disabled=true;button.textContent='Signing you up…';const {data:result,error}=await client.auth.signUp({email:String(data.get('email')).trim(),password,options:{emailRedirectTo:'https://www.baristajobmatch.com/login.html',data:{role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location:locationValue}}});button.disabled=false;button.textContent='Sign up';if(error)return setStatus(error.message,true);if(result.session){await saveStarterProfile(result.user,role,name,locationValue);location.replace(role==='cafe_owner_manager'?'/cafe-trial.html':'/login.html');return}form.reset();location.assign('/verify-email.html')});
-googleButton.addEventListener('click',async()=>{setStatus();const role=selectedRole(),name=form.elements.name.value.trim(),locationValue=form.elements.location.value.trim();if(!role)return setStatus('Please choose Barista or Café before continuing with Google.',true);if(!name||!locationValue)return setStatus(`Please enter your ${role==='barista'?'name':'café name'} and location before continuing with Google.`,true);if(!client)return setStatus('Account signup is still loading. Please try again.',true);localStorage.setItem('baristamatch_pending_role',role);localStorage.setItem('baristamatch_pending_name',name);localStorage.setItem('baristamatch_pending_location',locationValue);googleButton.disabled=true;const {error}=await client.auth.signInWithOAuth({provider:'google',options:{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete'}});googleButton.disabled=false;if(error){['baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key));setStatus('Google signup could not start. Please try again or create an account with email.',true)}});
-appleButton.addEventListener('click',async()=>{setStatus();const role=selectedRole(),name=form.elements.name.value.trim(),locationValue=form.elements.location.value.trim();if(!role)return setStatus('Please choose Barista or Café before continuing with Apple.',true);if(!name||!locationValue)return setStatus(`Please enter your ${role==='barista'?'name':'café name'} and location before continuing with Apple.`,true);if(!client)return setStatus('Account signup is still loading. Please try again.',true);localStorage.setItem('baristamatch_pending_role',role);localStorage.setItem('baristamatch_pending_name',name);localStorage.setItem('baristamatch_pending_location',locationValue);appleButton.disabled=true;const {error}=await client.auth.signInWithOAuth({provider:'apple',options:{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete'}});appleButton.disabled=false;if(error){['baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key));setStatus('Apple signup could not start. Please try again or create an account with email.',true)}});
+const requestedRole=new URLSearchParams(location.search).get('role');if(supportedRole(requestedRole)){form.querySelector(`[value="${requestedRole}"]`).checked=true;updateNameLabel()}
+const isFloridaLocation=value=>/^.+(?:,\s*|\s+)(?:fl|florida)(?:\s+\d{5}(?:-\d{4})?)?$/i.test(String(value||'').trim());
+function signupDetails(){const role=selectedRole(),name=form.elements.name.value.trim(),locationValue=form.elements.location.value.trim();if(!supportedRole(role))throw new Error('Please choose Barista or Café.');if(!name)throw new Error(role==='barista'?'Enter your name.':'Enter your café name.');if(!isFloridaLocation(locationValue))throw new Error('Enter a Florida location, such as Miami, FL.');if(!form.elements.terms.checked)throw new Error('Please review and accept the terms and age confirmation to continue.');return {role,name,location:locationValue}}
+function clearPendingSignup(){try{['baristamatch_pending_signup','baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key))}catch{}}
+function readPendingSignup(){try{const pending=JSON.parse(localStorage.getItem('baristamatch_pending_signup')||'null');if(!pending||!supportedRole(pending.role)||!pending.name||!isFloridaLocation(pending.location)||pending.termsAccepted!==true||typeof pending.createdAt!=='number'||Date.now()-pending.createdAt>30*60*1000||pending.createdAt>Date.now())return null;return pending}catch{return null}}
+async function findProfile(user){const {data,error}=await client.from('profiles').select('id,role').eq('id',user.id).maybeSingle();if(error)throw new Error('We could not check your profile. Please try again.');return data}
+async function saveStarterProfile(user,role,name,locationValue){
+  const existing=await findProfile(user);if(existing)return existing;
+  if(!supportedRole(role))throw new Error('Choose an account type to finish setting up your profile.');
+  const payload={id:user.id,role,display_name:role==='barista'?name:null,cafe_name:role==='cafe_owner_manager'?name:null,location:locationValue,updated_at:new Date().toISOString()};
+  const {data,error}=await client.from('profiles').insert(payload).select('id,role').single();
+  if(error?.code==='23505'){const concurrent=await findProfile(user);if(concurrent)return concurrent}
+  if(error||!data)throw new Error('Your account is signed in, but profile setup could not be saved. Please try again.');
+  return data;
+}
+function showSocialCompletion(session){
+  currentSignupSession=session;
+  const metadata=session.user.user_metadata||{};
+  if(!form.elements.name.value)form.elements.name.value=metadata.full_name||metadata.name||'';
+  for(const name of ['email','password','confirmPassword']){const input=form.elements[name];input.disabled=true;input.required=false;input.closest('label').hidden=true}
+  document.getElementById('signup-title').textContent='Finish your account setup';
+  document.getElementById('signup-copy').textContent='Choose your account type and confirm your details to open your workspace.';
+  form.querySelector('[type="submit"]').textContent='Save and continue';
+  googleButton.hidden=true;appleButton.hidden=true;document.getElementById('signup-divider').hidden=true;document.getElementById('social-options').hidden=true;
+  setStatus('You are signed in. Complete the details below to create your profile.');
+}
+async function finishSocialSignup(session){
+  if(!session||completingSocial||signupBusy)return false;
+  completingSocial=true;signupBusy=true;
+  showSocialCompletion(session);
+  const controls=[...form.querySelectorAll('input,button')],disabledBefore=controls.map(input=>input.disabled);
+  controls.forEach(input=>input.disabled=true);
+  form.querySelector('[type="submit"]').textContent='Saving…';
+  setStatus('Finishing your account setup…');
+  try{
+    const existing=await findProfile(session.user);
+    if(existing){clearPendingSignup();location.replace('/dashboard.html');return true}
+    const pending=readPendingSignup();
+    if(!pending){setStatus('You are signed in. Complete the details below to create your profile.');return false}
+    form.querySelector(`[value="${pending.role}"]`).checked=true;
+    form.elements.name.value=pending.name;form.elements.location.value=pending.location;form.elements.terms.checked=true;updateNameLabel();
+    const saved=await saveStarterProfile(session.user,pending.role,pending.name,pending.location);
+    clearPendingSignup();location.replace(saved.role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return true;
+  }catch(error){
+    setStatus(error.message||'Your profile setup could not finish. Please try again.',true);return false;
+  }finally{
+    completingSocial=false;signupBusy=false;
+    controls.forEach((input,index)=>input.disabled=disabledBefore[index]);
+    form.querySelector('[type="submit"]').textContent='Save and continue';
+  }
+}
+async function initialize(){
+  try{
+    const response=await fetch('/api/config',{cache:'no-store'}),config=await response.json().catch(()=>({}));
+    if(!response.ok||!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('Account signup is temporarily unavailable. Please reload to try again.');
+    client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
+    const {data,error}=await client.auth.getSession();if(error)throw error;
+    signupReady=true;
+    if(data?.session)await finishSocialSignup(data.session);
+    // Auth callbacks must release the auth lock before another Supabase call.
+    client.auth.onAuthStateChange((event,nextSession)=>{if(event==='SIGNED_IN'&&!signupBusy)setTimeout(()=>finishSocialSignup(nextSession).catch(()=>setStatus('Your profile setup could not finish. Reload to try again.',true)),0)});
+  }catch{setStatus('Account signup could not load. Check your connection and reload to try again.',true)}
+}
+form.addEventListener('submit',async event=>{
+  event.preventDefault();if(signupBusy)return;setStatus();
+  const button=form.querySelector('[type="submit"]');
+  try{
+    if(!client||!signupReady)throw new Error('Signup is still loading. Please wait a moment and try again.');
+    const details=signupDetails(),password=form.elements.password.value;
+    if(!currentSignupSession){if(password.length<10)throw new Error('Use a password with at least 10 characters.');if(password!==form.elements.confirmPassword.value)throw new Error('The passwords do not match. Please enter them again.')}
+    signupBusy=true;button.disabled=true;button.textContent=currentSignupSession?'Saving…':'Signing you up…';
+    if(currentSignupSession){
+      const saved=await saveStarterProfile(currentSignupSession.user,details.role,details.name,details.location);
+      clearPendingSignup();location.replace(saved.role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return;
+    }
+    const {data:result,error}=await client.auth.signUp({email:form.elements.email.value.trim(),password,options:{emailRedirectTo:'https://www.baristajobmatch.com/login.html',data:{role:details.role,display_name:details.role==='barista'?details.name:null,cafe_name:details.role==='cafe_owner_manager'?details.name:null,location:details.location}}});
+    if(error)throw new Error(error.message||'Signup did not complete. Please try again.');
+    if(result?.session){currentSignupSession=result.session;const saved=await saveStarterProfile(result.user,details.role,details.name,details.location);location.replace(saved.role==='cafe_owner_manager'?'/cafe-trial.html':'/dashboard.html');return}
+    if(!result?.user)throw new Error('Signup could not be confirmed. Please try again.');
+    form.reset();location.assign('/verify-email.html');
+  }catch(error){setStatus(error.message==='Failed to fetch'?'Check your connection and try again.':error.message||'We could not complete signup. Check your connection and try again.',true)}
+  finally{signupBusy=false;button.disabled=false;button.textContent=currentSignupSession?'Save and continue':'Sign up'}
+});
+async function beginSocialSignup(provider,button){
+  if(signupBusy)return;
+  if(!client||!signupReady){setStatus('Account signup is still loading. Please wait a moment and try again.',true);return}
+  setStatus();let providerStarted=false;
+  try{
+    const details=signupDetails();
+    localStorage.setItem('baristamatch_pending_signup',JSON.stringify({...details,provider,termsAccepted:true,createdAt:Date.now()}));
+    signupBusy=true;button.disabled=true;providerStarted=true;
+    const {error}=await client.auth.signInWithOAuth({provider,options:{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete'}});
+    if(error)throw error;
+  }catch(error){clearPendingSignup();setStatus(providerStarted?'Social signup could not start. Try again or use email signup.':error.message||'Check your account details and try again.',true)}
+  finally{signupBusy=false;button.disabled=false}
+}
+googleButton.addEventListener('click',()=>beginSocialSignup('google',googleButton));
+appleButton.addEventListener('click',()=>beginSocialSignup('apple',appleButton));
 initialize();
 </script>
 </body>

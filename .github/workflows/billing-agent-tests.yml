@@ -16,4 +16,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm test
+      - run: node --test tests/billing-agent.test.mjs

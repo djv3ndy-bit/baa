@@ -1,0 +1,11 @@
+{
+  "name": "baristamatch-database-regression-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test account-integrity.test.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8"
+  }
+}

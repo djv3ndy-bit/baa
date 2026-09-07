@@ -33,4 +33,4 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Run support agent safety tests
-        run: npm test
+        run: node --test tests/support-agent.test.mjs

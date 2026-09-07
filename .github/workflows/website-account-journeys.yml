@@ -1,0 +1,50 @@
+name: Website account journeys
+
+on:
+  pull_request:
+    paths:
+      - '*.html'
+      - 'dashboard-quiet-focus.*'
+      - 'api/**'
+      - 'supabase/migrations/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/website-account-journeys.yml'
+  push:
+    branches: [main]
+    paths:
+      - '*.html'
+      - 'dashboard-quiet-focus.*'
+      - 'api/**'
+      - 'supabase/migrations/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/website-account-journeys.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  account-journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify account interactions and static release requirements
+        run: |
+          node launch-check.js
+          npm run test:accounts
+      - name: Install isolated PostgreSQL test runtime
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm --dir tests/database install --frozen-lockfile --ignore-scripts
+      - name: Verify database authorization and workflow rules
+        run: npm run test:database
+# All identities and requests are synthetic. No live account, database,
+# payment, notification, or deployment credentials are available to this job.

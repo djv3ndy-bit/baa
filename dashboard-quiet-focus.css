@@ -1086,3 +1086,10 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
   .quiet-guided .quiet-empty-feature{grid-template-columns:minmax(0,.65fr) minmax(0,1.35fr)}
   .quiet-guided .quiet-empty-feature .quiet-feature-body h3{font-size:21px}
 }
+
+/* Keep role actions usable when job cards collapse to one column. */
+.job-item > .applicant-actions { display:flex; flex-wrap:wrap; gap:8px; align-self:center; }
+@media (max-width: 620px) {
+  .job-item > .applicant-actions { grid-column:1 / -1; width:100%; }
+  .job-item > .applicant-actions button { flex:1 1 140px; min-height:44px; }
+}
