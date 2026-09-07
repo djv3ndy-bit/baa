@@ -43,8 +43,8 @@ function harness(file, options = {}) {
       if (name === 'react-native') return native;
       if (name === 'expo-router') return { router: { replace: route => routes.push(route), push: route => routes.push(route), back: () => routes.push('back') }, useFocusEffect: callback => { focusCallback = callback; } };
       if (name === 'expo-web-browser') return { openBrowserAsync: async () => {} };
-      if (name === '@react-native-async-storage/async-storage') return { multiRemove: async keys => cleared.push(keys) };
-      if (name.endsWith('/supabase') || name === './supabase') return { supabase: { auth }, AUTH_STORAGE_KEY: 'test-auth' };
+      if (name === '@react-native-async-storage/async-storage') return { getItem: async () => current?.user ? JSON.stringify({ user: current.user }) : null, multiRemove: async keys => cleared.push(keys) };
+      if (name.endsWith('/supabase') || name === './supabase') return { supabase: { auth }, AUTH_STORAGE_KEY: 'test-auth', withAuthStorageLock: operation => operation() };
       if (name.endsWith('/session') || name === './session') return { getCurrentContext: async () => options.context ? options.context(++contextCalls, current) : current };
       if (name.endsWith('/api')) return api;
       if (name.endsWith('/pushNotifications')) return { registerForPhoneNotifications: async () => ({ status: 'enabled' }), unregisterThisDeviceNotifications: async () => {} };
@@ -126,7 +126,45 @@ test('deletion cleanup preserves an account that signs in while auto-refresh is 
   const gate = deferred(), h = harness('mobile/app/settings.tsx'); let current = 'deleted-account'; const cleared = [];
   const cleanup = h.load('mobile/lib/accountDeletion').clearDeletedSession;
   const auth = { getSession: async () => ({ data: { session: { user: { id: current } } } }), stopAutoRefresh: () => gate.promise, signOut: async () => { cleared.push(current); } };
-  const pending = cleanup(auth, { multiRemove: async () => cleared.push('storage') }, 'test-auth', 'deleted-account');
+  const pending = cleanup(auth, { getItem: async () => JSON.stringify({ user: { id: current } }), multiRemove: async () => cleared.push('storage') }, 'test-auth', 'deleted-account', operation => operation());
   await settle(); current = 'new-account'; gate.resolve(); const result = await pending;
   assert.deepEqual(cleared, []); assert.equal(result, false);
+});
+
+for (const serializeStorage of [false, true]) test(`real auth-js password sign-in ${serializeStorage ? 'is preserved by the shared storage adapter' : 'can bypass the SDK processLock'}`, async () => {
+  const { GoTrueClient, processLock } = require('@supabase/auth-js');
+  const h = harness('mobile/app/settings.tsx');
+  const { createLockedAuthStorage } = h.load('mobile/lib/authStorage');
+  const cleanup = h.load('mobile/lib/accountDeletion').clearDeletedSession;
+  const key = `native-review-${serializeStorage}-${Date.now()}`;
+  const session = { access_token: 'old-token', refresh_token: 'old-refresh', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, token_type: 'bearer', user: { id: 'deleted-account' } };
+  const values = new Map([[key, JSON.stringify(session)]]), readStarted = deferred(), releaseRead = deferred();
+  let pauseOwnerRead = false;
+  const base = {
+    async getItem(key) { const captured = values.get(key) || null; if (pauseOwnerRead) { pauseOwnerRead = false; readStarted.resolve(); await releaseRead.promise; } return captured; },
+    async setItem(key, value) { values.set(key, value); },
+    async removeItem(key) { values.delete(key); },
+    async multiRemove(keys) { keys.forEach(key => values.delete(key)); },
+  };
+  const adapter = createLockedAuthStorage(base);
+  let fetches = 0;
+  const auth = new GoTrueClient({ url: 'https://example.invalid/auth/v1', storageKey: key, storage: serializeStorage ? adapter.storage : base, lock: processLock, persistSession: true, autoRefreshToken: false, detectSessionInUrl: false, fetch: async url => {
+    assert.match(url, /token\?grant_type=password$/); fetches++;
+    return new Response(JSON.stringify({ access_token: 'new-token', refresh_token: 'new-refresh', expires_in: 3600, token_type: 'bearer', user: { id: 'new-account' } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  } });
+  try {
+    await auth.initialize();
+    const lock = serializeStorage ? adapter.runExclusive : operation => processLock(`lock:${key}`, 1000, operation);
+    const deleting = cleanup(auth, base, key, 'deleted-account', operation => lock(() => { pauseOwnerRead = true; return operation(); }));
+    await readStarted.promise;
+    const signingIn = auth.signInWithPassword({ email: 'new@example.invalid', password: 'mock-password-only' });
+    await settle();
+    if (serializeStorage) assert.equal(JSON.parse(values.get(key)).user.id, 'deleted-account', 'new session waits behind atomic owner-check/removal');
+    else assert.equal(JSON.parse(values.get(key)).user.id, 'new-account', 'SDK signInWithPassword writes while processLock is held');
+    releaseRead.resolve();
+    const [cleared, result] = await Promise.all([deleting, signingIn]);
+    assert.equal(cleared, true); assert.equal(result.error, null); assert.equal(fetches, 1);
+    if (serializeStorage) assert.equal(JSON.parse(values.get(key)).user.id, 'new-account');
+    else assert.equal(values.has(key), false, 'shared SDK lock alone would remove the newly signed-in account');
+  } finally { releaseRead.resolve(); await auth.stopAutoRefresh(); }
 });
