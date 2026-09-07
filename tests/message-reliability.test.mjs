@@ -111,10 +111,38 @@ test('returning to a pending conversation restores its draft and sending state',
   assert.equal(form.querySelector('textarea').value,'');assert.equal(form.querySelector('[type="submit"]').disabled,false);
 });
 
-test('discovery notification integration selects and marks the matching conversation only',()=>{
-  assert.match(html,/select\('id,type,title,body,application_id,discovery_match_id,created_at,read_at'\)/);
-  assert.match(html,/activeDiscoveryMatchId===payload\.new\.discovery_match_id/);
+test('discovery notification integration uses a separate receipt table and matching conversation only',()=>{
+  assert.match(html,/from\('discovery_message_notifications'\)\.select\('id,discovery_match_id,created_at,read_at'\)/);
+  assert.match(html,/activeDiscoveryMatchId===row\.discovery_match_id/);
   assert.match(html,/n\.discovery_match_id===match\.id/);
+});
+
+function notificationHarness(){
+  const calls={queries:[],listeners:[],applicationLoads:0,discoveryLoads:0,sections:0};
+  const rows={notifications:[{id:'legacy',type:'message',application_id:'A',read_at:null,created_at:'2026-09-06'}],discovery_message_notifications:[{id:'receipt',discovery_match_id:'B',read_at:null,created_at:'2026-09-07'}]};
+  const channel={on(event,filter,callback){calls.listeners.push({filter,callback});return this},subscribe(){return this}};
+  const context={console,currentUser:{id:'recipient'},currentSection:'Messages',currentView:{},currentRole:'barista',activeMessageApplicationId:null,activeDiscoveryMatchId:'B',notificationRealtimeChannel:null,notificationRows:[],
+    document:{querySelectorAll:()=>[],visibilityState:'visible'},updateMessageUnreadBadges(){},openSection(){calls.sections++},
+    loadInboxMessages(){calls.applicationLoads++},loadDiscoveryMessages(){calls.discoveryLoads++},
+    activeClient:{channel:()=>channel,removeChannel(){},from(table){calls.queries.push(table);return {select(){return this},eq(){return this},order(){return this},limit:async()=>({data:rows[table]})}}}};
+  vm.createContext(context);vm.runInContext(html.slice(html.indexOf('async function refreshNotifications('),html.indexOf('async function enableBrowserNotifications(')),context);
+  return {context,calls,rows};
+}
+
+test('notification refresh merges application and discovery unread without replacing an open chat',async()=>{
+  const h=notificationHarness();await h.context.refreshNotifications();
+  assert.deepEqual(h.calls.queries,['notifications','discovery_message_notifications']);assert.equal(h.calls.sections,0);
+  assert.equal(h.context.notificationRows.length,2);assert.equal(h.context.notificationRows[0].discovery_match_id,'B');assert.equal(h.context.notificationRows[0].type,'message');
+});
+
+test('discovery realtime events refresh the matching chat and acknowledgements update without reloading it',()=>{
+  const h=notificationHarness();h.context.subscribeNotifications();
+  const insert=h.calls.listeners.find(x=>x.filter.table==='discovery_message_notifications'&&x.filter.event==='INSERT');
+  const update=h.calls.listeners.find(x=>x.filter.table==='discovery_message_notifications'&&x.filter.event==='UPDATE');
+  assert.equal(insert.filter.filter,'recipient_id=eq.recipient');insert.callback({new:h.rows.discovery_message_notifications[0]});
+  assert.equal(h.calls.discoveryLoads,1);assert.equal(h.calls.applicationLoads,0);
+  update.callback({new:{...h.rows.discovery_message_notifications[0],read_at:'2026-09-07'}});
+  assert.equal(h.calls.discoveryLoads,1);assert.equal(h.context.notificationRows.length,1);assert.equal(h.context.notificationRows[0].read_at,'2026-09-07');
 });
 
 test('legacy modal sends also capture the original recipient before awaiting the session',async()=>{

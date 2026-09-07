@@ -901,12 +901,41 @@ const withTimeout=(promise,ms,message)=>Promise.race([promise,new Promise((_,rej
 async function fetchConfig(){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);try{const response=await fetch('/api/config',{headers:{Accept:'application/json'},cache:'no-store',signal:controller.signal});const config=await response.json().catch(()=>({}));if(!response.ok)throw new Error(config.error||'The account service is unavailable.');if(!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('The account service returned incomplete configuration.');return config}finally{clearTimeout(timer)}}
 function showStartupError(message){const loading=document.getElementById('loading');loading.classList.add('bm-error');document.getElementById('loading-message').textContent=message;document.getElementById('loading-actions').hidden=false}
 async function refreshNotifications(render=true){
-  if(!activeClient||!currentUser)return;const {data,error}=await activeClient.from('notifications').select('id,type,title,body,application_id,discovery_match_id,created_at,read_at').eq('recipient_id',currentUser.id).order('created_at',{ascending:false}).limit(200);if(!error)notificationRows=data||[];updateUnreadBadges();updateMessageUnreadBadges();if(render&&currentSection==='Messages')openSection('Messages',currentView,currentRole)
+  if(!activeClient||!currentUser)return;
+  const [legacy,discovery]=await Promise.all([
+    activeClient.from('notifications').select('id,type,title,body,application_id,created_at,read_at').eq('recipient_id',currentUser.id).order('created_at',{ascending:false}).limit(200),
+    activeClient.from('discovery_message_notifications').select('id,discovery_match_id,created_at,read_at').eq('recipient_id',currentUser.id).order('created_at',{ascending:false}).limit(200)
+  ]);
+  if(legacy.error)throw legacy.error;if(discovery.error)throw discovery.error;
+  notificationRows=[...(legacy.data||[]),...(discovery.data||[]).map(discoveryNotification)].sort((a,b)=>String(b.created_at).localeCompare(String(a.created_at)));
+  updateUnreadBadges();updateMessageUnreadBadges();
+  if(render&&currentSection==='Messages'&&!activeMessageApplicationId&&!activeDiscoveryMatchId)openSection('Messages',currentView,currentRole)
 }
+function discoveryNotification(row){return {...row,type:'message',title:'New message',body:'You have a new message from a mutual match.'}}
 function setNavBadge(section,count,label){document.querySelectorAll(`#menu button[data-section="${section}"]`).forEach(button=>{button.querySelector('.nav-badge')?.remove();if(count)button.insertAdjacentHTML('beforeend',`<span class="nav-badge" aria-label="${count} ${label}">${count>99?'99+':count}</span>`)})}
 function updateUnreadBadges(){const messages=notificationRows.filter(n=>n.type==='message'&&!n.read_at).length,applicationsUnread=notificationRows.filter(n=>n.type==='application'&&!n.read_at).length,matchesUnread=notificationRows.filter(n=>n.type==='match'&&!n.read_at).length,total=messages+applicationsUnread+matchesUnread;setNavBadge('Messages',messages,'unread messages');setNavBadge('Candidates',applicationsUnread,'new candidates');setNavBadge('Matches',matchesUnread,'new matches');document.title=total?`(${total}) Dashboard — BaristaMatch`:'Dashboard — BaristaMatch'}
 async function refreshMarketplaceForNotification(type){if(!['application','match'].includes(type))return;try{await loadMarketplaceData();if((type==='application'&&currentSection==='Candidates')||(type==='match'&&currentSection==='Matches')||currentSection==='Overview')openSection(currentSection,currentView,currentRole)}catch(error){console.warn('Could not refresh marketplace after notification:',error)}}
-function subscribeNotifications(){if(notificationRealtimeChannel)activeClient.removeChannel(notificationRealtimeChannel);notificationRealtimeChannel=activeClient.channel(`notifications-${currentUser.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`recipient_id=eq.${currentUser.id}`},payload=>{notificationRows.unshift(payload.new);updateUnreadBadges();updateMessageUnreadBadges();if(typeof Notification!=='undefined'&&Notification.permission==='granted'&&document.visibilityState!=='visible'){new Notification(payload.new.title||'BaristaMatch update',{body:payload.new.body||'Open BaristaMatch for details.',icon:'/assets/favicon-32-v2.png'})}refreshMarketplaceForNotification(payload.new.type);if(payload.new.type==='message'&&currentSection==='Messages'){if(activeMessageApplicationId&&activeMessageApplicationId===payload.new.application_id)loadInboxMessages();if(activeDiscoveryMatchId&&activeDiscoveryMatchId===payload.new.discovery_match_id)loadDiscoveryMessages()}}).subscribe()}
+function receiveNotification(row,isInsert=true){
+  const index=notificationRows.findIndex(item=>item.id===row.id&&Boolean(item.discovery_match_id)===Boolean(row.discovery_match_id));
+  if(index<0)notificationRows.unshift(row);else notificationRows[index]=row;
+  updateUnreadBadges();updateMessageUnreadBadges();
+  if(!isInsert)return;
+  if(typeof Notification!=='undefined'&&Notification.permission==='granted'&&document.visibilityState!=='visible')new Notification(row.title||'BaristaMatch update',{body:row.body||'Open BaristaMatch for details.',icon:'/assets/favicon-32-v2.png'});
+  refreshMarketplaceForNotification(row.type);
+  if(row.type==='message'&&currentSection==='Messages'){
+    if(activeMessageApplicationId&&activeMessageApplicationId===row.application_id)loadInboxMessages();
+    if(activeDiscoveryMatchId&&activeDiscoveryMatchId===row.discovery_match_id)loadDiscoveryMessages()
+  }
+}
+function subscribeNotifications(){
+  if(notificationRealtimeChannel)activeClient.removeChannel(notificationRealtimeChannel);
+  const filter=`recipient_id=eq.${currentUser.id}`;
+  notificationRealtimeChannel=activeClient.channel(`notifications-${currentUser.id}`)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter},payload=>receiveNotification(payload.new))
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'discovery_message_notifications',filter},payload=>receiveNotification(discoveryNotification(payload.new)))
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'discovery_message_notifications',filter},payload=>receiveNotification(discoveryNotification(payload.new),false))
+    .subscribe()
+}
 async function enableBrowserNotifications(button){if(typeof Notification==='undefined'){alert('Browser notifications are not supported on this device.');return}const permission=await Notification.requestPermission();button.textContent=permission==='granted'?'Enabled':'Enable';const hint=document.getElementById('notification-permission');if(hint)hint.textContent='Browser notifications: '+permission;if(permission==='granted')new Notification('BaristaMatch notifications enabled',{body:'You’ll see message alerts while BaristaMatch is running.',icon:'/assets/favicon-32-v2.png'})}
 async function reportClientError(message,stack,metadata={}){try{let session=null;if(activeClient){const r=await activeClient.auth.getSession();session=r.data?.session||null}fetch('/api/report-error',{method:'POST',headers:{'Content-Type':'application/json',...(session?.access_token?{Authorization:`Bearer ${session.access_token}`}:{})},keepalive:true,body:JSON.stringify({source:'dashboard',message:String(message||'Unknown error'),stack:String(stack||''),page_url:location.href,user_agent:navigator.userAgent,metadata})}).catch(()=>{})}catch{}}
 window.addEventListener('error',event=>reportClientError(event.message,event.error?.stack,{filename:event.filename,line:event.lineno,column:event.colno}));
