@@ -31,19 +31,31 @@ export async function clearDeletedSession(
   auth: {
     getSession: () => Promise<{ data: { session: { user: { id: string } } | null } }>;
     stopAutoRefresh: () => void | Promise<void>;
-    signOut: (options: { scope: 'local' }) => Promise<unknown>;
+    startAutoRefresh?: () => void | Promise<void>;
   },
-  storage: { multiRemove: (keys: string[]) => Promise<void> },
+  storage: { getItem: (key: string) => Promise<string | null>; multiRemove: (keys: string[]) => Promise<void> },
   storageKey: string,
   deletedUserId: string,
+  withStorageLock: <T>(operation: () => Promise<T>) => Promise<T>,
 ): Promise<boolean> {
   const { data } = await auth.getSession();
   // A different account may have signed in in another window while deletion ran.
   if (data.session && data.session.user.id !== deletedUserId) return false;
   await auth.stopAutoRefresh();
-  try { await auth.signOut({ scope: 'local' }); } catch { /* The deleted user may already be unauthorized. */ }
-  // Supabase's local signOut can return a network error before clearing storage.
-  // Clear only this project's auth keys, never other application preferences.
-  await storage.multiRemove([storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`]);
-  return true;
+  let cleared = false;
+  try {
+    // Share the SDK storage adapter's lock, including password sign-in writes.
+    // Never call a current-session signOut while an account switch can occur.
+    cleared = await withStorageLock(async () => {
+      const raw = await storage.getItem(storageKey);
+      if (raw && JSON.parse(raw)?.user?.id !== deletedUserId) return false;
+      await storage.multiRemove([storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`]);
+      return true;
+    });
+    return cleared;
+  } finally {
+    // A new sign-in may have queued a session write after our atomic removal.
+    // Restore normal refresh; an empty auth store makes no remote request.
+    await auth.startAutoRefresh?.();
+  }
 }

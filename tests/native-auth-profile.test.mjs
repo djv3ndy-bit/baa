@@ -103,8 +103,8 @@ test('completion requires the current role fields, photo and private DOB; option
 
 test('profile payload honors cleared skills, validates exact ZIP, excludes private demographics and preserves saved opt-outs', () => {
   const payload = privacy.buildProfileUpdate({ ...barista, skills_text: '', gender_identity: '', preferred_radius_miles: 100, preferred_postal_code: ' 33101 ' }, 'barista', options);
-  assert.deepEqual(plain(payload.skills), []); assert.equal(payload.is_discoverable, false); assert.equal(payload.preferred_postal_code, '33101');
-  for (const key of ['date_of_birth', 'gender_identity', 'visible_to_cafes', 'preferred_radius_miles']) assert.equal(key in payload, false);
+  assert.deepEqual(plain(payload.skills), []); assert.equal(payload.is_discoverable, false); assert.equal(payload.preferred_postal_code, '33101'); assert.equal(payload.visible_to_cafes, true);
+  for (const key of ['date_of_birth', 'gender_identity', 'preferred_radius_miles']) assert.equal(key in payload, false);
   assert.throws(() => privacy.buildProfileUpdate({ ...barista, preferred_postal_code: '331' }, 'barista', options));
   assert.throws(() => privacy.buildProfileUpdate(barista, 'barista', { ...options, locationCity: 'Atlanta, GA' }));
 });

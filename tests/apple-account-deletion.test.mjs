@@ -86,19 +86,19 @@ test('native receipt expires and cannot be supplied via a deep link',async t=>{
   assert.equal(getDeletionReceipt(),null);
   assert.doesNotMatch(read('mobile/app/account-deleted.tsx'),/useLocalSearchParams|useGlobalSearchParams/);
 });
-test('native cleanup clears only configured auth keys even when remote logout throws',async()=>{
+test('native cleanup clears only owned auth keys without a mutable-session remote logout',async()=>{
   const removed=[],events=[];
-  const result=await clearDeletedSession({getSession:async()=>({data:{session:{user:{id:USER}}}}),stopAutoRefresh:async()=>{events.push('stop')},signOut:async options=>{assert.deepEqual(options,{scope:'local'});events.push('signOut');throw new Error('network')}},{multiRemove:async keys=>{events.push('clear');removed.push(...keys)}},'sb-project-auth-token',USER);
-  assert.equal(result,true);assert.deepEqual(events,['stop','signOut','clear']);
+  const result=await clearDeletedSession({getSession:async()=>({data:{session:{user:{id:USER}}}}),stopAutoRefresh:async()=>{events.push('stop')},signOut:async options=>{assert.deepEqual(options,{scope:'local'});events.push('signOut');throw new Error('network')}},{getItem:async()=>JSON.stringify({user:{id:USER}}),multiRemove:async keys=>{events.push('clear');removed.push(...keys)}},'sb-project-auth-token',USER,operation=>operation());
+  assert.equal(result,true);assert.deepEqual(events,['stop','clear']);
   assert.deepEqual(removed,['sb-project-auth-token','sb-project-auth-token-code-verifier','sb-project-auth-token-user']);
 });
 test('native cleanup does not log out a different newly signed-in user',async()=>{
   let calls=0;
-  assert.equal(await clearDeletedSession({getSession:async()=>({data:{session:{user:{id:OTHER}}}}),stopAutoRefresh:()=>{calls++},signOut:async()=>{calls++}},{multiRemove:async()=>{calls++}},'sb-project-auth-token',USER),false);
+  assert.equal(await clearDeletedSession({getSession:async()=>({data:{session:{user:{id:OTHER}}}}),stopAutoRefresh:()=>{calls++},signOut:async()=>{calls++}},{getItem:async()=>JSON.stringify({user:{id:OTHER}}),multiRemove:async()=>{calls++}},'sb-project-auth-token',USER,operation=>operation()),false);
   assert.equal(calls,0);
 });
 test('native storage failure is not claimed as completed sign-out',async()=>{
-  await assert.rejects(clearDeletedSession({getSession:async()=>({data:{session:null}}),stopAutoRefresh:()=>{},signOut:async()=>({error:{message:'offline'}})},{multiRemove:async()=>{throw new Error('storage')}},'sb-project-auth-token',USER),/storage/);
+  await assert.rejects(clearDeletedSession({getSession:async()=>({data:{session:null}}),stopAutoRefresh:()=>{},signOut:async()=>({error:{message:'offline'}})},{getItem:async()=>null,multiRemove:async()=>{throw new Error('storage')}},'sb-project-auth-token',USER,operation=>operation()),/storage/);
 });
 
 const html=read('dashboard.html');
@@ -168,6 +168,6 @@ test('completion page separates sign-out warning and does not confuse non-Apple 
 });
 test('native request is bound to reviewed account and duplicate taps are guarded',()=>{
   assert.match(read('mobile/lib/api.ts'),/expectedUserId && session\.user\.id !== expectedUserId/);
-  assert.match(read('mobile/app/settings.tsx'),/if \(deletionBusy\.current\) return/);
-  assert.match(read('mobile/app/settings.tsx'),/session\.user\.id\)/);
+  assert.match(read('mobile/app/settings.tsx'),/if \(actionBusy\.current\) return/);
+  assert.match(read('mobile/app/settings.tsx'),/confirmAccountDeletion\(expectedUserId\)/);
 });

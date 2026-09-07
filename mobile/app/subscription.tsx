@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { getCurrentContext } from '@/lib/session';
+import { useCafeAccess } from '@/lib/useCafeAccess';
+import { CafeAccessCheck } from '@/components/CafeAccessCheck';
 
 const freeBenefits = [
   'Post your first job free',
@@ -20,20 +20,8 @@ const proBenefits = [
 ];
 
 export default function SubscriptionScreen() {
-  const [checkingAccess, setCheckingAccess] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    getCurrentContext().then(({ user, role }) => {
-      if (!active) return;
-      if (!user) return router.replace('/login');
-      if (role !== 'cafe_owner_manager') return router.replace('/home');
-      setCheckingAccess(false);
-    }).catch(() => router.replace('/home'));
-    return () => { active = false; };
-  }, []);
-
-  if (checkingAccess) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#b75a1d" /></View></SafeAreaView>;
+  const access = useCafeAccess();
+  if (!access.ready) return <CafeAccessCheck error={access.error} retry={access.retry} />;
 
   return (
     <SafeAreaView style={styles.safe}>

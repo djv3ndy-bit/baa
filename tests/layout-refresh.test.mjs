@@ -42,7 +42,7 @@ test('native dashboard keeps settings, pricing, and real account activity routes
   const greeting = read('mobile/lib/timeGreeting.ts');
 
   assert.match(home, /router\.push\('\/settings'\)/);
-  assert.match(home, /supabase\.auth\.getSession\(\)/);
+  assert.match(home, /getCurrentContext/);
   assert.match(home, /Your first job and first hire are included\./);
   for (const route of ['/subscription', '/discover', '/profile', '/matches', '/messages']) {
     assert.ok(quietHome.includes(`router.push('${route}')`), `Missing native route ${route}`);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -10,14 +10,14 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AUTH_STORAGE_KEY, supabase } from "@/lib/supabase";
+import { AUTH_STORAGE_KEY, withAuthStorageLock, supabase } from "@/lib/supabase";
 import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } from '@/lib/accountDeletion';
 import { getCurrentContext, AppRole } from "@/lib/session";
-import { unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
-import { authenticatedApi } from "@/lib/api";
+import { registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
+import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
 
 type BillingStatus = {
   status: string;
@@ -29,105 +29,214 @@ type BillingStatus = {
 };
 
 export default function Settings() {
-  const deletionBusy = useRef(false);
-  const [role, setRole] = useState<AppRole>("barista"),
-    [email, setEmail] = useState(""),
-    [showPassword, setShowPassword] = useState(false),
-    [showAdvanced, setShowAdvanced] = useState(false),
-    [p1, setP1] = useState(""),
-    [p2, setP2] = useState(""),
-    [saving, setSaving] = useState(false),
-    [deleting, setDeleting] = useState(false),
-    [billing, setBilling] = useState<BillingStatus | null>(null),
-    [billingError, setBillingError] = useState(""),
-    [openingBilling, setOpeningBilling] = useState(false);
-  useEffect(() => {
-    load();
-  }, []);
-  async function load() {
-    const { user, role: r } = await getCurrentContext();
-    if (!user) return router.replace("/login");
-    setEmail(user.email || "");
-    setRole(r || "barista");
-    if (r === "cafe_owner_manager") {
-      setBillingError("");
-      try {
-        setBilling(await authenticatedApi<BillingStatus>("/billing-status", {}, "GET"));
-      } catch (error) {
-        setBillingError(error instanceof Error ? error.message : "Subscription status is unavailable.");
+  const actionBusy = useRef(false);
+  const active = useRef(false);
+  const generation = useRef(0);
+  const account = useRef<string | null>(null);
+  const [role, setRole] = useState<AppRole | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [email, setEmail] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [enablingNotifications, setEnablingNotifications] = useState(false);
+  const [notificationStatus, setNotificationStatus] = useState('Enable alerts for new messages and matches.');
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [billingError, setBillingError] = useState('');
+  const [openingBilling, setOpeningBilling] = useState(false);
+  const disabled = loading || !accountId || saving || deleting || loggingOut || openingBilling || enablingNotifications;
+  const load = useCallback(async () => {
+    if (!active.current) return;
+    const run = ++generation.current;
+    setLoading(true);
+    setLoadError('');
+    setBilling(null);
+    setBillingError('');
+    try {
+      const { user, role: savedRole } = await getCurrentContext();
+      if (!active.current || run !== generation.current) return;
+      if (!user) return router.replace('/login');
+      if (!savedRole) return router.replace({ pathname: '/signup', params: { complete: '1' } });
+      account.current = user.id;
+      setAccountId(user.id);
+      setEmail(user.email || 'Email not available');
+      setRole(savedRole);
+      if (savedRole === 'cafe_owner_manager') {
+        try {
+          const result = await authenticatedApi<BillingStatus>('/billing-status', {}, 'GET', user.id);
+          await requireAccountSession(user.id);
+          if (active.current && run === generation.current) setBilling(result);
+        } catch (error) {
+          if (active.current && run === generation.current) setBillingError(error instanceof Error ? error.message : 'Subscription status is unavailable.');
+        }
       }
+    } catch (error) {
+      if (active.current && run === generation.current) {
+        account.current = null;
+        setAccountId(null);
+        setRole(null);
+        setEmail('');
+        setLoadError(error instanceof Error ? error.message : 'Could not load your account.');
+      }
+    } finally {
+      if (active.current && run === generation.current) setLoading(false);
     }
-  }
+  }, []);
+  useFocusEffect(useCallback(() => {
+    active.current = true;
+    void load();
+    return () => { active.current = false; ++generation.current; };
+  }, [load]));
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && account.current && session?.user.id !== account.current)) {
+        ++generation.current;
+        account.current = null;
+        setAccountId(null);
+        setRole(null);
+        setEmail('');
+        setBilling(null);
+        setP1('');
+        setP2('');
+        setShowPassword(false);
+        setShowAdvanced(false);
+        if (active.current) setTimeout(() => { void load(); }, 0);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [load]);
 
   async function manageSubscription() {
-    if (!billing?.connectedToBilling) return router.push("/subscription");
+    const expectedUserId = accountId;
+    if (!expectedUserId || actionBusy.current || loading) return;
+    if (billingError) return load();
+    if (!billing) return;
+    actionBusy.current = true;
     setOpeningBilling(true);
     try {
-      const result = await authenticatedApi<{ url: string }>("/create-portal-session", { channel: "mobile" });
+      await requireAccountSession(expectedUserId);
+      if (!active.current || account.current !== expectedUserId) return;
+      if (!billing.connectedToBilling) return router.push('/subscription');
+      const result = await authenticatedApi<{ url: string }>('/create-portal-session', { channel: 'mobile' }, 'POST', expectedUserId);
+      await requireAccountSession(expectedUserId);
+      if (!active.current || account.current !== expectedUserId) return;
+      if (!result.url || new URL(result.url).origin !== 'https://billing.stripe.com') throw new Error('The billing link is unavailable. Please try again.');
       await WebBrowser.openBrowserAsync(result.url);
       await load();
     } catch (error) {
-      Alert.alert("Could not open subscription management", error instanceof Error ? error.message : "Please try again.");
+      if (active.current) Alert.alert('Could not open subscription management', error instanceof Error ? error.message : 'Please try again.');
     } finally {
+      actionBusy.current = false;
       setOpeningBilling(false);
     }
   }
   async function changePassword() {
-    if (p1 !== p2) return Alert.alert("Passwords do not match");
-    if (p1.length < 10) return Alert.alert("Use at least 10 characters.");
+    const expectedUserId = accountId;
+    if (!expectedUserId || actionBusy.current || loading) return;
+    if (p1 !== p2) return Alert.alert('Passwords do not match');
+    if (p1.length < 10) return Alert.alert('Use at least 10 characters.');
+    actionBusy.current = true;
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password: p1 });
-    setSaving(false);
-    if (error) return Alert.alert("Could not change password", error.message);
-    setP1("");
-    setP2("");
-    setShowPassword(false);
-    Alert.alert("Password updated");
+    try {
+      await updateAccountPassword(expectedUserId, p1);
+      if (!active.current || account.current !== expectedUserId) return;
+      setP1('');
+      setP2('');
+      setShowPassword(false);
+      Alert.alert('Password updated');
+    } catch (error) {
+      if (active.current) Alert.alert('Could not change password', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      actionBusy.current = false;
+      setSaving(false);
+    }
   }
   async function logout() {
-    await unregisterThisDeviceNotifications().catch((error) =>
-      console.warn("Could not remove notification token", error?.message || error),
-    );
-    await supabase.auth.signOut();
-    router.replace("/login");
+    const expectedUserId = accountId;
+    if (!expectedUserId || actionBusy.current || loading) return;
+    actionBusy.current = true;
+    setLoggingOut(true);
+    try {
+      await requireAccountSession(expectedUserId);
+      await unregisterThisDeviceNotifications(expectedUserId);
+      await requireAccountSession(expectedUserId);
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+      router.replace('/login');
+    } catch (error) {
+      if (active.current) Alert.alert('Could not log out', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      actionBusy.current = false;
+      setLoggingOut(false);
+    }
   }
   function requestAccountDeletion() {
+    const expectedUserId = accountId;
+    if (!expectedUserId || actionBusy.current || loading) return;
     Alert.alert(
-      "Delete your account?",
-      "This permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.",
+      'Delete your account?',
+      'This permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.',
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Continue", style: "destructive", onPress: confirmAccountDeletion },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Continue', style: 'destructive', onPress: () => confirmAccountDeletion(expectedUserId) },
       ],
     );
   }
-  function confirmAccountDeletion() {
+  function confirmAccountDeletion(expectedUserId: string) {
+    if (account.current !== expectedUserId) return Alert.alert('Account changed', 'Please review the signed-in account before deleting.');
     Alert.alert(
-      "Final confirmation",
-      "Delete your BaristaMatch account now? Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.",
+      'Final confirmation',
+      'Delete your BaristaMatch account now? Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
       [
-        { text: "Keep my account", style: "cancel" },
-        { text: "Delete permanently", style: "destructive", onPress: deleteAccount },
+        { text: 'Keep my account', style: 'cancel' },
+        { text: 'Delete permanently', style: 'destructive', onPress: () => { void deleteAccount(expectedUserId); } },
       ],
     );
   }
-  async function deleteAccount() {
-    if (deletionBusy.current) return;
-    deletionBusy.current = true;
+  async function deleteAccount(expectedUserId: string) {
+    if (actionBusy.current) return;
+    actionBusy.current = true;
     setDeleting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) throw new Error('Your session expired. Please log in again.');
+      await requireAccountSession(expectedUserId);
       await finishAccountDeletion(
-        () => authenticatedApi<DeletionResponse>("/delete-account", { confirmation: "DELETE" }, 'POST', session.user.id),
-        () => clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, session.user.id),
+        () => authenticatedApi<DeletionResponse>('/delete-account', { confirmation: 'DELETE' }, 'POST', expectedUserId),
+        () => clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, expectedUserId, withAuthStorageLock),
       );
-      // Server deletion cascades device registrations; do not make authenticated
-      // cleanup calls with a user that no longer exists.
       router.replace('/account-deleted');
     } catch (error) {
-      Alert.alert("Could not delete account", error instanceof Error ? error.message : "Please try again.");
-    } finally { deletionBusy.current = false; setDeleting(false); }
+      Alert.alert('Could not delete account', error instanceof Error ? error.message : 'Please try again.');
+    } finally { actionBusy.current = false; setDeleting(false); }
+  }
+  async function enableNotifications() {
+    const expectedUserId = accountId;
+    if (!expectedUserId || actionBusy.current || loading) return;
+    actionBusy.current = true;
+    setEnablingNotifications(true);
+    try {
+      await requireAccountSession(expectedUserId);
+      const result = await registerForPhoneNotifications({ requestPermission: true });
+      if (!active.current || account.current !== expectedUserId) return;
+      if (result.status === 'enabled') setNotificationStatus('Message and match alerts are enabled on this device.');
+      else if (result.status === 'denied') {
+        setNotificationStatus('Alerts are disabled. You can enable them in your device settings.');
+        if (result.canAskAgain === false) Alert.alert('Enable notifications in Settings', 'Allow notifications for BaristaMatch to receive message and match alerts.', [{text:'Cancel',style:'cancel'}, {text:'Open Settings',onPress:() => { Linking.openSettings().catch(() => Alert.alert('Open your device settings', 'Choose BaristaMatch, then Notifications.')); }}]);
+      } else setNotificationStatus(result.status === 'no-session' ? 'Please sign in again to enable alerts.' : 'Notifications require an installed app on a supported device.');
+    } catch (error) {
+      if (active.current) setNotificationStatus(error instanceof Error ? error.message : 'Could not enable notifications. Please try again.');
+    } finally {
+      actionBusy.current = false;
+      setEnablingNotifications(false);
+    }
+  }
+  function openHelp(url: string) {
+    Linking.openURL(url).catch(() => Alert.alert('Could not open this page', 'Check your connection and try again.'));
   }
   return (
     <SafeAreaView style={s.safe}>
@@ -139,14 +248,15 @@ export default function Settings() {
         <View style={s.headerSpacer} />
       </View>
       <ScrollView contentContainerStyle={s.wrap}>
-        <Card title="Account email" copy={email} />
-        {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling} onPress={manageSubscription} /> : null}
-        <Card
-          title="Notifications"
-          copy="Message and match alerts are connected to your BaristaMatch account."
-        />
+        {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading ? 'Loading your account…' : email} />}
+        {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling || loading} onPress={manageSubscription} /> : null}
         <View style={s.card}>
-          <Pressable style={s.row} onPress={() => setShowPassword((x) => !x)}>
+          <Text style={s.cardTitle}>Notifications</Text>
+          <Text accessibilityLiveRegion="polite" style={s.copy}>{notificationStatus}</Text>
+          <Pressable accessibilityRole="button" disabled={disabled} style={[s.secondary, disabled && s.disabled]} onPress={enableNotifications}><Text style={s.secondaryText}>{enablingNotifications ? 'Enabling…' : 'Enable notifications'}</Text></Pressable>
+        </View>
+        <View style={s.card}>
+          <Pressable accessibilityRole="button" disabled={disabled} style={s.row} onPress={() => setShowPassword((x) => !x)}>
             <View style={{ flex: 1 }}>
               <Text style={s.cardTitle}>Change password</Text>
               <Text style={s.copy}>
@@ -159,6 +269,10 @@ export default function Settings() {
             <View style={s.password}>
               <TextInput
                 secureTextEntry
+                editable={!disabled}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="newPassword"
                 placeholder="New password"
                 value={p1}
                 onChangeText={setP1}
@@ -166,6 +280,10 @@ export default function Settings() {
               />
               <TextInput
                 secureTextEntry
+                editable={!disabled}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="newPassword"
                 placeholder="Confirm new password"
                 value={p2}
                 onChangeText={setP2}
@@ -173,7 +291,7 @@ export default function Settings() {
               />
               <Pressable
                 onPress={changePassword}
-                disabled={saving}
+                disabled={disabled}
                 style={s.primary}
               >
                 <Text style={s.primaryText}>
@@ -192,7 +310,7 @@ export default function Settings() {
             <Pressable
               style={s.secondary}
               onPress={() =>
-                Linking.openURL(
+                openHelp(
                   "https://www.baristajobmatch.com/support.html?type=question",
                 )
               }
@@ -202,7 +320,7 @@ export default function Settings() {
             <Pressable
               style={s.primarySmall}
               onPress={() =>
-                Linking.openURL(
+                openHelp(
                   "https://www.baristajobmatch.com/support.html?type=bug",
                 )
               }
@@ -214,21 +332,21 @@ export default function Settings() {
         <View style={s.card}>
           <Text style={s.cardTitle}>Account</Text>
           <Text style={s.copy}>Sign out of BaristaMatch on this device.</Text>
-          <Pressable style={s.secondary} onPress={logout}>
-            <Text style={s.secondaryText}>Log out</Text>
+          <Pressable accessibilityRole="button" disabled={disabled} style={[s.secondary, disabled && s.disabled]} onPress={logout}>
+            <Text style={s.secondaryText}>{loggingOut ? "Logging out…" : "Log out"}</Text>
           </Pressable>
         </View>
         <Pressable
           style={s.advanced}
           onPress={() =>
-            Linking.openURL("https://www.baristajobmatch.com/privacy.html")
+            openHelp("https://www.baristajobmatch.com/privacy.html")
           }
         >
           <Text style={s.advancedText}>Privacy & account data</Text>
         </Pressable>
         <Pressable
           style={s.advanced}
-          onPress={() => Linking.openURL("https://www.baristajobmatch.com/terms.html")}
+          onPress={() => openHelp("https://www.baristajobmatch.com/terms.html")}
         >
           <Text style={s.advancedText}>Terms of Service</Text>
         </Pressable>
@@ -253,7 +371,7 @@ export default function Settings() {
               </Text>
               <Pressable
                 accessibilityRole="button"
-                disabled={deleting}
+                disabled={disabled}
                 style={[s.dangerButton, deleting && s.disabled]}
                 onPress={requestAccountDeletion}
               >
@@ -279,10 +397,10 @@ function SubscriptionCard({ billing, error, opening, onPress }: { billing: Billi
   else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
   else if (billing) detail = "Your first job and first hire are included. No upcoming charge.";
-  const action = billing?.connectedToBilling ? "Manage subscription" : "View Free and Pro plans";
+  const action = error ? "Retry subscription status" : billing?.connectedToBilling ? "Manage subscription" : "View Free and Pro plans";
   return <View style={s.card}>
-    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
-    <Pressable disabled={!billing || opening} onPress={onPress} style={[s.secondary, (!billing || opening) && s.disabled]}><Text style={s.secondaryText}>{opening ? "Opening…" : action}</Text></Pressable>
+    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
+    <Pressable accessibilityRole="button" disabled={(!billing && !error) || opening} onPress={onPress} style={[s.secondary, ((!billing && !error) || opening) && s.disabled]}><Text style={s.secondaryText}>{opening ? "Opening…" : action}</Text></Pressable>
   </View>;
 }
 

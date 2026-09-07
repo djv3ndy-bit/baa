@@ -59,11 +59,15 @@ jobs:
       build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: production
       changelog: |
-        Authentication reliability release:
+        BaristaMatch 1.0.4 account and marketplace reliability release:
         - Completes mobile email verification on cold start and while the app is open
         - Uses the canonical BaristaMatch authentication callback
         - Creates the Supabase session safely and restores the correct account role
         - Keeps invalid or expired-link errors generic
+        - Aligns job applications, interests, matches, and profile visibility with the website
+        - Preserves message drafts, unread state, and safe retries across connection failures
+        - Repairs notification permissions, subscription access, and account-switch safety
+        - Updates compatible dependencies and hardens source-image parsing
 
         Test before any App Store promotion:
         1. New barista email signup and verification
@@ -72,6 +76,10 @@ jobs:
         4. Forgot-password email, reset link, and new-password login
         5. Google and Apple sign-in
         6. Session persistence, logout, and closed-app callback handling
+        7. Both profile editors, photo/video selection, opt-in visibility and private demographics
+        8. Per-job applications, café job editing/pause/reopen, and incoming/sent interests
+        9. Matched messages, unread counts, retry after interruption, and push destinations
+        10. Settings retry states, account switching, and deletion of disposable reviewer accounts
       submit_beta_review: false
       wait_processing_timeout_seconds: 1800
 
@@ -81,6 +89,6 @@ jobs:
     needs: [submit_internal_testflight]
     params:
       md: |
-        ## Authentication TestFlight build uploaded
+        ## BaristaMatch internal TestFlight build uploaded
 
-        Do not submit this build for App Review yet. Complete the authentication test matrix in `docs/authentication-ios-testflight-release.md`, record the build number and results, and obtain a separate owner approval before any public App Store release.
+        Do not submit this build for App Review yet. Complete the authentication matrix in `docs/authentication-ios-testflight-release.md` and the full account/marketplace matrix in the repository app audit. Record actual signed-device results, store declarations and verified seller identity before public release.
