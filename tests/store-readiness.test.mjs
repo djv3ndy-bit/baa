@@ -13,6 +13,16 @@ test('current store configuration passes without a dependency upgrade', () => {
 test('rejects older Android-targeting SDK baselines', () => {
   assert.ok(validateStoreConfiguration(app, { ...pkg, dependencies: { expo: '~53.0.0' } }, eas).length);
 });
+test('rejects the pinned build images defaulting to unsupported Node 20', () => {
+  for (const node of [undefined, '20.19.4', '22']) {
+    const changed = structuredClone(eas); changed.build.production.node = node;
+    assert.equal(validateStoreConfiguration(app, pkg, changed).length, 2);
+  }
+});
+test('rejects a platform Node override below the dependencies engine requirement', () => {
+  const changed = structuredClone(eas); changed.build.production.android.node = '20.19.4';
+  assert.equal(validateStoreConfiguration(app, pkg, changed).length, 1);
+});
 test('rejects an Android target override below API 36', () => {
   assert.ok(validateStoreConfiguration({ ...app, plugins: [['expo-build-properties', { android: { targetSdkVersion: 35 } }]] }, pkg, eas).length);
 });

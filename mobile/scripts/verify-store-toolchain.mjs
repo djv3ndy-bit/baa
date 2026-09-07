@@ -4,6 +4,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export function validateStoreConfiguration(app, pkg, eas) {
   const errors = [];
+  for (const platform of ['ios', 'android']) {
+    const node = eas?.build?.production?.[platform]?.node ?? eas?.build?.production?.node;
+    if (!/^\d+\.\d+\.\d+$/.test(node || '') || Number(node.split('.')[0]) < 22) errors.push(`Pin the ${platform} production Node.js builder to version 22+ for the installed Supabase client.`);
+  }
   if (app?.ios?.bundleIdentifier !== 'com.baristajobmatch.app' || app?.android?.package !== 'com.baristajobmatch.app') errors.push('Store identifiers must match the registered BaristaMatch app.');
   if (app?.version !== pkg?.version) errors.push('Expo and package release versions differ.');
   const expoMajor = Number(/\d+/.exec(pkg?.dependencies?.expo || '')?.[0]);

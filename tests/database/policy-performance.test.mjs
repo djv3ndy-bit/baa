@@ -4,7 +4,7 @@ import { after, afterEach, before, beforeEach, test } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 
 const a = '00000000-0000-4000-8000-000000000001', b = '00000000-0000-4000-8000-000000000002';
-const migration = readFileSync(new URL('../../supabase/migrations/20260907060600_optimize_account_policy_auth_checks.sql', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../../supabase/migrations/20260907061824_optimize_account_policy_auth_checks.sql', import.meta.url), 'utf8');
 const policiesQuery = "select tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' order by tablename,policyname";
 const grantsQuery = "select table_name,column_name,grantee,privilege_type from information_schema.column_privileges where table_schema='public' order by table_name,column_name,grantee,privilege_type";
 let db, policiesBefore, grantsBefore;
