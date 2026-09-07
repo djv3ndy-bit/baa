@@ -1,0 +1,53 @@
+name: Billing Agent Connection
+on:
+  pull_request:
+    paths: ['ops/billing-agent/**', 'api/_billing-agent.js', 'tests/billing*', '.github/workflows/billing-agent-connection.yml']
+  push:
+    branches: [main]
+    paths: ['ops/billing-agent/**', 'api/_billing-agent.js', 'tests/billing*', '.github/workflows/billing-agent-connection.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '23 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: billing-agent-connection-${{ github.event_name == 'pull_request' && github.ref || 'runtime' }}
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1, existing repository pin
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Test billing policy and connection without credentials
+        run: node --test tests/billing-agent.test.mjs tests/billing-connection.test.mjs
+  sync:
+    needs: test
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      vars.BILLING_AGENT_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Read Stripe and synchronize private review cards
+        env:
+          BILLING_AGENT_ENABLED: ${{ vars.BILLING_AGENT_ENABLED }}
+          BILLING_AGENT_MODE: ${{ vars.BILLING_AGENT_MODE || 'test' }}
+          BILLING_AGENT_READ_ONLY_CONFIRMED: ${{ vars.BILLING_AGENT_READ_ONLY_CONFIRMED }}
+          BILLING_AGENT_STRIPE_ACCOUNT_ID: ${{ vars.BILLING_AGENT_STRIPE_ACCOUNT_ID }}
+          BILLING_AGENT_LOOKBACK_DAYS: ${{ vars.BILLING_AGENT_LOOKBACK_DAYS || '7' }}
+          STRIPE_BILLING_READ_ONLY_KEY: ${{ secrets.STRIPE_BILLING_READ_ONLY_KEY }}
+          NOTION_API_TOKEN: ${{ secrets.NOTION_API_TOKEN }}
+        run: node ops/billing-agent/connect.mjs
