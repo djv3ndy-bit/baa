@@ -7,6 +7,7 @@ const barista='00000000-0000-4000-8000-000000000001', cafe='00000000-0000-4000-8
 const stranger='00000000-0000-4000-8000-000000000003', otherCafe='00000000-0000-4000-8000-000000000004';
 const job='10000000-0000-4000-8000-000000000001', otherJob='10000000-0000-4000-8000-000000000002', legacyJob='10000000-0000-4000-8000-000000000003';
 const match='20000000-0000-4000-8000-000000000001', otherMatch='20000000-0000-4000-8000-000000000002';
+const migration=readFileSync(new URL('../../supabase/migrations/20260907045304_repair_account_integrity_and_discovery_notifications.sql',import.meta.url),'utf8');
 let db;
 const sql = (text,params=[])=>db.query(text,params);
 async function asUser(id){await db.exec('reset role');await sql("select set_config('request.jwt.claim.sub',$1,true)",[id]);await db.exec('set local role authenticated');}
@@ -18,7 +19,7 @@ async function apply(){await asUser(barista);return (await sql("insert into appl
 before(async()=>{
   db=new PGlite();
   await db.exec(readFileSync(new URL('./fixture.sql',import.meta.url),'utf8'));
-  await db.exec(readFileSync(new URL('../../supabase/migrations/20260907045304_repair_account_integrity_and_discovery_notifications.sql',import.meta.url),'utf8'));
+  await db.exec(migration);
 });
 beforeEach(async()=>{await db.exec('begin');await db.exec('update profiles set is_discoverable=true');});
 afterEach(async()=>{await db.exec('rollback');});
@@ -104,10 +105,14 @@ test('legacy job can be paused or edited without changing its incomplete address
   await asUser(cafe);assert.equal((await sql("update jobs set active=false,description='Updated' where id=$1 returning state,active",[legacyJob])).rows[0].active,false);
   await rejected("update jobs set state='FL' where id=$1",[legacyJob]);
 });
-test('discovery message creates one recipient notification with a durable match link',async()=>{
+test('discovery message creates separate recipient state without changing native application notifications',async()=>{
   await asUser(barista);await sql('insert into discovery_messages(match_id,sender_id,body) values($1,$2,$3)',[match,barista,'Hello']);await asUser(cafe);
-  const {rows}=await sql('select recipient_id,actor_id,type,application_id,discovery_match_id,read_at from notifications');
-  assert.deepEqual(rows,[{recipient_id:cafe,actor_id:barista,type:'message',application_id:null,discovery_match_id:match,read_at:null}]);
+  const {rows}=await sql('select recipient_id,discovery_match_id,read_at from discovery_message_notifications');
+  assert.deepEqual(rows,[{recipient_id:cafe,discovery_match_id:match,read_at:null}]);
+  assert.equal((await sql('select count(*)::int n from notifications')).rows[0].n,0);
+  await db.exec('reset role');
+  assert.equal((await sql("select count(*)::int n from information_schema.columns where table_schema='public' and table_name='notifications' and column_name='discovery_match_id'")).rows[0].n,0);
+  assert.deepEqual((await sql("select column_name from information_schema.columns where table_schema='public' and table_name='discovery_message_notifications' order by ordinal_position")).rows.map(x=>x.column_name),['id','recipient_id','discovery_match_id','created_at','read_at']);
 });
 test('mark-read only clears the caller notification for the selected conversation',async()=>{
   await asUser(barista);await sql("insert into discovery_messages(match_id,sender_id,body) values($1,$2,'Hi')",[match,barista]);
@@ -115,8 +120,33 @@ test('mark-read only clears the caller notification for the selected conversatio
   await asUser(cafe);await sql("insert into discovery_messages(match_id,sender_id,body) values($1,$2,'Reply')",[match,cafe]);
   assert.equal((await sql('select mark_discovery_conversation_read($1) n',[match])).rows[0].n,1);
   assert.equal((await sql('select mark_discovery_conversation_read($1) n',[match])).rows[0].n,0);
-  assert.equal((await sql('select count(*)::int n from notifications where read_at is null')).rows[0].n,1);
-  await asUser(barista);assert.equal((await sql('select count(*)::int n from notifications where read_at is null')).rows[0].n,1);
+  assert.equal((await sql('select count(*)::int n from discovery_message_notifications where read_at is null')).rows[0].n,1);
+  await asUser(barista);assert.equal((await sql('select count(*)::int n from discovery_message_notifications where read_at is null')).rows[0].n,1);
+});
+test('notification grants permit only own SELECT and read_at updates after broad default grants',async()=>{
+  await asUser(barista);await sql("insert into discovery_messages(match_id,sender_id,body) values($1,$2,'Hello')",[match,barista]);
+  await asUser(cafe);const id=(await sql('select id from discovery_message_notifications')).rows[0].id;
+  await rejected('insert into discovery_message_notifications(recipient_id,discovery_match_id) values($1,$2)',[cafe,match]);
+  await rejected('update discovery_message_notifications set recipient_id=$1 where id=$2',[barista,id]);
+  await rejected('update discovery_message_notifications set discovery_match_id=$1 where id=$2',[otherMatch,id]);
+  await rejected("update discovery_message_notifications set created_at=now()+interval '1 day' where id=$1",[id]);
+  await rejected('delete from discovery_message_notifications where id=$1',[id]);
+  await asUser(stranger);assert.equal((await sql('select id from discovery_message_notifications where id=$1',[id])).rows.length,0);
+  assert.equal((await sql('update discovery_message_notifications set read_at=now() where id=$1 returning id',[id])).rows.length,0);
+  await asUser(cafe);assert.equal((await sql('update discovery_message_notifications set read_at=now() where id=$1 returning id',[id])).rows.length,1);
+  await db.exec('reset role;set local role anon');await rejected('select * from discovery_message_notifications');
+  await db.exec('reset role;set local role service_role');await rejected('insert into discovery_message_notifications(recipient_id,discovery_match_id) values($1,$2)',[cafe,match]);
+});
+test('discovery notification relationships cascade and Realtime registration is idempotent',async()=>{
+  await asUser(barista);await sql("insert into discovery_messages(match_id,sender_id,body) values($1,$2,'Hello')",[match,barista]);
+  await db.exec('reset role');
+  const before=await sql('select id,read_at from discovery_message_notifications');
+  await db.exec(migration);
+  assert.deepEqual((await sql('select id,read_at from discovery_message_notifications')).rows,before.rows);
+  assert.equal((await sql("select count(*)::int n from pg_publication_tables where pubname='supabase_realtime' and tablename='discovery_message_notifications'")).rows[0].n,1);
+  await sql('delete from discovery_messages where match_id=$1',[match]);
+  await sql('delete from discovery_matches where id=$1',[match]);
+  assert.equal((await sql('select count(*)::int n from discovery_message_notifications')).rows[0].n,0);
 });
 test('unrelated, blocked and anonymous callers cannot mark a discovery conversation read',async()=>{
   await asUser(stranger);await rejected('select mark_discovery_conversation_read($1)',[match]);

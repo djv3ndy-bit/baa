@@ -105,3 +105,9 @@ insert into public.discovery_matches(id,barista_id,cafe_id) values
  ('20000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000002');
 create function private.handle_new_email_profile() returns trigger language plpgsql as $$begin return new; end$$;
 create trigger on_auth_user_created_create_profile after insert on auth.users for each row execute function private.handle_new_email_profile();
+
+-- Supabase may automatically grant broad privileges on newly created tables.
+-- The repair must explicitly remove these rather than passing only on an empty
+-- local PostgreSQL privilege baseline.
+alter default privileges in schema public grant all on tables to anon,authenticated,service_role;
+create publication supabase_realtime for table public.notifications;

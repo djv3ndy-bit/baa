@@ -112,12 +112,42 @@ drop trigger if exists validate_job_location on public.jobs;
 create trigger validate_job_location before insert or update on public.jobs
 for each row execute function public.validate_job_location();
 
--- Give mutual-discovery conversations the same durable unread lifecycle as
--- application conversations. Existing application notifications are unchanged.
-alter table public.notifications
-  add column if not exists discovery_match_id uuid references public.discovery_matches(id) on delete cascade;
-create index if not exists notifications_discovery_match_recipient_unread_idx
-  on public.notifications(discovery_match_id,recipient_id) where read_at is null;
+-- Shipped native apps only acknowledge application notifications. Keep discovery
+-- unread state separate so they never accrue badges they cannot dismiss.
+create table if not exists public.discovery_message_notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  discovery_match_id uuid not null references public.discovery_matches(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+alter table public.discovery_message_notifications enable row level security;
+revoke all on table public.discovery_message_notifications from public, anon, authenticated, service_role;
+grant select on table public.discovery_message_notifications to authenticated;
+grant update(read_at) on table public.discovery_message_notifications to authenticated;
+drop policy if exists "Recipients can read discovery notifications" on public.discovery_message_notifications;
+create policy "Recipients can read discovery notifications" on public.discovery_message_notifications
+  for select to authenticated using(recipient_id=(select auth.uid()));
+drop policy if exists "Recipients can acknowledge discovery notifications" on public.discovery_message_notifications;
+create policy "Recipients can acknowledge discovery notifications" on public.discovery_message_notifications
+  for update to authenticated using(recipient_id=(select auth.uid()))
+  with check(recipient_id=(select auth.uid()));
+create index if not exists discovery_message_notifications_match_recipient_idx
+  on public.discovery_message_notifications(discovery_match_id,recipient_id);
+create index if not exists discovery_message_notifications_recipient_unread_idx
+  on public.discovery_message_notifications(recipient_id,created_at) where read_at is null;
+
+-- Match the existing notification Realtime delivery without failing on local
+-- databases that do not have Supabase's publication or on repeated application.
+do $$
+begin
+  if exists(select 1 from pg_publication where pubname='supabase_realtime' and not puballtables)
+    and not exists(select 1 from pg_publication_tables where pubname='supabase_realtime'
+      and schemaname='public' and tablename='discovery_message_notifications') then
+    alter publication supabase_realtime add table public.discovery_message_notifications;
+  end if;
+end;
+$$;
 
 create or replace function private.create_discovery_message_notification()
 returns trigger language plpgsql security definer set search_path = '' as $$
@@ -127,8 +157,8 @@ begin
     into recipient from public.discovery_matches dm
     where dm.id=new.match_id and new.sender_id in (dm.barista_id,dm.cafe_id);
   if recipient is not null then
-    insert into public.notifications(recipient_id,actor_id,type,title,body,discovery_match_id)
-    values(recipient,new.sender_id,'message','New message from your match','Open your matched conversation.',new.match_id);
+    insert into public.discovery_message_notifications(recipient_id,discovery_match_id)
+    values(recipient,new.match_id);
   end if;
   return new;
 end;
@@ -146,7 +176,7 @@ begin
     select 1 from public.discovery_matches dm where dm.id=p_match_id
       and (select auth.uid()) in (dm.barista_id,dm.cafe_id)
   ) then raise exception 'Conversation unavailable' using errcode='42501'; end if;
-  update public.notifications set read_at=now()
+  update public.discovery_message_notifications set read_at=now()
     where recipient_id=(select auth.uid()) and discovery_match_id=p_match_id and read_at is null;
   get diagnostics affected = row_count;
   return affected;
