@@ -95,6 +95,12 @@ includes(releaseWorkflow, 'type: require-approval', 'TestFlight workflow');
 includes(releaseWorkflow, 'type: build', 'TestFlight workflow');
 includes(releaseWorkflow, 'type: testflight', 'TestFlight workflow');
 includes(releaseWorkflow, 'submit_beta_review: false', 'TestFlight workflow');
+// Upload notes through the workflow document: submission changelogs require an Enterprise plan.
+excludes(releaseWorkflow, 'changelog:', 'TestFlight workflow');
+excludes(releaseWorkflow, '--what-to-test', 'TestFlight workflow');
+includes(releaseWorkflow, 'type: doc', 'TestFlight verification document');
+includes(releaseWorkflow, '1. New barista email signup and verification', 'TestFlight verification document');
+includes(releaseWorkflow, '10. Settings retry states, account switching, and deletion of disposable reviewer accounts', 'TestFlight verification document');
 excludes(releaseWorkflow, '\n  push:', 'TestFlight workflow');
 excludes(releaseWorkflow, 'external_groups:', 'TestFlight workflow');
 
