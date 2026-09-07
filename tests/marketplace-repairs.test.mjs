@@ -163,6 +163,196 @@ test('profile-save refresh removes stale geography and exposes retry after failu
   assert.match(ctx.marketplaceNoticeHtml(), /data-refresh-marketplace/);
 });
 
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function jobEditorContext() {
+  const fields = ['title', 'address_line1', 'address_line2', 'city', 'state', 'postal_code', 'description', 'hourly_pay', 'max_hourly_pay', 'skills'];
+  const elements = Object.fromEntries(fields.map(name => [name, { value: '', defaultValue: '' }]));
+  const stateInput = dashboard.match(/<input name="state"[^>]*>/)[0];
+  elements.state.defaultValue = stateInput.match(/\bvalue="([^"]*)"/)?.[1] || '';
+  const button = { disabled: false, textContent: '' }, heading = {}, status = { textContent: '' };
+  const schedules = [{ value: 'Full-time', checked: false }], content = { firstElementChild: {} }, navigations = [], writes = [];
+  const form = {
+    elements, resetCount: 0,
+    reset() { this.resetCount++; for (const field of Object.values(elements)) field.value = field.defaultValue; schedules.forEach(input => { input.checked = false; }); },
+    querySelector: selector => selector === 'h2' ? heading : button,
+    querySelectorAll: () => schedules,
+  };
+  const dialog = { open: false, showModal() { this.open = true; }, close() { this.open = false; } };
+  const dom = { 'job-form': form, 'job-status': status, 'job-dialog': dialog, content };
+  const ctx = context({ currentRole: 'cafe_owner_manager', currentUser: { id: 'cafe' }, currentSection: 'Job Posts', currentView: {}, jobEditorVersion: 0, marketJobs: [job, { ...job, id: 'job-2', title: 'Second role' }],
+    document: { getElementById: id => dom[id] },
+    FormData: class {
+      constructor() { this.fields = Object.fromEntries(Object.entries(elements).map(([name, input]) => [name, input.value])); this.schedules = schedules.filter(input => input.checked).map(input => input.value); }
+      get(name) { return this.fields[name] || ''; }
+      getAll(name) { return name === 'schedule' ? this.schedules : []; }
+      [Symbol.iterator]() { return [...Object.entries(this.fields), ...this.schedules.map(value => ['schedule', value])][Symbol.iterator](); }
+    },
+    saveJobPost: async (data, id) => { writes.push({ id, state: data.get('state'), title: data.get('title') }); return { id: id || 'created-job' }; },
+    refreshMarketplaceAfterProfileSave: async () => true,
+    sendPhoneNotificationEvent() {},
+    openSection: section => navigations.push(section),
+    alert(message) { throw new Error(message); },
+  }, ['openJobEditor', 'submitJobForm']);
+  vm.runInContext(dashboard.match(/^document\.getElementById\('job-form'\)\.elements\.state\.[^\n]+/m)[0], ctx);
+  return { ctx, form, elements, button, status, dialog, content, navigations, writes, submit: () => ctx.submitJobForm({ preventDefault() {}, currentTarget: form }) };
+}
+
+test('first and subsequent new job editors retain the required read-only Florida state after reset', async () => {
+  const h = jobEditorContext();
+  for (let post = 0; post < 2; post++) {
+    h.ctx.openJobEditor();
+    assert.equal(h.elements.state.readOnly, true);
+    assert.equal(h.elements.state.value, 'FL');
+    await h.submit();
+  }
+  h.ctx.openJobEditor(job.id);
+  h.dialog.close();
+  h.ctx.openJobEditor();
+  assert.equal(h.elements.state.value, 'FL', 'editing another post must not change the new-post default');
+  assert.deepEqual(h.writes.map(write => write.state), ['FL', 'FL']);
+});
+
+test('an earlier job save cannot close or reset a newer editor during either the write or refresh', async () => {
+  for (const phase of ['write', 'refresh']) {
+    const h = jobEditorContext(), pending = deferred();
+    if (phase === 'write') h.ctx.saveJobPost = () => pending.promise;
+    else h.ctx.refreshMarketplaceAfterProfileSave = () => pending.promise;
+    h.ctx.openJobEditor(job.id);
+    const saving = h.submit();
+    await Promise.resolve();
+    h.dialog.close();
+    h.ctx.openJobEditor('job-2');
+    h.elements.title.value = 'New draft for the second role';
+    const resets = h.form.resetCount;
+    pending.resolve({ id: job.id });
+    await saving;
+    assert.equal(h.ctx.editingJobId, 'job-2', phase);
+    assert.equal(h.elements.title.value, 'New draft for the second role', phase);
+    assert.equal(h.form.resetCount, resets, phase);
+    assert.equal(h.dialog.open, true, phase);
+    assert.equal(h.button.disabled, false, phase);
+    assert.equal(h.button.textContent, 'Save changes', phase);
+    assert.deepEqual(h.navigations, [], phase);
+  }
+});
+
+test('an earlier failed save cannot overwrite errors or unlock a newer save', async () => {
+  const h = jobEditorContext(), first = deferred(), second = deferred();
+  h.ctx.saveJobPost = (data, id) => id === job.id ? first.promise : second.promise;
+  h.ctx.openJobEditor(job.id);
+  const savingFirst = h.submit();
+  h.dialog.close();
+  h.ctx.openJobEditor('job-2');
+  const savingSecond = h.submit();
+  first.reject(new Error('First request failed'));
+  await savingFirst;
+  assert.equal(h.button.disabled, true);
+  assert.equal(h.button.textContent, 'Saving…');
+  assert.equal(h.status.textContent, '');
+  second.resolve({ id: 'job-2' });
+  await savingSecond;
+  assert.equal(h.dialog.open, false);
+  assert.deepEqual(h.navigations, ['Job Posts']);
+});
+
+test('edits typed during publication survive and the next save updates the newly created job', async () => {
+  const h = jobEditorContext(), pending = deferred(), writes = [];
+  h.ctx.saveJobPost = (data, id) => { writes.push({ id, title: data.get('title') }); return pending.promise; };
+  h.ctx.openJobEditor();
+  h.elements.title.value = 'Original role';
+  const saving = h.submit();
+  h.elements.title.value = 'Newer draft';
+  pending.resolve({ id: 'newly-created-job' });
+  await saving;
+  assert.equal(h.dialog.open, true);
+  assert.equal(h.elements.title.value, 'Newer draft');
+  assert.equal(h.ctx.editingJobId, 'newly-created-job');
+  assert.equal(h.button.textContent, 'Save changes');
+  assert.match(h.status.textContent, /newer edits/);
+  assert.deepEqual(h.navigations, []);
+  await h.submit();
+  assert.deepEqual(writes, [{ id: null, title: 'Original role' }, { id: 'newly-created-job', title: 'Newer draft' }]);
+  assert.equal(h.dialog.open, false);
+});
+
+test('canceling a pending save and opening messages preserves the conversation view', async () => {
+  const h = jobEditorContext(), pending = deferred();
+  h.ctx.saveJobPost = () => pending.promise;
+  h.ctx.openJobEditor(job.id);
+  const saving = h.submit();
+  h.dialog.close();
+  h.ctx.currentSection = 'Messages';
+  h.content.firstElementChild = { conversation: 'match-1' };
+  const resets = h.form.resetCount;
+  pending.resolve({ id: job.id });
+  await saving;
+  assert.deepEqual(h.navigations, []);
+  assert.equal(h.content.firstElementChild.conversation, 'match-1');
+  assert.equal(h.form.resetCount, resets);
+});
+
+test('repeated submits during the same job save issue one write and remain retryable on failure', async () => {
+  const h = jobEditorContext(), pending = deferred();
+  let writes = 0;
+  h.ctx.saveJobPost = () => { writes++; return pending.promise; };
+  h.ctx.openJobEditor(job.id);
+  h.elements.title.value = 'Keep this draft';
+  const saving = h.submit();
+  const duplicate = h.submit();
+  pending.reject(new Error('Connection lost'));
+  await Promise.all([saving, duplicate]);
+  assert.equal(writes, 1);
+  assert.equal(h.button.disabled, false);
+  assert.equal(h.dialog.open, true);
+  assert.equal(h.elements.title.value, 'Keep this draft');
+  assert.equal(h.status.textContent, 'Connection lost');
+});
+
+test('viewing cached or fetched outside-area interest profiles does not alter filtered candidates', async () => {
+  for (const cached of [true, false]) {
+    const outside = { id: 'outside', display_name: 'Outside city barista', location: 'Orlando, FL' };
+    const content = {}, heading = {};
+    let lookups = 0;
+    const ctx = context({ currentRole: 'cafe_owner_manager', currentUser: { id: 'cafe' }, candidateProfiles: [{ id: 'local', location: 'Miami, FL' }], discoveryProfiles: cached ? { outside } : {},
+      document: { getElementById: () => content, querySelector: () => heading },
+      activeClient: { from(table) {
+        if (table === 'profile_views') return { insert: async () => ({ error: null }) };
+        lookups++;
+        return { select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: outside, error: null }) };
+      } },
+      bindContentActions() {}, window: { scrollTo() {} }, console,
+      alert(message) { throw new Error(message); },
+    }, ['openCandidateReliable', 'openCandidate']);
+    await ctx.openCandidateReliable('outside');
+    assert.match(content.innerHTML, /Outside city barista/);
+    assert.equal(ctx.candidateProfiles.length, 1);
+    assert.equal(ctx.candidateProfiles[0].id, 'local');
+    assert.match(ctx.baristaDiscoveryHtml(), />1 baristas<\/h3>/);
+    assert.equal(lookups, cached ? 0 : 1);
+  }
+});
+
+test('marketplace refresh only rerenders its original unchanged view and never resets a conversation', async () => {
+  for (const destination of ['unchanged', 'messages', 'same-section-detail', 'returned-section', 'initial-messages']) {
+    const pending = deferred(), navigations = [], content = { firstElementChild: {} };
+    const ctx = context({ currentSection: destination === 'initial-messages' ? 'Messages' : 'Discover', currentView: {},
+      document: { getElementById: () => content }, loadMarketplaceData: () => pending.promise,
+      openSection: section => navigations.push(section), alert(message) { throw new Error(message); },
+    }, ['refreshMarketplace']);
+    const refreshing = ctx.refreshMarketplace({ disabled: false, textContent: 'Refresh results' });
+    if (destination === 'messages') { ctx.currentSection = 'Messages'; content.firstElementChild = {}; }
+    if (destination === 'same-section-detail' || destination === 'returned-section') content.firstElementChild = {};
+    pending.resolve();
+    await refreshing;
+    assert.deepEqual(navigations, destination === 'unchanged' ? ['Discover'] : [], destination);
+  }
+});
+
 test('all dashboard inline scripts and the homepage helper parse', () => {
   for (const [, attributes, body] of dashboard.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)) if (!attributes.includes('src=')) new vm.Script(body);
   new vm.Script(quietFocus);
