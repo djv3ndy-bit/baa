@@ -32,6 +32,7 @@ Founder pricing stays with a café while its subscription remains continuously a
 
 ## Access behavior
 
+- Café plan details appear only after signup and sign-in with a saved café account. Public homepage navigation, footer and café marketing copy do not advertise plans or prices. The legacy pricing route directs guests to café signup and signed-in cafés to their dashboard Subscription section. The café welcome screen keeps plan content hidden until authorization succeeds.
 - A café can use the full Free workflow for its first job and first completed hire.
 - Creating a second lifetime job or maintaining more than the Free allowance requires Pro.
 - Pro permits no more than 3 active jobs at once.
