@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
 import Yoga from 'yoga-layout';
+import { LOGIN_LAYOUT_METRICS, resolveLoginLayout } from './login-layout-module.mjs';
 
 // Render the actual TSX with inert hooks/native hosts. No account/network call is
 // allowed. Yoga measures the real style tree; text uses deterministic synthetic
@@ -14,7 +15,7 @@ const ROOT = resolve(process.env.BJM_LAYOUT_SOURCE_ROOT || fileURLToPath(new URL
 const flatten = value => Array.isArray(value) ? Object.assign({}, ...value.map(flatten)) : typeof value === 'function' ? flatten(value({ pressed: false })) : value || {};
 const kids = value => [value].flat(Infinity).filter(x => x !== null && x !== undefined && x !== false && x !== true);
 const textOf = element => typeof element === 'string' || typeof element === 'number' ? String(element) : kids(element?.props?.children).map(textOf).join('');
-function render(file, { states = {}, props = {}, platform = 'ios', width = 393 } = {}) {
+function render(file, { states = {}, props = {}, platform = 'ios', width = 393, height = 844, fontScale = 1, insets = { top: 59, bottom: 34, left: 0, right: 0 } } = {}) {
   const sheets = [], routes = [];
   let index = 0;
   const react = {
@@ -25,7 +26,8 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393 }
   const native = {
     StyleSheet: { create(value) { sheets.push(value); return value; }, flatten },
     Platform: { OS: platform, select: options => options[platform] ?? options.default },
-    Dimensions: { get: () => ({ width, height: 844 }) },
+    Dimensions: { get: () => ({ width, height }) },
+    useWindowDimensions: () => ({ width, height, fontScale, scale: 3 }),
     Animated: { event: () => () => {}, View: 'View', ValueXY: class { x = { interpolate: () => 0 }; getTranslateTransform() { return []; } } },
     PanResponder: { create: () => ({ panHandlers: {} }) },
     Alert: { alert() { throw new Error('Unexpected Alert during static layout rendering'); } },
@@ -37,7 +39,10 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393 }
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return native;
     if (name === 'expo-router') return { useFocusEffect() {}, router: { push: path => routes.push(path), replace: path => routes.push(path), back: () => routes.push('back') }, useLocalSearchParams: () => ({ id: 'test-match', kind: 'discovery' }) };
+    if (name === 'expo-web-browser') return { maybeCompleteAuthSession() {}, openAuthSessionAsync: async () => ({ type: 'cancel' }) };
+    if (name === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets };
     if (/\.(png|jpg)$/.test(name)) return 1;
+    if (name.endsWith('/loginLayout')) return { LOGIN_LAYOUT_METRICS, resolveLoginLayout };
     if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => ({ ready: true, error: '', retry: async () => {} }) };
     if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
     if (name.endsWith('/profilePrivacy')) return { getProfileReadiness: () => ({ complete: false, missing: ['Profile picture'], visible: false }), normalizeOptionalGender: () => null };
@@ -94,7 +99,7 @@ function applyStyle(node, style) {
     if (match) node.setBorder(edges[match[1] || ''], value);
   }
 }
-function layout(element, width, fontScale, direction = 'ltr') {
+function layout(element, width, fontScale, direction = 'ltr', height) {
   const records = [];
   function build(element, parent = null) {
     if (typeof element.type === 'function') return build(element.type(element.props), parent);
@@ -123,7 +128,7 @@ function layout(element, width, fontScale, direction = 'ltr') {
     }
     return node;
   }
-  const root = build(element); root.setWidth(width); root.calculateLayout(width, undefined, direction === 'rtl' ? Yoga.DIRECTION_RTL : Yoga.DIRECTION_LTR);
+  const root = build(element); root.setWidth(width); if (height !== undefined) root.setHeight(height); root.calculateLayout(width, height, direction === 'rtl' ? Yoga.DIRECTION_RTL : Yoga.DIRECTION_LTR);
   return { root, records, free: () => root.freeRecursive() };
 }
 function assertContained(result, context, checkTargets = true) {
@@ -141,6 +146,69 @@ function assertContained(result, context, checkTargets = true) {
   }
   assert.ok(root.getComputedHeight() > 0);
 }
+function findElement(element, predicate) {
+  if (!element || typeof element !== 'object') return null;
+  if (typeof element.type === 'function') return findElement(element.type(element.props), predicate);
+  if (predicate(element)) return element;
+  for (const child of kids(element.props?.children)) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+  }
+  return null;
+}
+
+const loginScreens = [
+  { width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } },
+  { width: 375, height: 667, insets: { top: 20, bottom: 0, left: 0, right: 0 } },
+  { width: 375, height: 812, insets: { top: 50, bottom: 34, left: 0, right: 0 } },
+  { width: 390, height: 844, insets: { top: 59, bottom: 34, left: 0, right: 0 } },
+  { width: 393, height: 852, insets: { top: 59, bottom: 34, left: 0, right: 0 } },
+];
+for (const screen of loginScreens) test(`login stays on one page at ${screen.width}×${screen.height}`, () => {
+  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1 });
+  const scroll = findElement(rendered.tree, element => element.type === 'ScrollView');
+  assert.ok(scroll, 'login renders its fallback ScrollView');
+  assert.equal(scroll.props.scrollEnabled, false, 'normal text does not scroll');
+  const page = { type: 'View', props: { ...scroll.props, style: scroll.props.contentContainerStyle } };
+  const result = layout(page, screen.width, 1, 'ltr', screen.height);
+  try { assertContained(result, `login ${screen.width}×${screen.height}`); } finally { result.free(); }
+});
+
+test('login enables its fallback scrolling for enlarged text and the keyboard', () => {
+  const screen = { width: 393, height: 852, insets: { top: 59, bottom: 34, left: 0, right: 0 } };
+  const enlarged = render('mobile/app/login.tsx', { ...screen, fontScale: 1.2 });
+  const keyboard = render('mobile/app/login.tsx', { ...screen, states: { 0: true } });
+  assert.equal(findElement(enlarged.tree, element => element.type === 'ScrollView').props.scrollEnabled, true);
+  assert.equal(findElement(keyboard.tree, element => element.type === 'ScrollView').props.scrollEnabled, true);
+});
+
+test('login enlarged text can grow without clipping at the narrowest supported width', () => {
+  const screen = { width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } };
+  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1.5 });
+  const scroll = findElement(rendered.tree, element => element.type === 'ScrollView');
+  assert.equal(scroll.props.scrollEnabled, true);
+  const page = { type: 'View', props: { ...scroll.props, style: scroll.props.contentContainerStyle } };
+  const result = layout(page, screen.width, 1.5);
+  try { assertContained(result, 'login 320×568 enlarged text'); } finally { result.free(); }
+});
+
+test('login removes the decorative hero tagline when the keyboard and enlarged text are combined', () => {
+  const screen = { width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } };
+  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1.5, states: { 0: true } });
+  const matchingCopy = [];
+  function collect(element) {
+    if (!element || typeof element !== 'object') return;
+    if (typeof element.type === 'function') return collect(element.type(element.props));
+    if (element.type === 'Text' && textOf(element) === 'Where cafés meet baristas.') matchingCopy.push(element);
+    for (const child of kids(element.props?.children)) collect(child);
+  }
+  collect(rendered.tree);
+  assert.equal(matchingCopy.length, 1, 'only the form subtitle remains visible');
+  const hero = rendered.findStyle('hero');
+  const result = layout(hero, screen.width, 1.5);
+  try { assertContained(result, 'login combined keyboard and enlarged text'); } finally { result.free(); }
+});
+
 const homeProps = { role: 'cafe_owner_manager', firstName: 'A very long café name', location: 'Miami, Florida', profileProgress: 80, counts: { jobs: 3, matches: 5, alerts: 1, candidates: 999, applications: 12, messages: 5 }, refreshing: false, cafePlanCopy: 'First hire free', onRefresh() {} };
 const cases = [
   { name: 'café profile', file: 'mobile/app/profile.tsx', states: { 0: false, 3: 'cafe_owner_manager' } },

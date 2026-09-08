@@ -4,17 +4,17 @@ Implements the owner's selected Option 2 login preview: a warm latte-pour photog
 
 The hero is a bundled 147 KB JPEG, so sign-in does not depend on a remote image request. Provider marks are bundled raster assets. Authentication, OAuth, session recovery and role routing are unchanged. The login screen owns its safe-area insets; other routes retain their existing safe-area handling.
 
-The form scrolls on short displays and with larger text. Keyboard events reduce the decorative header, and iOS uses keyboard avoidance. Inputs have accessible labels, a focus border, email-to-password focus, and touch targets at least 44 points high.
+At normal text size, the complete login stays together in one viewport: photo header, rounded form, password recovery, primary action, Google and Apple options, and account creation. Three explicit height tiers cover small, compact and current Face ID iPhones; each tier budgets the real form height before choosing the photo height. Scrolling is reserved for the keyboard, enlarged text, unusually small screens, or native text measurements that genuinely overflow. Inputs retain accessible labels, a focus border, email-to-password focus, and touch targets at least 44 points high.
 
 ## Verification
 
 - Mobile TypeScript check passed.
 - iOS Metro/Hermes export passed with all new assets included.
-- Authentication release verification passed (380 checks).
+- Authentication release verification passed (388 guarded checks).
 - Store configuration verification passed.
-- Existing authentication and native-account tests passed (23 tests).
-- Actual TSX/style-tree geometry was checked at 320, 375, 393 and 430 point widths, text scales 1, 1.5 and 2, with keyboard state shown/hidden (24 cases). Horizontal containment, touch targets and recovery/signup destinations passed. Text measurement was synthetic; this does not verify system font rendering or actual keyboard behavior.
-- The preview browser blocked local pages. Visual device verification remains pending.
+- Existing native account/store regressions passed (43 tests), and the full native layout suite passed (314 tests).
+- One-page height budgets are checked at 320×568, 375×667, 375×812, 390×844 and 393×852. Every normal-text case retains at least eight points of spare vertical space, and every field/action remains at least 44 points high.
+- Keyboard, enlarged-text, their combined state, and true-overflow cases are checked to keep content available without clipping. These automated checks do not replace final signed-device review of native font rendering and photo cropping.
 
 ## TestFlight acceptance
 
