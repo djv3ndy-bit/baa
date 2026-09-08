@@ -35,6 +35,7 @@ export default function LoginScreen() {
   const metrics = LOGIN_LAYOUT_METRICS[layout.mode];
   const compact = layout.mode === 'compact';
   const short = layout.mode === 'short';
+  const heroHeight = layout.heroHeight;
   const scrollEnabled = layout.requiresScroll || contentOverflows;
   const inputHeight = Math.max(metrics.inputHeight, metrics.inputHeight * Math.min(fontScale, 1.5));
   const hideHeroTagline = keyboardVisible && fontScale > 1.15;
@@ -119,7 +120,7 @@ export default function LoginScreen() {
           keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.hero, compact && styles.heroCompact, short && styles.heroShort, layout.reducedHeader && styles.heroReduced, { height: layout.heroHeight, paddingTop: insets.top + 12 }]}>
+          <View style={[styles.hero, compact && styles.heroCompact, short && styles.heroShort, layout.reducedHeader && styles.heroReduced, { height: heroHeight, paddingTop: insets.top + 12 }]}>
             <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
             <View pointerEvents="none" style={styles.heroShade} />
             <View style={[styles.brandBlock, compact && styles.brandBlockCompact, short && styles.brandBlockShort]}>
