@@ -55,7 +55,6 @@ export const LOGIN_LAYOUT_METRICS = {
 export type ResolveLoginLayoutInput = {
   width: number;
   height: number;
-  fontScale: number;
   topInset: number;
   bottomInset: number;
   keyboardVisible: boolean;
@@ -77,7 +76,6 @@ export type ResolvedLoginLayout = {
 export function resolveLoginLayout({
   width,
   height,
-  fontScale,
   topInset,
   bottomInset,
   keyboardVisible,
@@ -93,15 +91,12 @@ export function resolveLoginLayout({
   const fitCap = height - sheetBudget + metrics.overlap - 8;
   const naturalHero = Math.min(metrics.heroCap, height * metrics.ratio);
   const minimumHero = topInset + metrics.heroBodyMinimum;
-  const largeText = fontScale > 1.15;
-  const reducedHeader = keyboardVisible || largeText;
-  const requiresScroll = keyboardVisible || largeText || minimumHero > fitCap;
+  const reducedHeader = keyboardVisible;
+  const requiresScroll = keyboardVisible || minimumHero > fitCap;
 
   const heroHeight = keyboardVisible
     ? topInset + 88
-    : largeText
-      ? topInset + 112
-      : Math.max(minimumHero, Math.min(naturalHero, fitCap));
+    : Math.max(minimumHero, Math.min(naturalHero, fitCap));
 
   return {
     mode,

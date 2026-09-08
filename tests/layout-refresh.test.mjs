@@ -5,6 +5,47 @@ import vm from 'node:vm';
 
 const read = (file) => fs.readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
 
+test('homepage preloads and keeps the approved hero after its layout helper runs', () => {
+  const homepage = read('index.html');
+  const approvedHero = '/assets/editorial-hero-v4.png';
+  const previousHero = '/assets/editorial-hero-v3.jpg';
+  const preload = homepage.match(/<link\b(?=[^>]*rel="preload")(?=[^>]*as="image")[^>]*href="([^"]+)"/);
+  const initialHero = homepage.match(/<img\b[^>]*class="hero-photo"[^>]*src="([^"]+)"/);
+  assert.equal(preload?.[1], approvedHero);
+  assert.equal(initialHero?.[1], approvedHero);
+  assert.equal(homepage.split(`src="${previousHero}"`).length - 1, 3);
+
+  const asset = fs.readFileSync(new URL(`..${approvedHero}`, import.meta.url));
+  assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(asset.readUInt32BE(16), 1536);
+  assert.equal(asset.readUInt32BE(20), 1024);
+
+  const attributes = {};
+  const hero = { src: initialHero[1], setAttribute: (key, value) => { attributes[key] = value; } };
+  const finalImage = {};
+  const audienceImages = [{}, {}];
+  let onReady;
+  const document = {
+    addEventListener: (event, handler) => {
+      assert.equal(event, 'DOMContentLoaded');
+      onReady = handler;
+    },
+    querySelector: (selector) => ({
+      '.hero-photo': hero,
+      '.final-image img': finalImage,
+    }[selector] ?? null),
+    querySelectorAll: (selector) => selector === '.audience-card img' ? audienceImages : [],
+  };
+  vm.runInNewContext(read('warm-editorial.js'), { document });
+  assert.equal(typeof onReady, 'function');
+  onReady();
+  assert.equal(hero.src, approvedHero);
+  assert.equal(hero.loading, 'eager');
+  assert.equal(attributes.fetchpriority, 'high');
+  assert.equal(finalImage.src, previousHero);
+  assert.ok(audienceImages.every((image) => image.src === previousHero));
+});
+
 test('public homepage keeps the Warm Editorial layout without public café pricing', () => {
   const homepage = read('index.html');
   assert.match(homepage, /href="\/warm-editorial\.css"/);

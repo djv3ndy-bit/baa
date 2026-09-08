@@ -14,11 +14,11 @@ const oauthStart = 'https://www.baristajobmatch.com/mobile-auth-start.html';
 WebBrowser.maybeCompleteAuthSession();
 
 function Text(props: TextProps) {
-  return <NativeText maxFontSizeMultiplier={1.5} {...props} />;
+  return <NativeText {...props} allowFontScaling={false} />;
 }
 
 export default function LoginScreen() {
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [contentOverflows, setContentOverflows] = useState(false);
@@ -27,7 +27,6 @@ export default function LoginScreen() {
   const layout = resolveLoginLayout({
     width,
     height,
-    fontScale,
     topInset: insets.top,
     bottomInset: insets.bottom,
     keyboardVisible,
@@ -37,8 +36,7 @@ export default function LoginScreen() {
   const short = layout.mode === 'short';
   const heroHeight = layout.heroHeight;
   const scrollEnabled = layout.requiresScroll || contentOverflows;
-  const inputHeight = Math.max(metrics.inputHeight, metrics.inputHeight * Math.min(fontScale, 1.5));
-  const hideHeroTagline = keyboardVisible && fontScale > 1.15;
+  const inputHeight = metrics.inputHeight;
 
   useEffect(() => {
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true));
@@ -121,29 +119,30 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.hero, compact && styles.heroCompact, short && styles.heroShort, layout.reducedHeader && styles.heroReduced, { height: heroHeight, paddingTop: insets.top + 12 }]}>
-            <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
+            {/* Bundled images otherwise keep their intrinsic size even with absoluteFillObject. */}
+            <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={[StyleSheet.absoluteFillObject, { width, height: heroHeight }]} />
             <View pointerEvents="none" style={styles.heroShade} />
             <View style={[styles.brandBlock, compact && styles.brandBlockCompact, short && styles.brandBlockShort]}>
               {!layout.reducedHeader && <Image accessible={false} source={require('../assets/brand-mark.png')} resizeMode="contain" style={[styles.logo, compact && styles.logoCompact, short && styles.logoShort]} />}
               <Text accessibilityRole="header" adjustsFontSizeToFit numberOfLines={1} style={[styles.brand, compact && styles.brandCompact, short && styles.brandShort]}>
                 Barista<Text style={styles.brandAccent}>Match</Text>
               </Text>
-              {!hideHeroTagline && <Text style={[styles.tagline, compact && styles.taglineCompact, short && styles.taglineShort]}>Where cafés meet baristas.</Text>}
+              <Text style={[styles.tagline, compact && styles.taglineCompact, short && styles.taglineShort]}>Where cafés meet baristas.</Text>
             </View>
           </View>
 
           <View style={[styles.sheet, compact && styles.sheetCompact, short && styles.sheetShort, { marginTop: -metrics.overlap, paddingBottom: Math.max(insets.bottom, 16) }]}>
             <View style={styles.form}>
-              <Text accessibilityRole="header" style={[styles.heading, compact && styles.headingCompact, short && styles.headingShort]}>Welcome back.</Text>
+              <Text accessibilityRole="header" adjustsFontSizeToFit numberOfLines={1} style={[styles.heading, compact && styles.headingCompact, short && styles.headingShort]}>Welcome back.</Text>
               <Text style={[styles.subtitle, compact && styles.subtitleCompact, short && styles.subtitleShort]}>Where cafés meet baristas.</Text>
 
               <Text style={[styles.label, compact && styles.labelCompact, short && styles.labelShort]}>Email</Text>
-              <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort, { minHeight: inputHeight }, focusedField === 'email' && styles.inputFocused]}>
+              <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort, { height: inputHeight, minHeight: inputHeight }, focusedField === 'email' && styles.inputFocused]}>
                 <View accessible={false} style={styles.fieldIcon}><View style={styles.envelope}><View style={styles.envelopeFlap} /></View></View>
                 <TextInput
                   accessibilityLabel="Email"
                   editable={!busy}
-                  maxFontSizeMultiplier={1.5}
+                  allowFontScaling={false}
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="email"
@@ -163,13 +162,13 @@ export default function LoginScreen() {
               </View>
 
               <Text style={[styles.label, styles.passwordLabel, compact && styles.labelCompact, compact && styles.passwordLabelCompact, short && styles.labelShort, short && styles.passwordLabelShort]}>Password</Text>
-              <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort, { minHeight: inputHeight }, focusedField === 'password' && styles.inputFocused]}>
+              <View style={[styles.inputShell, compact && styles.inputShellCompact, short && styles.inputShellShort, { height: inputHeight, minHeight: inputHeight }, focusedField === 'password' && styles.inputFocused]}>
                 <View accessible={false} style={styles.fieldIcon}><View style={styles.lockShackle} /><View style={styles.lockBody} /></View>
                 <TextInput
                   ref={passwordInput}
                   accessibilityLabel="Password"
                   editable={!busy}
-                  maxFontSizeMultiplier={1.5}
+                  allowFontScaling={false}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry={!passwordVisible}
