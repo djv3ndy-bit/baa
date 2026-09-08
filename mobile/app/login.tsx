@@ -119,7 +119,8 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={[styles.hero, compact && styles.heroCompact, short && styles.heroShort, layout.reducedHeader && styles.heroReduced, { height: heroHeight, paddingTop: insets.top + 12 }]}>
-            <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={StyleSheet.absoluteFillObject} />
+            {/* Bundled images otherwise keep their intrinsic size even with absoluteFillObject. */}
+            <Image accessible={false} source={require('../assets/login-cafe-editorial.jpg')} resizeMode="cover" style={[StyleSheet.absoluteFillObject, { width, height: heroHeight }]} />
             <View pointerEvents="none" style={styles.heroShade} />
             <View style={[styles.brandBlock, compact && styles.brandBlockCompact, short && styles.brandBlockShort]}>
               {!layout.reducedHeader && <Image accessible={false} source={require('../assets/brand-mark.png')} resizeMode="contain" style={[styles.logo, compact && styles.logoCompact, short && styles.logoShort]} />}

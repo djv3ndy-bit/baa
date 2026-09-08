@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import ts from 'typescript';
@@ -15,6 +15,24 @@ const ROOT = resolve(process.env.BJM_LAYOUT_SOURCE_ROOT || fileURLToPath(new URL
 const flatten = value => Array.isArray(value) ? Object.assign({}, ...value.map(flatten)) : typeof value === 'function' ? flatten(value({ pressed: false })) : value || {};
 const kids = value => [value].flat(Infinity).filter(x => x !== null && x !== undefined && x !== false && x !== true);
 const textOf = element => typeof element === 'string' || typeof element === 'number' ? String(element) : kids(element?.props?.children).map(textOf).join('');
+const absoluteFillObject = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 };
+function bundledImageSource(file) {
+  const bytes = readFileSync(file);
+  if (bytes.subarray(1, 4).toString() === 'PNG') {
+    return { uri: file, width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  // Read JPEG SOF dimensions so the mock uses the real bundled asset's size.
+  assert.equal(bytes.readUInt16BE(0), 0xffd8, `${file}: supported bundled image`);
+  for (let offset = 2; offset + 8 < bytes.length;) {
+    assert.equal(bytes[offset], 0xff, `${file}: valid JPEG marker`);
+    const marker = bytes[offset + 1];
+    if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+      return { uri: file, width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+    }
+    offset += 2 + bytes.readUInt16BE(offset + 2);
+  }
+  throw new Error(`${file}: missing JPEG dimensions`);
+}
 function render(file, { states = {}, props = {}, platform = 'ios', width = 393, height = 844, fontScale = 1, insets = { top: 59, bottom: 34, left: 0, right: 0 } } = {}) {
   const sheets = [], routes = [];
   let index = 0;
@@ -24,7 +42,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
   };
   const element = (type, props) => ({ type, props: props || {} });
   const native = {
-    StyleSheet: { create(value) { sheets.push(value); return value; }, flatten },
+    StyleSheet: { create(value) { sheets.push(value); return value; }, flatten, absoluteFillObject, absoluteFill: absoluteFillObject },
     Platform: { OS: platform, select: options => options[platform] ?? options.default },
     Dimensions: { get: () => ({ width, height }) },
     useWindowDimensions: () => ({ width, height, fontScale, scale: 3 }),
@@ -41,7 +59,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     if (name === 'expo-router') return { useFocusEffect() {}, router: { push: path => routes.push(path), replace: path => routes.push(path), back: () => routes.push('back') }, useLocalSearchParams: () => ({ id: 'test-match', kind: 'discovery' }) };
     if (name === 'expo-web-browser') return { maybeCompleteAuthSession() {}, openAuthSessionAsync: async () => ({ type: 'cancel' }) };
     if (name === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets };
-    if (/\.(png|jpg)$/.test(name)) return 1;
+    if (/\.(png|jpg)$/.test(name)) return bundledImageSource(resolve(ROOT, dirname(file), name));
     if (name.endsWith('/loginLayout')) return { LOGIN_LAYOUT_METRICS, resolveLoginLayout };
     if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => ({ ready: true, error: '', retry: async () => {} }) };
     if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
@@ -78,6 +96,8 @@ const edges = { '': Yoga.EDGE_ALL, Top: Yoga.EDGE_TOP, Right: Yoga.EDGE_RIGHT, B
 function applyStyle(node, style) {
   for (const [key, value] of Object.entries(style)) {
     if (value === undefined || value === null) continue;
+    if (key === 'position') { node.setPositionType(value === 'absolute' ? Yoga.POSITION_TYPE_ABSOLUTE : Yoga.POSITION_TYPE_RELATIVE); continue; }
+    if (['top', 'right', 'bottom', 'left'].includes(key)) { node.setPosition(edges[key[0].toUpperCase() + key.slice(1)], value); continue; }
     const dimensions = { width: 'Width', height: 'Height', minWidth: 'MinWidth', maxWidth: 'MaxWidth', minHeight: 'MinHeight', maxHeight: 'MaxHeight', flexBasis: 'FlexBasis' };
     if (dimensions[key]) { node[`set${dimensions[key]}`](value); continue; }
     const scalar = { flexGrow: 'setFlexGrow', flexShrink: 'setFlexShrink', aspectRatio: 'setAspectRatio' };
@@ -104,7 +124,13 @@ function layout(element, width, fontScale, direction = 'ltr', height) {
   function build(element, parent = null) {
     if (typeof element.type === 'function') return build(element.type(element.props), parent);
     const node = Yoga.Node.create();
-    const style = flatten(element.props?.style);
+    // RN 0.81 Image.ios.js prepends a bundled source's dimensions to props.style.
+    // Absolute edge offsets alone do not override that explicit width/height.
+    const source = element.props?.source;
+    const intrinsicStyle = element.type === 'Image' && !Array.isArray(source)
+      ? { width: source?.width ?? element.props.width, height: source?.height ?? element.props.height }
+      : {};
+    const style = flatten([intrinsicStyle, element.props?.style]);
     applyStyle(node, style);
     const record = { node, element, parent, style }; records.push(record);
     if (element.type === 'Text' || element.type === 'TextInput') {
@@ -165,6 +191,64 @@ const loginScreens = [
   { width: 393, height: 852, insets: { top: 59, bottom: 34, left: 0, right: 0 } },
   { width: 402, height: 874, insets: { top: 62, bottom: 34, left: 0, right: 0 } },
 ];
+function loginHeroImage(hero) {
+  const image = findElement(hero, element => element.type === 'Image' && element.props.source?.uri?.endsWith('/login-cafe-editorial.jpg'));
+  assert.ok(image, 'login renders the bundled editorial photograph');
+  return image;
+}
+function assertLoginPhotoFrame(result, image) {
+  const box = result.records.find(record => record.element === image)?.node.getComputedLayout();
+  assert.ok(box, 'hero photograph has measured geometry');
+  assert.deepEqual(
+    { left: box.left, top: box.top, width: box.width, height: box.height },
+    { left: 0, top: 0, width: result.root.getComputedWidth(), height: result.root.getComputedHeight() },
+    'hero photo frame must match its container instead of its intrinsic asset dimensions',
+  );
+  return box;
+}
+for (const screen of loginScreens) test(`login hero shows the milk pour and latte at ${screen.width}×${screen.height}`, () => {
+  const rendered = render('mobile/app/login.tsx', screen);
+  const hero = rendered.findStyle('hero');
+  const image = loginHeroImage(hero);
+  const result = layout(hero, screen.width, 1);
+  try {
+    const box = assertLoginPhotoFrame(result, image);
+    assert.equal(image.props.resizeMode, 'cover');
+    const source = image.props.source;
+    const scale = Math.max(box.width / source.width, box.height / source.height);
+    const cropLeft = (source.width * scale - box.width) / 2;
+    const cropTop = (source.height * scale - box.height) / 2;
+    const overlap = resolveLoginLayout({ width: screen.width, height: screen.height, topInset: screen.insets.top, bottomInset: screen.insets.bottom, keyboardVisible: false }).metrics.overlap;
+    // Landmarks inspected in the approved 1536×1024 photo. This tests cover
+    // geometry; it is not a native pixel-rendering or image-recognition test.
+    for (const [name, x, y] of [['milk stream', 1120, 520], ['latte art', 1150, 630]]) {
+      const visibleX = (x / 1536) * source.width * scale - cropLeft;
+      const visibleY = (y / 1024) * source.height * scale - cropTop;
+      assert.ok(visibleX > 0 && visibleX < box.width, `${name} remains inside the hero crop horizontally`);
+      assert.ok(visibleY > 0 && visibleY < box.height - overlap, `${name} remains above the overlapping form sheet`);
+    }
+  } finally { result.free(); }
+});
+
+test('login photo regression catches the original intrinsic-size clipping', () => {
+  const screen = loginScreens.at(-1);
+  const rendered = render('mobile/app/login.tsx', screen);
+  const hero = rendered.findStyle('hero');
+  const image = loginHeroImage(hero);
+  const unbounded = { ...flatten(image.props.style) };
+  delete unbounded.width;
+  delete unbounded.height;
+  image.props.style = unbounded;
+  const result = layout(hero, screen.width, 1);
+  try {
+    const box = result.records.find(record => record.element === image).node.getComputedLayout();
+    assert.equal(box.width, image.props.source.width, 'absolute fill edges leave RN bundled width intact');
+    assert.equal(box.height, image.props.source.height, 'absolute fill edges leave RN bundled height intact');
+    assert.ok(box.width > screen.width, 'the original photo extends outside the visible hero');
+    assert.throws(() => assertLoginPhotoFrame(result, image), /hero photo frame must match/, 'removing explicit dimensions must fail the frame regression');
+  } finally { result.free(); }
+});
+
 for (const screen of loginScreens) for (const systemFontScale of [1, 1.5]) test(`login stays on one page at ${screen.width}×${screen.height}, system text ${systemFontScale}×`, () => {
   const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: systemFontScale });
   const scroll = findElement(rendered.tree, element => element.type === 'ScrollView');
