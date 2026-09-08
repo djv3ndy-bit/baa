@@ -24,6 +24,7 @@ if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('
 const stripeSupport=fs.readFileSync('api/_billing.js','utf8');
 if(!stripeWebhook.includes('constructStripeEvent')||!stripeSupport.includes('Stripe.webhooks.constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 for(const token of ['rk_test_','rk_live_','STRIPE_LIVEMODE','client.prices.retrieve(priceId)','validateConfiguredPrice','subscriptionUsesConfiguredPrice'])if(!stripeSupport.includes(token))throw new Error(`Stripe mode and Price validation is missing ${token}`);
+for(const token of ['VERCEL_ENV === "production"','Production Stripe configuration requires STRIPE_LIVEMODE=true'])if(!stripeSupport.includes(token))throw new Error(`Stripe Production mode guard is missing ${token}`);
 if(!stripeSupport.includes('stripeWebhookClient')||!stripeWebhook.includes('await stripeWebhookClient()'))throw new Error('Relevant Stripe webhooks must validate the configured account and Price');
 if(stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe runtime key requires excessive Accounts Read permission');
 if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
@@ -55,7 +56,7 @@ if(!/create trigger pause_jobs_without_paid_entitlement\s+after insert or update
 if(/create trigger pause_jobs_without_paid_entitlement\s+after[^;]*delete/i.test(jobEntitlementSql))throw new Error('Subscription cascade deletion must not run the paid-job pause trigger');
 for(const token of ['cafe_can_create_job','JOB_SUBSCRIPTION_REQUIRED','PJB01','PJB04','persistPendingJobDraft','resumePendingJobDraft'])if(!dashboard.includes(token))throw new Error(`Website lifetime job gate is missing ${token}`);
 const rolloutGuide=fs.readFileSync('README.md','utf8');
-const requiredBillingMigrations=['202608310001_connect_stripe_billing.sql','20260908090000_harden_stripe_runtime_coordination.sql','20260908100000_enforce_cafe_job_posting_entitlements.sql'];
+const requiredBillingMigrations=['202608310001_connect_stripe_billing.sql','20260908090000_harden_stripe_runtime_coordination.sql','20260908100000_enforce_cafe_job_posting_entitlements.sql','20260908110000_consolidate_job_participant_visibility.sql'];
 let previousMigrationIndex=-1;
 for(const migration of requiredBillingMigrations){
   const migrationIndex=rolloutGuide.indexOf(migration);
@@ -63,6 +64,8 @@ for(const migration of requiredBillingMigrations){
   previousMigrationIndex=migrationIndex;
 }
 for(const token of ['exactly one free job post for the lifetime','scheduling an interview','second distinct job row','must not insert or expose that job to baristas'])if(!rolloutGuide.includes(token))throw new Error(`README lifetime-free-job rollout is missing ${token}`);
+const participantPolicyMigration=fs.readFileSync('supabase/migrations/20260908110000_consolidate_job_participant_visibility.sql','utf8');
+if(!participantPolicyMigration.includes('private.job_caller_is_application_participant')||!participantPolicyMigration.includes('drop policy if exists "Application participants can view their jobs"'))throw new Error('Paused-job participant visibility policy is not consolidated');
 const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
 const subscriptionSyncEnd=stripeWebhook.indexOf('async function recordInvoicePayment');
 if(subscriptionSyncStart<0||subscriptionSyncEnd<=subscriptionSyncStart) throw new Error('Stripe subscription sync structure is missing');

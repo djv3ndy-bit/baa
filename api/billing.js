@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
+import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeMode, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
 
 export const config = { api: { bodyParser: false } };
 const BILLING_PAUSED_MESSAGE = "Billing is not active. Café accounts will not be charged during the plan preview.";
@@ -524,13 +524,31 @@ async function createPortal(req, res) {
     const user = await authenticatedCafe(req);
     if (!user) return res.status(401).json({ error: "Please log in with a café account." });
     const billing = await subscriptionFor(user.id);
-    if (!subscriptionIsConnected(billing) || !subscriptionCanBeManaged(billing)) {
+    if (billing?.user_id !== user.id || !subscriptionIsConnected(billing) || !subscriptionCanBeManaged(billing)) {
       return res.status(409).json({ error: "There is no current subscription to manage. Open the café plans to subscribe." });
     }
     const mobile = payload.channel === "mobile";
-    const stripe = stripeApiClient();
+    // Existing subscribers must retain access to cancellation and payment
+    // method management even if the canonical Price is later archived.
+    const stripe = await stripeWebhookClient();
+    const expectedLivemode = stripeMode() === "live";
+    const customer = await stripe.customers.retrieve(billing.stripe_customer_id);
+    const subscription = await stripe.subscriptions.retrieve(billing.stripe_subscription_id);
+    if (
+      customer?.deleted === true ||
+      customer?.id !== billing.stripe_customer_id ||
+      customer?.livemode !== expectedLivemode ||
+      customer?.metadata?.cafe_user_id !== user.id ||
+      subscription?.id !== billing.stripe_subscription_id ||
+      subscription?.livemode !== expectedLivemode ||
+      !subscriptionBelongsToCafe(subscription, user.id, billing.stripe_customer_id) ||
+      !subscriptionUsesConfiguredPrice(subscription, process.env.STRIPE_MONTHLY_PRICE_ID) ||
+      !subscriptionCanBeManaged(subscription)
+    ) {
+      return res.status(409).json({ error: "There is no current subscription to manage. Open the café plans to subscribe." });
+    }
     const session = await stripe.billingPortal.sessions.create({
-      customer: billing.stripe_customer_id,
+      customer: customer.id,
       return_url: mobile ? `${origin(req)}/mobile-billing-return.html?billing=portal` : `${origin(req)}/dashboard.html`
     });
     return res.status(200).json({ url: session.url });
@@ -684,24 +702,91 @@ export async function recordInvoicePayment(invoice, fallbackStatus, eventCreated
   return true;
 }
 
-async function recordRefund(charge, eventCreated) {
-  const customerId = typeof charge.customer === "string" ? charge.customer : charge.customer?.id;
-  if (!customerId) return;
-  const subscriptions = await adminRows(`cafe_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=user_id&limit=1`);
-  const userId = subscriptions[0]?.user_id;
-  if (!userId) return;
+async function recordRefund(eventCharge, eventCreated, stripe = stripeApiClient()) {
+  const chargeId = String(eventCharge?.id || "");
+  if (!/^ch_[A-Za-z0-9_]+$/.test(chargeId)) return false;
+  const charge = await stripe.charges.retrieve(chargeId);
+  const customerId = typeof charge?.customer === "string" ? charge.customer : charge?.customer?.id;
+  const paymentIntentId = typeof charge?.payment_intent === "string" ? charge.payment_intent : charge?.payment_intent?.id;
+  const amountRefunded = Number(charge?.amount_refunded);
+  const expectedLivemode = stripeMode() === "live";
+  if (
+    charge?.id !== chargeId ||
+    charge?.livemode !== expectedLivemode ||
+    charge?.paid !== true ||
+    !/^cus_[A-Za-z0-9_]+$/.test(String(customerId || "")) ||
+    !/^pi_[A-Za-z0-9_]+$/.test(String(paymentIntentId || "")) ||
+    !Number.isSafeInteger(amountRefunded) ||
+    amountRefunded <= 0 ||
+    charge?.currency !== "usd"
+  ) return false;
+
+  const invoicePayments = await stripe.invoicePayments.list({
+    payment: { type: "payment_intent", payment_intent: paymentIntentId },
+    status: "paid",
+    limit: 2
+  });
+  if (invoicePayments?.has_more || invoicePayments?.data?.length !== 1) return false;
+  const invoicePayment = invoicePayments.data[0];
+  const linkedPaymentIntentId = typeof invoicePayment?.payment?.payment_intent === "string"
+    ? invoicePayment.payment.payment_intent
+    : invoicePayment?.payment?.payment_intent?.id;
+  const invoiceId = typeof invoicePayment?.invoice === "string" ? invoicePayment.invoice : invoicePayment?.invoice?.id;
+  if (
+    invoicePayment?.status !== "paid" ||
+    invoicePayment?.livemode !== expectedLivemode ||
+    invoicePayment?.currency !== charge.currency ||
+    invoicePayment?.payment?.type !== "payment_intent" ||
+    linkedPaymentIntentId !== paymentIntentId ||
+    !/^in_[A-Za-z0-9_]+$/.test(String(invoiceId || "")) ||
+    !Number.isSafeInteger(invoicePayment?.amount_paid) ||
+    invoicePayment.amount_paid < amountRefunded
+  ) return false;
+
+  const invoice = await stripe.invoices.retrieve(invoiceId);
+  const invoiceCustomerId = typeof invoice?.customer === "string" ? invoice.customer : invoice?.customer?.id;
+  const source = invoice?.subscription || invoice?.parent?.subscription_details?.subscription;
+  const subscriptionId = typeof source === "string" ? source : source?.id;
+  if (
+    invoice?.id !== invoiceId ||
+    invoice?.livemode !== expectedLivemode ||
+    invoice?.currency !== charge.currency ||
+    invoiceCustomerId !== customerId ||
+    !/^sub_[A-Za-z0-9_]+$/.test(String(subscriptionId || ""))
+  ) return false;
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscriptions = await adminRows(
+    `cafe_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&stripe_subscription_id=eq.${encodeURIComponent(subscriptionId)}&select=user_id,stripe_customer_id,stripe_subscription_id&limit=2`
+  );
+  if (subscriptions.length !== 1) return false;
+  const billing = subscriptions[0];
+  const userId = billing?.user_id;
+  if (
+    !UUID.test(String(userId || "")) ||
+    billing?.stripe_customer_id !== customerId ||
+    billing?.stripe_subscription_id !== subscriptionId ||
+    subscription?.id !== subscriptionId ||
+    subscription?.livemode !== expectedLivemode ||
+    !subscriptionBelongsToCafe(subscription, userId, customerId) ||
+    !subscriptionUsesConfiguredPrice(subscription, process.env.STRIPE_MONTHLY_PRICE_ID)
+  ) return false;
+
+  const providerEventCreatedAt = eventCreatedAt(eventCreated);
+  if (!providerEventCreatedAt) return false;
   await adminRows("rpc/record_stripe_subscription_payment", {
     method: "POST",
     body: JSON.stringify({
       p_cafe_user_id: userId,
       p_provider_payment_id: `refund:${charge.id}`,
-      p_amount_cents: charge.amount_refunded || 0,
-      p_currency: charge.currency || "usd",
+      p_amount_cents: amountRefunded,
+      p_currency: charge.currency,
       p_status: "refunded",
-      p_paid_at: new Date(Number(eventCreated) * 1000).toISOString(),
-      p_event_created_at: new Date(Number(eventCreated) * 1000).toISOString()
+      p_paid_at: providerEventCreatedAt,
+      p_event_created_at: providerEventCreatedAt
     })
   });
+  return true;
 }
 
 async function stripeWebhook(req, res) {
@@ -736,7 +821,7 @@ async function stripeWebhook(req, res) {
     if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) await syncSubscriptionEvent(event.data.object, stripe, event.created);
     if (event.type === "invoice.paid") await recordInvoicePayment(event.data.object, "succeeded", event.created, stripe);
     if (event.type === "invoice.payment_failed") await recordInvoicePayment(event.data.object, "failed", event.created, stripe);
-    if (event.type === "charge.refunded") await recordRefund(event.data.object, event.created);
+    if (event.type === "charge.refunded") await recordRefund(event.data.object, event.created, stripe);
     const completed = await adminRows("rpc/complete_stripe_webhook_event", {
       method: "POST",
       body: JSON.stringify({ p_event_id: event.id, p_claim_id: webhookClaimId })

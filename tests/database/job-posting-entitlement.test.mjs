@@ -27,6 +27,9 @@ const fixture = readFileSync(
 const migration = readFileSync(
   new URL('../../supabase/migrations/20260908100000_enforce_cafe_job_posting_entitlements.sql', import.meta.url),
   'utf8',
+) + '\n' + readFileSync(
+  new URL('../../supabase/migrations/20260908110000_consolidate_job_participant_visibility.sql', import.meta.url),
+  'utf8',
 );
 
 let db;
@@ -589,6 +592,27 @@ test('migration is repeatable without reassigning free jobs or duplicating polic
         and permissive = 'RESTRICTIVE'
     `)).rows[0].count,
     1,
+  );
+  assert.equal(
+    (await query(`
+      select count(*)::int count
+      from pg_policies
+      where schemaname = 'public'
+        and tablename = 'jobs'
+        and cmd = 'SELECT'
+        and permissive = 'PERMISSIVE'
+    `)).rows[0].count,
+    1,
+  );
+  assert.equal(
+    (await query(`
+      select count(*)::int count
+      from pg_policies
+      where schemaname = 'public'
+        and tablename = 'jobs'
+        and policyname = 'Application participants can view their jobs'
+    `)).rows[0].count,
+    0,
   );
   assert.equal(
     (await query(`

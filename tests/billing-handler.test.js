@@ -60,7 +60,7 @@ function response() {
 
 function setup(t, fetchImpl) {
   const oldFetch = globalThis.fetch;
-  const keys = ["STRIPE_RESTRICTED_KEY", "STRIPE_LIVEMODE", "STRIPE_WEBHOOK_SECRET", "STRIPE_MONTHLY_PRICE_ID", "STRIPE_ACCOUNT_ID", "BILLING_ENABLED", "PUBLIC_SITE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY"];
+  const keys = ["STRIPE_RESTRICTED_KEY", "STRIPE_LIVEMODE", "STRIPE_WEBHOOK_SECRET", "STRIPE_MONTHLY_PRICE_ID", "STRIPE_ACCOUNT_ID", "BILLING_ENABLED", "PUBLIC_SITE_URL", "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SECRET_KEY", "VERCEL_ENV"];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   Object.assign(process.env, {
     STRIPE_RESTRICTED_KEY: "rk_test_mock_only",
@@ -73,6 +73,7 @@ function setup(t, fetchImpl) {
     SUPABASE_URL: "https://project.supabase.co",
     SUPABASE_PUBLISHABLE_KEY: "publishable_test",
     SUPABASE_SECRET_KEY: "sb_secret_test",
+    VERCEL_ENV: "preview",
   });
   globalThis.fetch = fetchImpl;
   const stripe = stripeApiClient();
@@ -877,4 +878,249 @@ test("reverse-ordered Invoice events pass Stripe event time to the monotonic pay
   assert.match(billingRuntime, /preferredConfiguredSubscription\(subscriptions, userId, customerId\)/);
   assert.match(billingRuntime, /if \(attachment === "missing"\)/);
   assert.doesNotMatch(billingRuntime, /\["deletion", "missing"\]\.includes\(attachment\)/);
+});
+
+test("Customer Portal opens only after current Stripe Customer, subscription, mode, and Price ownership are verified", async (t) => {
+  const billing = {
+    user_id: CAFE_ID,
+    status: "active",
+    stripe_customer_id: "cus_portal_owner",
+    stripe_subscription_id: "sub_portal_owner",
+  };
+  setup(t, async (url) => {
+    const target = String(url);
+    if (target.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: CAFE_ID, email: "cafe@example.com" }));
+    if (target.includes("/rest/v1/profiles?")) return new Response(JSON.stringify([{ role: "cafe_owner_manager", suspended_at: null }]));
+    if (target.includes("/rest/v1/cafe_subscriptions?")) return new Response(JSON.stringify([billing]));
+    throw new Error(`Unexpected database request: ${target}`);
+  });
+  const stripe = stripeApiClient();
+  replaceMethod(t, stripe.customers, "retrieve", async (customerId) => {
+    assert.equal(customerId, billing.stripe_customer_id);
+    return { id: customerId, livemode: false, deleted: false, metadata: { cafe_user_id: CAFE_ID } };
+  });
+  replaceMethod(t, stripe.subscriptions, "retrieve", async (subscriptionId) => {
+    assert.equal(subscriptionId, billing.stripe_subscription_id);
+    return {
+      id: subscriptionId,
+      livemode: false,
+      status: "active",
+      customer: billing.stripe_customer_id,
+      metadata: { cafe_user_id: CAFE_ID },
+      items: { data: [{ price: { id: "price_baristamatch" } }] },
+    };
+  });
+  let portalOptions;
+  replaceMethod(t, stripe.billingPortal.sessions, "create", async (options) => {
+    portalOptions = options;
+    return { url: "https://billing.stripe.test/session" };
+  });
+
+  const res = response();
+  await handler(actionRequest("portal"), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { url: "https://billing.stripe.test/session" });
+  assert.deepEqual(portalOptions, {
+    customer: billing.stripe_customer_id,
+    return_url: "https://www.baristajobmatch.com/dashboard.html",
+  });
+});
+
+test("Customer Portal fails closed for stale or foreign Stripe ownership and never creates a session", async (t) => {
+  const billing = {
+    user_id: CAFE_ID,
+    status: "active",
+    stripe_customer_id: "cus_portal_owner",
+    stripe_subscription_id: "sub_portal_owner",
+  };
+  setup(t, async (url) => {
+    const target = String(url);
+    if (target.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: CAFE_ID, email: "cafe@example.com" }));
+    if (target.includes("/rest/v1/profiles?")) return new Response(JSON.stringify([{ role: "cafe_owner_manager", suspended_at: null }]));
+    if (target.includes("/rest/v1/cafe_subscriptions?")) return new Response(JSON.stringify([billing]));
+    throw new Error(`Unexpected database request: ${target}`);
+  });
+  const stripe = stripeApiClient();
+  const ownedCustomer = { id: billing.stripe_customer_id, livemode: false, deleted: false, metadata: { cafe_user_id: CAFE_ID } };
+  const ownedSubscription = {
+    id: billing.stripe_subscription_id,
+    livemode: false,
+    status: "active",
+    customer: billing.stripe_customer_id,
+    metadata: { cafe_user_id: CAFE_ID },
+    items: { data: [{ price: { id: "price_baristamatch" } }] },
+  };
+  let customer = ownedCustomer;
+  let subscription = ownedSubscription;
+  let portalCreates = 0;
+  replaceMethod(t, stripe.customers, "retrieve", async () => customer);
+  replaceMethod(t, stripe.subscriptions, "retrieve", async () => subscription);
+  replaceMethod(t, stripe.billingPortal.sessions, "create", async () => {
+    portalCreates += 1;
+    return { url: "https://billing.stripe.test/should-not-open" };
+  });
+
+  const cases = [
+    ["deleted Customer", { ...ownedCustomer, deleted: true }, ownedSubscription],
+    ["foreign Customer metadata", { ...ownedCustomer, metadata: { cafe_user_id: OTHER_CAFE_ID } }, ownedSubscription],
+    ["wrong Customer mode", { ...ownedCustomer, livemode: true }, ownedSubscription],
+    ["foreign subscription metadata", ownedCustomer, { ...ownedSubscription, metadata: { cafe_user_id: OTHER_CAFE_ID } }],
+    ["foreign subscription Customer", ownedCustomer, { ...ownedSubscription, customer: "cus_someone_else" }],
+    ["wrong subscription Price", ownedCustomer, { ...ownedSubscription, items: { data: [{ price: { id: "price_other" } }] } }],
+    ["wrong subscription mode", ownedCustomer, { ...ownedSubscription, livemode: true }],
+    ["canceled current subscription", ownedCustomer, { ...ownedSubscription, status: "canceled" }],
+  ];
+  for (const [label, candidateCustomer, candidateSubscription] of cases) {
+    customer = candidateCustomer;
+    subscription = candidateSubscription;
+    const res = response();
+    await handler(actionRequest("portal"), res);
+    assert.equal(res.statusCode, 409, label);
+    assert.match(res.body.error, /no current subscription/i, label);
+  }
+  assert.equal(portalCreates, 0);
+});
+
+test("refund revenue is recorded only through an authoritative Charge, InvoicePayment, Invoice, and owned canonical subscription", async (t) => {
+  const calls = [];
+  setup(t, databaseRecorder(calls, {
+    user_id: CAFE_ID,
+    status: "active",
+    stripe_customer_id: "cus_refund_owner",
+    stripe_subscription_id: "sub_refund_owner",
+  }));
+  const stripe = stripeApiClient();
+  replaceMethod(t, stripe.charges, "retrieve", async (chargeId) => ({
+    id: chargeId,
+    livemode: false,
+    paid: true,
+    customer: "cus_refund_owner",
+    payment_intent: "pi_refund_owner",
+    amount_refunded: 400,
+    currency: "usd",
+  }));
+  replaceMethod(t, stripe.invoicePayments, "list", async (options) => {
+    assert.deepEqual(options, {
+      payment: { type: "payment_intent", payment_intent: "pi_refund_owner" },
+      status: "paid",
+      limit: 2,
+    });
+    return {
+      data: [{
+        id: "inpay_refund_owner",
+        status: "paid",
+        livemode: false,
+        currency: "usd",
+        amount_paid: 999,
+        invoice: "in_refund_owner",
+        payment: { type: "payment_intent", payment_intent: "pi_refund_owner" },
+      }],
+      has_more: false,
+    };
+  });
+  replaceMethod(t, stripe.invoices, "retrieve", async (invoiceId) => ({
+    id: invoiceId,
+    livemode: false,
+    currency: "usd",
+    customer: "cus_refund_owner",
+    parent: { type: "subscription_details", subscription_details: { subscription: "sub_refund_owner" } },
+  }));
+  replaceMethod(t, stripe.subscriptions, "retrieve", async (subscriptionId) => ({
+    id: subscriptionId,
+    livemode: false,
+    status: "active",
+    customer: "cus_refund_owner",
+    metadata: { cafe_user_id: CAFE_ID },
+    items: { data: [{ price: { id: "price_baristamatch" } }] },
+  }));
+  const eventCreated = 1_800_000_321;
+  const payload = eventPayload("evt_refund_owned", "charge.refunded", {
+    id: "ch_refund_owner",
+    amount_refunded: 999999,
+    customer: "cus_spoofed_snapshot",
+  }, eventCreated);
+
+  const res = response();
+  await handler(request(payload), res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { received: true });
+  const payments = calls
+    .filter(({ url }) => url.endsWith("/rpc/record_stripe_subscription_payment"))
+    .map(({ body }) => JSON.parse(body));
+  assert.deepEqual(payments, [{
+    p_cafe_user_id: CAFE_ID,
+    p_provider_payment_id: "refund:ch_refund_owner",
+    p_amount_cents: 400,
+    p_currency: "usd",
+    p_status: "refunded",
+    p_paid_at: new Date(eventCreated * 1000).toISOString(),
+    p_event_created_at: new Date(eventCreated * 1000).toISOString(),
+  }]);
+  assert.ok(calls.some(({ url }) => url.includes("stripe_customer_id=eq.cus_refund_owner") && url.includes("stripe_subscription_id=eq.sub_refund_owner")));
+});
+
+test("unlinked, ambiguous, wrong-Price, and DB-stale refunds are acknowledged without contaminating plan revenue", async (t) => {
+  const calls = [];
+  setup(t, databaseRecorder(calls, {
+    user_id: CAFE_ID,
+    status: "active",
+    stripe_customer_id: "cus_refund_owner",
+    stripe_subscription_id: "sub_refund_owner",
+  }));
+  const stripe = stripeApiClient();
+  let scenario;
+  replaceMethod(t, stripe.charges, "retrieve", async (chargeId) => ({
+    id: chargeId,
+    livemode: false,
+    paid: true,
+    customer: "cus_refund_owner",
+    payment_intent: `pi_${scenario}`,
+    amount_refunded: 400,
+    currency: "usd",
+  }));
+  replaceMethod(t, stripe.invoicePayments, "list", async () => {
+    if (scenario === "unlinked") return { data: [], has_more: false };
+    const payment = {
+      id: `inpay_${scenario}`,
+      status: "paid",
+      livemode: false,
+      currency: "usd",
+      amount_paid: 999,
+      invoice: `in_${scenario}`,
+      payment: { type: "payment_intent", payment_intent: `pi_${scenario}` },
+    };
+    if (scenario === "ambiguous") return { data: [payment], has_more: true };
+    return { data: [payment], has_more: false };
+  });
+  replaceMethod(t, stripe.invoices, "retrieve", async (invoiceId) => ({
+    id: invoiceId,
+    livemode: false,
+    currency: "usd",
+    customer: scenario === "foreign_customer" ? "cus_someone_else" : "cus_refund_owner",
+    parent: {
+      type: "subscription_details",
+      subscription_details: { subscription: scenario === "stale_db" ? "sub_stale_db" : "sub_refund_owner" },
+    },
+  }));
+  replaceMethod(t, stripe.subscriptions, "retrieve", async (subscriptionId) => ({
+    id: subscriptionId,
+    livemode: false,
+    status: "active",
+    customer: "cus_refund_owner",
+    metadata: { cafe_user_id: CAFE_ID },
+    items: { data: [{ price: { id: scenario === "wrong_price" ? "price_other" : "price_baristamatch" } }] },
+  }));
+
+  for (const [index, candidate] of ["unlinked", "ambiguous", "foreign_customer", "wrong_price", "stale_db"].entries()) {
+    scenario = candidate;
+    const payload = eventPayload(`evt_refund_rejected_${index}`, "charge.refunded", { id: `ch_${candidate}` });
+    const res = response();
+    await handler(request(payload), res);
+    assert.equal(res.statusCode, 200, candidate);
+    assert.deepEqual(res.body, { received: true }, candidate);
+  }
+  assert.equal(calls.some(({ url }) => url.endsWith("/rpc/record_stripe_subscription_payment")), false);
+  assert.equal(calls.filter(({ url }) => url.endsWith("/rpc/complete_stripe_webhook_event")).length, 5);
 });

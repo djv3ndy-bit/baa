@@ -22,6 +22,15 @@ test("Stripe mode is test by default and only becomes live explicitly", () => {
   assert.equal(stripeMode({}), "test");
   assert.equal(stripeMode({ STRIPE_LIVEMODE: "false" }), "test");
   assert.equal(stripeMode({ STRIPE_LIVEMODE: "true" }), "live");
+  assert.equal(stripeMode({ VERCEL_ENV: "preview" }), "test");
+  assert.equal(stripeMode({ VERCEL_ENV: "development", STRIPE_LIVEMODE: "false" }), "test");
+});
+
+test("Stripe mode cannot fall back to test data in Vercel Production", () => {
+  assert.throws(() => stripeMode({ VERCEL_ENV: "production" }), /requires STRIPE_LIVEMODE=true/);
+  assert.throws(() => stripeMode({ VERCEL_ENV: "production", STRIPE_LIVEMODE: "false" }), /requires STRIPE_LIVEMODE=true/);
+  assert.throws(() => stripeMode({ VERCEL_ENV: "production", STRIPE_LIVEMODE: "TRUE" }), /requires STRIPE_LIVEMODE=true/);
+  assert.equal(stripeMode({ VERCEL_ENV: "production", STRIPE_LIVEMODE: "true" }), "live");
 });
 
 test("accepts only the configured active $9.99 monthly live Price", () => {

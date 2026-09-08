@@ -17,7 +17,7 @@ Vercel settings:
 
 The website and native app use server-created Stripe Checkout and Customer Portal sessions. Configure these server-side environment variables separately in Vercel Preview and Production:
 
-- `STRIPE_RESTRICTED_KEY`: a least-privilege restricted key with Prices Read; Customers Read/Write (including Customer search and deletion during account deletion); Checkout Sessions Read/Write (create, list, retrieve, and expire); Subscriptions Read; and Billing Portal Sessions Write. Accounts Read and Invoices Read are not required
+- `STRIPE_RESTRICTED_KEY`: a least-privilege restricted key with Prices Read; Customers Read/Write (including Customer search and deletion during account deletion); Checkout Sessions Read/Write (create, list, retrieve, and expire); Subscriptions Read; Charges Read; Invoice Payments Read; Invoices Read; and Billing Portal Sessions Write. Accounts Read is not required
 - `STRIPE_ACCOUNT_ID`: the expected Stripe account ID; the server verifies that the configured Price is bound to this account through protected Price metadata
 - `STRIPE_MONTHLY_PRICE_ID`: the recurring monthly Price for the café plan; the restricted key must be able to retrieve it
 - `STRIPE_WEBHOOK_SECRET`: the signing secret for the `/api/stripe-webhook` endpoint
@@ -47,6 +47,7 @@ Apply all Supabase migrations in timestamp order. The billing and job-entitlemen
 1. `supabase/migrations/202608310001_connect_stripe_billing.sql`
 2. `supabase/migrations/20260908090000_harden_stripe_runtime_coordination.sql`
 3. `supabase/migrations/20260908100000_enforce_cafe_job_posting_entitlements.sql`
+4. `supabase/migrations/20260908110000_consolidate_job_participant_visibility.sql`
 
 The final migration assigns each existing café's earliest job row as its lifetime-free job, retains that assignment even if the job is deleted, and pauses later active jobs for cafés without current Stripe access. Review the affected production rows before applying it. Apply the complete sequence before deploying this billing runtime or enabling Checkout.
 

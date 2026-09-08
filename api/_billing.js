@@ -8,6 +8,9 @@ const PAID_STATUSES = new Set(["active", "trialing"]);
 const MANAGEABLE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "incomplete", "paused"]);
 
 export function stripeMode(environment = process.env) {
+  if (environment.VERCEL_ENV === "production" && environment.STRIPE_LIVEMODE !== "true") {
+    throw new Error("Production Stripe configuration requires STRIPE_LIVEMODE=true.");
+  }
   return environment.STRIPE_LIVEMODE === "true" ? "live" : "test";
 }
 
