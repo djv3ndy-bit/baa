@@ -29,7 +29,7 @@ test('layout metrics expose the intended tier budgets', () => {
 
 test('default login layout stays within representative phone heights', () => {
   for (const screen of screens) {
-    const layout = resolveLoginLayout({ ...screen, fontScale: 1, keyboardVisible: false });
+    const layout = resolveLoginLayout({ ...screen, keyboardVisible: false });
     const contentHeight = layout.heroHeight - layout.metrics.overlap + layout.sheetBudget;
 
     assert.equal(layout.mode, screen.mode);
@@ -47,18 +47,14 @@ test('layout metrics preserve minimum field and action targets', () => {
   }
 });
 
-test('keyboard, large text, and an undersized viewport enable scrolling', () => {
+test('keyboard and an undersized viewport enable scrolling', () => {
   const base = { width: 393, height: 852, topInset: 59, bottomInset: 34 };
-  const keyboard = resolveLoginLayout({ ...base, fontScale: 1, keyboardVisible: true });
-  const largeText = resolveLoginLayout({ ...base, fontScale: 1.2, keyboardVisible: false });
-  const undersized = resolveLoginLayout({ width: 320, height: 520, fontScale: 1, topInset: 20, bottomInset: 0, keyboardVisible: false });
+  const keyboard = resolveLoginLayout({ ...base, keyboardVisible: true });
+  const undersized = resolveLoginLayout({ width: 320, height: 520, topInset: 20, bottomInset: 0, keyboardVisible: false });
 
   assert.equal(keyboard.requiresScroll, true);
   assert.equal(keyboard.heroHeight, base.topInset + 88);
   assert.equal(keyboard.reducedHeader, true);
-  assert.equal(largeText.requiresScroll, true);
-  assert.equal(largeText.heroHeight, base.topInset + 112);
-  assert.equal(largeText.reducedHeader, true);
   assert.equal(undersized.requiresScroll, true);
   assert.equal(undersized.reducedHeader, false);
   assert.ok(undersized.minimumHero > undersized.fitCap);

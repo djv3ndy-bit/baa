@@ -108,7 +108,7 @@ function layout(element, width, fontScale, direction = 'ltr', height) {
     applyStyle(node, style);
     const record = { node, element, parent, style }; records.push(record);
     if (element.type === 'Text' || element.type === 'TextInput') {
-      const scale = element.props.allowFontScaling === false ? 1 : fontScale;
+      const scale = element.props.allowFontScaling === false ? 1 : Math.min(fontScale, element.props.maxFontSizeMultiplier ?? Infinity);
       const size = (style.fontSize || 14) * scale;
       const lineHeight = (style.lineHeight || (style.fontSize || 14) * 1.25) * scale;
       const text = element.type === 'TextInput' ? element.props.value || element.props.placeholder || '9–5' : textOf(element);
@@ -163,36 +163,58 @@ const loginScreens = [
   { width: 375, height: 812, insets: { top: 50, bottom: 34, left: 0, right: 0 } },
   { width: 390, height: 844, insets: { top: 59, bottom: 34, left: 0, right: 0 } },
   { width: 393, height: 852, insets: { top: 59, bottom: 34, left: 0, right: 0 } },
+  { width: 402, height: 874, insets: { top: 62, bottom: 34, left: 0, right: 0 } },
 ];
-for (const screen of loginScreens) test(`login stays on one page at ${screen.width}×${screen.height}`, () => {
-  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1 });
+for (const screen of loginScreens) for (const systemFontScale of [1, 1.5]) test(`login stays on one page at ${screen.width}×${screen.height}, system text ${systemFontScale}×`, () => {
+  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: systemFontScale });
   const scroll = findElement(rendered.tree, element => element.type === 'ScrollView');
   assert.ok(scroll, 'login renders its fallback ScrollView');
-  assert.equal(scroll.props.scrollEnabled, false, 'normal text does not scroll');
+  assert.equal(scroll.props.scrollEnabled, false, 'the approved fixed design does not scroll');
+  assert.ok(rendered.findStyle('logo'), 'the approved hero logo remains visible');
   const page = { type: 'View', props: { ...scroll.props, style: scroll.props.contentContainerStyle } };
-  const result = layout(page, screen.width, 1, 'ltr', screen.height);
-  try { assertContained(result, `login ${screen.width}×${screen.height}`); } finally { result.free(); }
+  const result = layout(page, screen.width, systemFontScale, 'ltr', screen.height);
+  try { assertContained(result, `login ${screen.width}×${screen.height}, system text ${systemFontScale}×`); } finally { result.free(); }
 });
 
-test('login enables its fallback scrolling for enlarged text and the keyboard', () => {
+test('login keeps the approved editorial proportions when the phone uses enlarged system text', () => {
   const screen = { width: 393, height: 852, insets: { top: 59, bottom: 34, left: 0, right: 0 } };
   const enlarged = render('mobile/app/login.tsx', { ...screen, fontScale: 1.2 });
   const keyboard = render('mobile/app/login.tsx', { ...screen, states: { 0: true } });
-  assert.equal(findElement(enlarged.tree, element => element.type === 'ScrollView').props.scrollEnabled, true);
+  assert.equal(findElement(enlarged.tree, element => element.type === 'ScrollView').props.scrollEnabled, false);
+  assert.ok(enlarged.findStyle('logo'), 'the approved hero logo remains visible');
   assert.equal(findElement(keyboard.tree, element => element.type === 'ScrollView').props.scrollEnabled, true);
 });
 
-test('login enlarged text can grow without clipping at the narrowest supported width', () => {
-  const screen = { width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } };
-  const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1.5 });
-  const scroll = findElement(rendered.tree, element => element.type === 'ScrollView');
-  assert.equal(scroll.props.scrollEnabled, true);
-  const page = { type: 'View', props: { ...scroll.props, style: scroll.props.contentContainerStyle } };
-  const result = layout(page, screen.width, 1.5);
-  try { assertContained(result, 'login 320×568 enlarged text'); } finally { result.free(); }
+test('login typography stays fixed to the approved design at the reported device scale', () => {
+  const screen = { width: 402, height: 874, insets: { top: 62, bottom: 34, left: 0, right: 0 } };
+  const normal = render('mobile/app/login.tsx', { ...screen, fontScale: 1 });
+  const enlarged = render('mobile/app/login.tsx', { ...screen, fontScale: 1.5 });
+  const normalScroll = findElement(normal.tree, element => element.type === 'ScrollView');
+  const enlargedScroll = findElement(enlarged.tree, element => element.type === 'ScrollView');
+  assert.equal(enlargedScroll.props.scrollEnabled, false);
+  const normalPage = { type: 'View', props: { ...normalScroll.props, style: normalScroll.props.contentContainerStyle } };
+  const enlargedPage = { type: 'View', props: { ...enlargedScroll.props, style: enlargedScroll.props.contentContainerStyle } };
+  const normalResult = layout(normalPage, screen.width, 1, 'ltr', screen.height);
+  const enlargedResult = layout(enlargedPage, screen.width, 1.5, 'ltr', screen.height);
+  const rectangle = (result, element) => {
+    const box = result.records.find(record => record.element === element)?.node.getComputedLayout();
+    assert.ok(box, 'expected design element has measured geometry');
+    return { left: box.left, top: box.top, width: box.width, height: box.height };
+  };
+  try {
+    assertContained(enlargedResult, 'login 402×874 fixed editorial typography');
+    for (const key of ['hero', 'sheet', 'form', 'inputShell']) {
+      assert.deepEqual(rectangle(enlargedResult, enlarged.findStyle(key)), rectangle(normalResult, normal.findStyle(key)), `${key} geometry stays fixed`);
+    }
+    const heading = findElement(enlarged.tree, element => element.type === 'Text' && textOf(element) === 'Welcome back.');
+    assert.equal(heading.props.numberOfLines, 1, 'approved heading stays on one line');
+    for (const record of enlargedResult.records.filter(record => record.element.type === 'Text' || record.element.type === 'TextInput')) {
+      assert.equal(record.element.props.allowFontScaling, false, 'login copy ignores system text enlargement');
+    }
+  } finally { normalResult.free(); enlargedResult.free(); }
 });
 
-test('login removes the decorative hero tagline when the keyboard and enlarged text are combined', () => {
+test('login keyboard fallback retains the compact hero copy without clipping', () => {
   const screen = { width: 320, height: 568, insets: { top: 20, bottom: 0, left: 0, right: 0 } };
   const rendered = render('mobile/app/login.tsx', { ...screen, fontScale: 1.5, states: { 0: true } });
   const matchingCopy = [];
@@ -203,7 +225,7 @@ test('login removes the decorative hero tagline when the keyboard and enlarged t
     for (const child of kids(element.props?.children)) collect(child);
   }
   collect(rendered.tree);
-  assert.equal(matchingCopy.length, 1, 'only the form subtitle remains visible');
+  assert.equal(matchingCopy.length, 2, 'the hero and form taglines remain visible');
   const hero = rendered.findStyle('hero');
   const result = layout(hero, screen.width, 1.5);
   try { assertContained(result, 'login combined keyboard and enlarged text'); } finally { result.free(); }
