@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]}</svg>`;
   const heroImage = document.querySelector('.hero-photo');
   if (heroImage) {
-    heroImage.src = '/assets/editorial-hero-v3.jpg';
+    heroImage.src = '/assets/editorial-hero-v4.png';
     heroImage.alt = 'Barista seen from behind working at the Café Feliz espresso bar';
     heroImage.loading = 'eager';
     heroImage.setAttribute('fetchpriority', 'high');
