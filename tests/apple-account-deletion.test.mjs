@@ -24,7 +24,7 @@ test('Apple detection ignores editable metadata and malformed values', () => {
     assert.equal(Boolean(appleDisconnectRequired(user)), false);
   }
 });
-async function callHandler(t, { user = { id: USER }, deletionStatus = 200, body = {} } = {}) {
+async function callHandler(t, { user = { id: USER }, profiles = [], subscriptions = [], lockRows = [{ id: USER }], deletionStatus = 200, body = {} } = {}) {
   const keys = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY'];
   const previous = Object.fromEntries(keys.map(k => [k, process.env[k]]));
   const old = globalThis.fetch;
@@ -32,9 +32,16 @@ async function callHandler(t, { user = { id: USER }, deletionStatus = 200, body 
   t.after(() => { globalThis.fetch = old; for (const key of keys) previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key]; });
   const calls = [];
   globalThis.fetch = async (url, options={}) => {
-    calls.push([url, options]); const p = new URL(url).pathname;
+    calls.push([url, options]); const parsed = new URL(url); const p = parsed.pathname;
     if (p === '/auth/v1/user') return response(user);
-    if (p === '/rest/v1/profiles' || p.startsWith('/storage/v1/object/list/')) return response([]);
+    if (p === '/rest/v1/rpc/claim_stripe_deletion') return response('claimed');
+    if (p === '/rest/v1/rpc/release_stripe_checkout') return response(true);
+    if (p === '/rest/v1/cafe_subscriptions') return response(subscriptions);
+    if (p === '/rest/v1/profiles') {
+      if (options.method === 'PATCH') return response(parsed.searchParams.get('suspended_at') === 'is.null' ? lockRows : []);
+      return response(profiles);
+    }
+    if (p.startsWith('/storage/v1/object/list/')) return response([]);
     if (p === `/auth/v1/admin/users/${USER}` && options.method === 'DELETE') return response({}, deletionStatus);
     throw new Error('Unexpected request');
   };
@@ -43,18 +50,35 @@ async function callHandler(t, { user = { id: USER }, deletionStatus = 200, body 
   return { res, calls };
 }
 test('Apple account deletion completes and returns explicit manual follow-up, never fake revocation', async t => {
-  const {res,calls} = await callHandler(t, {user:{id:USER, identities:[{provider:'apple'}]}});
+  const {res,calls} = await callHandler(t, {
+    user:{id:USER, identities:[{provider:'apple'}]},
+    profiles:[{role:'cafe_owner_manager',suspended_at:null}]
+  });
   assert.equal(res.statusCode,200); assert.deepEqual(res.body,{success:true,appleRevocation:'manual_required'});
   assert.ok(calls.at(-1)[0].endsWith(USER));
   assert.equal(calls.some(([url])=>url.includes('apple.com')),false,'Supabase tokens must not be sent to Apple');
+  const lockIndex=calls.findIndex(([url,options])=>new URL(url).pathname==='/rest/v1/profiles'&&options.method==='PATCH');
+  const billingIndex=calls.findIndex(([url])=>new URL(url).pathname==='/rest/v1/cafe_subscriptions');
+  assert.ok(lockIndex>=0&&lockIndex<billingIndex,'the cafe must be suspended before current billing is read');
+  assert.equal(new URL(calls[lockIndex][0]).searchParams.get('suspended_at'),'is.null');
+  assert.equal(Number.isNaN(Date.parse(JSON.parse(calls[lockIndex][1].body).suspended_at)),false);
 });
 test('ordinary deletion is unaffected by forged Apple flags in the request or editable metadata', async t => {
   const {res} = await callHandler(t, {user:{id:USER,user_metadata:{provider:'apple'}},body:{appleRevocation:'revoked',provider:'apple',user_id:OTHER}});
   assert.deepEqual(res.body,{success:true,appleRevocation:'not_applicable'});
 });
 test('failed deletion does not return success or an Apple completion result', async t => {
-  const {res} = await callHandler(t, {user:{id:USER,identities:[{provider:'apple'}]},deletionStatus:503});
+  const {res,calls} = await callHandler(t, {
+    user:{id:USER,identities:[{provider:'apple'}]},
+    profiles:[{role:'cafe_owner_manager',suspended_at:null}],
+    deletionStatus:503
+  });
   assert.equal(res.statusCode,502); assert.equal(res.body.success,undefined); assert.equal(res.body.appleRevocation,undefined);
+  const patches=calls.filter(([url,options])=>new URL(url).pathname==='/rest/v1/profiles'&&options.method==='PATCH');
+  assert.equal(patches.length,2);
+  const lock=JSON.parse(patches[0][1].body).suspended_at;
+  assert.equal(new URL(patches[1][0]).searchParams.get('suspended_at'),`eq.${lock}`);
+  assert.deepEqual(JSON.parse(patches[1][1].body),{suspended_at:null,is_discoverable:false});
 });
 
 test('native completion only records a verified successful response and strips all tokens', async () => {

@@ -13,10 +13,10 @@ This document is the source of truth for customer-facing plan copy across the we
 - First job post included
 - View applicants and full profiles for that job
 - Message mutual matches
-- Complete the first hire
+- Schedule interviews with matches
 - No credit card required
 
-The Free plan is a first-hire offer, not a time-limited trial. A café keeps its account and existing data after completing its first hire.
+The Free plan is a first-job offer, not a time-limited trial. The first job can be edited, paused, and reopened without using another free post. A café keeps its account, applicants, matches, and messages after the role is filled.
 
 ### Pro café plan — $9.99/month Founder Price
 
@@ -33,8 +33,9 @@ Founder pricing stays with a café while its subscription remains continuously a
 ## Access behavior
 
 - Café plan details appear only after signup and sign-in with a saved café account. Public homepage navigation, footer and café marketing copy do not advertise plans or prices. The legacy pricing route directs guests to café signup and signed-in cafés to their dashboard Subscription section. The café welcome screen keeps plan content hidden until authorization succeeds.
-- A café can use the full Free workflow for its first job and first completed hire.
-- Creating a second lifetime job or maintaining more than the Free allowance requires Pro.
+- A café can use the full Free workflow for its first job, including reviewing applicants, matching, messaging, and scheduling interviews.
+- A second job—meaning a second distinct lifetime post—requires Pro before it can be published or shown to baristas. A blocked attempt must preserve the café's draft and offer secure Stripe checkout.
+- Editing, pausing, or reopening the original first job does not count as a second post.
 - Pro permits no more than 3 active jobs at once.
 - Downgrading or canceling never deletes the café profile, jobs, applicants, matches, or messages.
 - If Pro ends with more than one active job, existing data remains readable and the café must close extra jobs before starting new hiring activity.

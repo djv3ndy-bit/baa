@@ -3,6 +3,9 @@ on:
   push:
     paths:
       - 'dashboard.html'
+      - 'cafe-trial.html'
+      - 'pricing.html'
+      - 'PRICING-DECISION.md'
       - 'index.html'
       - 'signup.html'
       - 'login.html'
@@ -15,12 +18,14 @@ on:
       - 'terms.html'
       - 'privacy.html'
       - 'api/**'
+      - 'mobile/**'
       - 'tests/**'
       - 'supabase/migrations/**'
       - 'vercel.json'
       - 'launch-check.js'
       - 'package.json'
       - 'pnpm-lock.yaml'
+      - 'README.md'
       - '.github/workflows/launch-readiness-check.yml'
   workflow_dispatch:
 jobs:
@@ -35,7 +40,21 @@ jobs:
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: node launch-check.js
       - run: node --test tests/*.test.js
+      - name: Test critical billing and job-posting browser flows
+        run: |
+          node --test \
+            tests/apple-account-deletion.test.mjs \
+            tests/job-subscription-gate.test.mjs \
+            tests/layout-refresh.test.mjs \
+            tests/marketplace-repairs.test.mjs \
+            tests/pricing-access-repair.test.mjs
+      - name: Install database test dependencies
+        run: pnpm --dir tests/database install --frozen-lockfile --ignore-scripts
+      - name: Test Stripe coordination and job-posting entitlements in PGlite
+        run: node --test tests/database/*.test.mjs
       - run: |
+          node --check api/_billing.js
+          node --check api/billing.js
           node --check api/analytics.js
           node --check api/send-message.js
           node --check api/apply-job.js

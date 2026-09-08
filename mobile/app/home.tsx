@@ -9,7 +9,7 @@ import { workAreaLabel } from '@/lib/floridaLocation';
 import { DashboardCounts, emptyDashboardCounts, loadHomeSummary } from '@/lib/homeSummary';
 import { LatestMessageRequest, messageError, withMessageDeadline } from '@/lib/messaging';
 
-const CAFE_PLAN_COPY = 'Your first job and first hire are included.';
+const CAFE_PLAN_COPY = 'Your first job, matches, and interview messaging are included.';
 
 export default function HomeScreen() {
   const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);

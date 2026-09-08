@@ -7,7 +7,7 @@ const freeBenefits = [
   'Post your first job free',
   'View applicants and full profiles',
   'Message your matches',
-  'Hire your first barista',
+  'Schedule interviews with matches',
 ];
 
 const proBenefits = [
@@ -36,8 +36,8 @@ export default function SubscriptionScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.wrap}>
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>SIMPLE CAFÉ PRICING</Text>
-          <Text style={styles.title}>Make your first hire free.</Text>
-          <Text style={styles.subtitle}>Start with everything you need for one successful hire. Upgrade only when your café is ready to hire again.</Text>
+          <Text style={styles.title}>Post your first job free.</Text>
+          <Text style={styles.subtitle}>Match, message, and schedule interviews for your first role. Upgrade when you are ready to post a second job.</Text>
         </View>
 
         <View style={styles.freeCard}>
@@ -51,7 +51,7 @@ export default function SubscriptionScreen() {
             </View>
             <View style={styles.currentPill}><Text style={styles.currentText}>START HERE</Text></View>
           </View>
-          <Text style={styles.planDescription}>Your first job and first hire are on us.</Text>
+          <Text style={styles.planDescription}>Your first job and interview flow are on us.</Text>
           <View style={styles.benefits}>{freeBenefits.map(item => <Benefit key={item} text={item} dark={false} />)}</View>
           <View style={styles.freeButton}><Text style={styles.freeButtonText}>Included with your café account</Text></View>
         </View>

@@ -193,6 +193,9 @@ function jobEditorContext() {
       [Symbol.iterator]() { return [...Object.entries(this.fields), ...this.schedules.map(value => ['schedule', value])][Symbol.iterator](); }
     },
     saveJobPost: async (data, id) => { writes.push({ id, state: data.get('state'), title: data.get('title') }); return { id: id || 'created-job' }; },
+    clearPendingJobDraft() {},
+    persistPendingJobDraft: () => true,
+    showJobUpgradePrompt() {},
     refreshMarketplaceAfterProfileSave: async () => true,
     sendPhoneNotificationEvent() {},
     openSection: section => navigations.push(section),

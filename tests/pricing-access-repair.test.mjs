@@ -57,10 +57,19 @@ test('welcome retries restore access after a failed check and reload checks hide
  h.events.pageshow({persisted:true});assert.equal(h.elements['cafe-plans'].hidden,true);await tick();assert.equal(h.elements['cafe-plans'].hidden,false);
 });
 test('Subscription deep link is allowed only for a café account',()=>{
- const dashboard=read('dashboard.html'),context={URLSearchParams};vm.createContext(context);vm.runInContext(dashboard.slice(dashboard.indexOf('function initialDashboardSection('),dashboard.indexOf('async function start(){')),context);
+ const dashboard=read('dashboard.html'),context={URLSearchParams};vm.createContext(context);vm.runInContext(dashboard.slice(dashboard.indexOf('function billingReturnState('),dashboard.indexOf('Object.defineProperty(sectionPages')),context);vm.runInContext(dashboard.slice(dashboard.indexOf('function initialDashboardSection('),dashboard.indexOf('async function start(){')),context);
  assert.equal(context.initialDashboardSection('cafe_owner_manager','?section=subscription'),'Subscription');
+ assert.equal(context.initialDashboardSection('cafe_owner_manager','?billing=success&session_id=cs_test_example'),'Subscription');
+ assert.equal(context.initialDashboardSection('cafe_owner_manager','?billing=canceled'),'Subscription');
+ assert.equal(context.initialDashboardSection('cafe_owner_manager','?billing=portal'),'Account Settings');
  for(const role of ['barista','owner_admin',null])assert.equal(context.initialDashboardSection(role,'?section=subscription'),'Overview');
  assert.equal(context.initialDashboardSection('cafe_owner_manager','?section=Account%20Settings'),'Overview');
+ assert.match(dashboard,/\/api\/confirm-checkout-session/);
+ const reconciliation=dashboard.slice(dashboard.indexOf('async function reconcileBillingReturn()'),dashboard.indexOf('async function loadAccountSubscription()'));
+ assert.match(reconciliation,/response\.status===202\)\{billingReturnReconciled=false/);
+ assert.match(reconciliation,/catch\(error\)\{billingReturnReconciled=false/);
+ assert.ok(reconciliation.lastIndexOf("history.replaceState(null,'',destination)")>reconciliation.indexOf("result.confirmed!==true"));
+ assert.match(dashboard,/billing\.canManageBilling\?'\/api\/create-portal-session':'\/api\/create-checkout-session'/);
  assert.match(dashboard,/openSection\(initialDashboardSection\(role\),view,role\)/);
 });
 test('switching directly to another account hides café prices and disables its action',async()=>{

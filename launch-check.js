@@ -21,14 +21,48 @@ for(const file of ['api/_billing.js','api/billing.js','mobile-billing-return.htm
 const stripeCheckout=fs.readFileSync('api/billing.js','utf8');
 const stripeWebhook=stripeCheckout;
 if(!stripeCheckout.includes('integration_identifier')||stripeCheckout.includes('payment_method_types')) throw new Error('Stripe Checkout configuration is unsafe or incomplete');
-if(!stripeWebhook.includes('constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 const stripeSupport=fs.readFileSync('api/_billing.js','utf8');
+if(!stripeWebhook.includes('constructStripeEvent')||!stripeSupport.includes('Stripe.webhooks.constructEvent')||!stripeWebhook.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('Stripe webhook signature verification is missing');
 for(const token of ['rk_test_','rk_live_','STRIPE_LIVEMODE','client.prices.retrieve(priceId)','validateConfiguredPrice','subscriptionUsesConfiguredPrice'])if(!stripeSupport.includes(token))throw new Error(`Stripe mode and Price validation is missing ${token}`);
+if(!stripeSupport.includes('stripeWebhookClient')||!stripeWebhook.includes('await stripeWebhookClient()'))throw new Error('Relevant Stripe webhooks must validate the configured account and Price');
 if(stripeSupport.includes('client.accounts.retrieve')) throw new Error('Stripe runtime key requires excessive Accounts Read permission');
 if(!stripeCheckout.includes('process.env.BILLING_ENABLED !== "true"')||!stripeCheckout.includes('billingPaused: true')) throw new Error('Stripe billing kill switch is not safe by default');
 if(stripeWebhook.includes('return res.status(200).json({ received: true, billingPaused: true })')) throw new Error('Stripe webhook ingestion must remain active while checkout is paused');
 if(!stripeWebhook.includes('checkout.session.completed')||!stripeWebhook.includes('syncCheckoutSession')||!stripeWebhook.includes('subscriptionUsesConfiguredPrice'))throw new Error('Stripe Checkout fulfillment or plan validation is incomplete');
+for(const token of ['checkout.session.async_payment_succeeded','checkoutSessionCanFulfill','constructStripeEvent','Webhook processing failed'])if(!stripeWebhook.includes(token))throw new Error(`Stripe webhook lifecycle handling is missing ${token}`);
+for(const token of ['subscriptionBelongsToCafe','subscriptionSelectionRank','preferredConfiguredSubscription','syncPreferredCustomerSubscription','reconcileCurrentCustomerSubscription','forcedStatus'])if(!stripeWebhook.includes(token))throw new Error(`Stripe current-state reconciliation is missing ${token}`);
+if(!stripeWebhook.includes('if (!usesConfiguredPrice) return true'))throw new Error('Invoices from an unapproved replacement Price must not be recorded as plan revenue');
+if(!stripeCheckout.includes('async function confirmCheckout')||!stripeCheckout.includes('checkoutSessionBelongsToCafe')||!dashboard.includes('/api/confirm-checkout-session'))throw new Error('Authenticated Stripe Checkout return reconciliation is missing');
+if(dashboard.includes('Payment received. Subscription status is still syncing')||!dashboard.includes('result.confirmed!==true')||!dashboard.includes('We have not confirmed a payment.'))throw new Error('Website must not claim payment from an unverified Checkout return');
+if(!dashboard.includes('billing.canManageBilling')||!stripeCheckout.includes('canManageBilling'))throw new Error('Canceled and recoverable subscriptions are not routed safely');
 if(!dashboard.includes('/api/create-checkout-session')||dashboard.includes("fetch('/api/billing/checkout'"))throw new Error('Website Stripe Checkout route is not connected to the production endpoint');
+const stripeRuntimeMigration='supabase/migrations/20260908090000_harden_stripe_runtime_coordination.sql';
+if(!fs.existsSync(stripeRuntimeMigration))throw new Error('Missing Stripe runtime-coordination migration');
+const stripeRuntimeSql=fs.readFileSync(stripeRuntimeMigration,'utf8');
+for(const token of ['claim_stripe_checkout','release_stripe_checkout','stripe_checkout_claim_kind','stripe_checkout_claim_is_current','attach_stripe_checkout_customer','claim_stripe_deletion','settle_stripe_checkout_attempt_for_deletion','stripe_checkout_attempt_id','claim_stripe_webhook_event','complete_stripe_webhook_event','fail_stripe_webhook_event','sync_stripe_subscription','stripe_subscription_event_created_at','stripe_subscription_created_at','stripe_subscription_sync_revision','record_stripe_subscription_payment','provider_event_created_at'])if(!stripeRuntimeSql.includes(token))throw new Error(`Stripe runtime coordination is missing ${token}`);
+for(const token of ['incoming_selection_rank < existing_selection_rank','p_subscription_id collate "C" < existing.stripe_subscription_id collate "C"'])if(!stripeRuntimeSql.includes(token))throw new Error(`Stripe duplicate-subscription ordering is missing ${token}`);
+if(!stripeRuntimeSql.includes('p_authoritative\n     and existing.stripe_subscription_event_created_at is not null'))throw new Error('Authoritative Stripe no-op can skip legacy watermark initialization');
+for(const token of ['rpc/claim_stripe_checkout','rpc/release_stripe_checkout','rpc/stripe_checkout_claim_is_current','rpc/attach_stripe_checkout_customer','rpc/claim_stripe_webhook_event','rpc/complete_stripe_webhook_event','rpc/fail_stripe_webhook_event','rpc/sync_stripe_subscription','rpc/record_stripe_subscription_payment'])if(!stripeCheckout.includes(token))throw new Error(`Stripe runtime does not use ${token}`);
+if(!stripeCheckout.includes('checkoutClaim.attemptId')||!stripeCheckout.includes('checkoutClaim.recovered')||!stripeCheckout.includes('p_clear_attempt: clearAttempt'))throw new Error('Stripe Checkout recovery is not bound to a durable idempotency attempt');
+if(!stripeCheckout.includes('["attached", "owned"].includes(attachment)')||!stripeCheckout.includes('if (attachment === "missing")')||stripeCheckout.includes('["deletion", "missing"].includes(attachment)'))throw new Error('Interrupted Stripe Customer cleanup is not successor-safe');
+if(!stripeCheckout.includes('openSubscriptionCheckoutSessions')||!stripeCheckout.includes('starting_after: startingAfter')||!stripeCheckout.includes('.filter((session) => session.id !== reusableSession?.id)'))throw new Error('Stripe Checkout must enumerate and expire every non-reusable subscription Session');
+const jobEntitlementMigration='supabase/migrations/20260908100000_enforce_cafe_job_posting_entitlements.sql';
+if(!fs.existsSync(jobEntitlementMigration))throw new Error('Missing lifetime-free-job entitlement migration');
+const jobEntitlementSql=fs.readFileSync(jobEntitlementMigration,'utf8');
+for(const token of ['private.cafe_job_entitlements','free_job_deleted_at','private.cafe_has_paid_job_entitlement','public.cafe_can_create_job','JOB_PRO_SUBSCRIPTION_REQUIRED','JOB_ACTIVE_LIMIT_REACHED','private.pause_jobs_without_paid_entitlement'])if(!jobEntitlementSql.includes(token))throw new Error(`Lifetime-free-job enforcement is missing ${token}`);
+for(const token of ["subscription.stripe_customer_id ~ '^cus_", "subscription.stripe_subscription_id ~ '^sub_", "subscription.status = 'active'", "subscription.status = 'trialing'", 'subscription.trial_ends_at > now()'])if(!jobEntitlementSql.includes(token))throw new Error(`Paid job entitlement is not bound to current Stripe state: ${token}`);
+if(!/create trigger pause_jobs_without_paid_entitlement\s+after insert or update on public\.cafe_subscriptions/i.test(jobEntitlementSql))throw new Error('Paid-only jobs are not paused when Stripe entitlement changes');
+if(/create trigger pause_jobs_without_paid_entitlement\s+after[^;]*delete/i.test(jobEntitlementSql))throw new Error('Subscription cascade deletion must not run the paid-job pause trigger');
+for(const token of ['cafe_can_create_job','JOB_SUBSCRIPTION_REQUIRED','PJB01','PJB04','persistPendingJobDraft','resumePendingJobDraft'])if(!dashboard.includes(token))throw new Error(`Website lifetime job gate is missing ${token}`);
+const rolloutGuide=fs.readFileSync('README.md','utf8');
+const requiredBillingMigrations=['202608310001_connect_stripe_billing.sql','20260908090000_harden_stripe_runtime_coordination.sql','20260908100000_enforce_cafe_job_posting_entitlements.sql'];
+let previousMigrationIndex=-1;
+for(const migration of requiredBillingMigrations){
+  const migrationIndex=rolloutGuide.indexOf(migration);
+  if(migrationIndex<=previousMigrationIndex)throw new Error(`README billing migrations are missing or out of order: ${migration}`);
+  previousMigrationIndex=migrationIndex;
+}
+for(const token of ['exactly one free job post for the lifetime','scheduling an interview','second distinct job row','must not insert or expose that job to baristas'])if(!rolloutGuide.includes(token))throw new Error(`README lifetime-free-job rollout is missing ${token}`);
 const subscriptionSyncStart=stripeWebhook.indexOf('async function syncSubscription');
 const subscriptionSyncEnd=stripeWebhook.indexOf('async function recordInvoicePayment');
 if(subscriptionSyncStart<0||subscriptionSyncEnd<=subscriptionSyncStart) throw new Error('Stripe subscription sync structure is missing');
@@ -124,6 +158,13 @@ if(mobileSettings.indexOf('Delete my account')<mobileSettings.indexOf('Log out')
 for(const token of ['/terms.html','/privacy.html','BaristaMatch LLC'])if(!mobileSettings.includes(token))throw new Error(`Mobile settings legal access is missing ${token}`);
 const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
 if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');
+if(deleteAccount.includes('subscriptionBlocksAccountDeletion')||deleteAccount.includes('Cancel your current Stripe subscription'))throw new Error('Account deletion still blocks on the removed manual-subscription guard');
+for(const token of ['await stripeWebhookClient()','endStripeBillingForDeletion','deleteOwnedStripeCustomer','stripe.customers.del(customerId)','stripe.customers.search','stripe.customers.list','expireOpenCheckoutSessions','stripe_checkout_attempt_id'])if(!deleteAccount.includes(token))throw new Error(`Account deletion Stripe cleanup is missing ${token}`);
+for(const token of ['suspended_at=is.null','stripeBillingAttempted','restoreDeletionLock','rpc/claim_stripe_deletion','rpc/settle_stripe_checkout_attempt_for_deletion','releaseDeletionBillingClaim','is_discoverable: Boolean(profile.is_discoverable)'])if(!deleteAccount.includes(token))throw new Error(`Account deletion coordination is missing ${token}`);
+if(deleteAccount.indexOf('rpc/claim_stripe_deletion')>deleteAccount.indexOf('suspended_at=is.null'))throw new Error('Account deletion must own the billing lease before changing profile visibility');
+const deletionFailureHandler=deleteAccount.slice(deleteAccount.lastIndexOf('} catch (error) {'));
+if(deletionFailureHandler.indexOf('if (restoreDeletionLock)')>deletionFailureHandler.indexOf('if (releaseDeletionBillingClaim)'))throw new Error('Account deletion must restore its lock before handing off the billing lease');
+for(const source of [dashboard,mobileSettings])if(!source.includes('active Pro subscription')||(!source.includes('cancels it immediately')&&!source.includes('canceled immediately')))throw new Error('Account deletion must disclose immediate Pro subscription cancellation');
 const safetyMigration='supabase/migrations/20260831090000_add_member_safety_controls.sql';
 if(!fs.existsSync(safetyMigration)) throw new Error('Mobile safety controls migration is missing');
 const safetySql=fs.readFileSync(safetyMigration,'utf8');
@@ -157,7 +198,7 @@ if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API 
 // Café pricing synchronization. Historical SQL migrations may retain old trial
 // language, but every current customer-facing surface must use this offer.
 const pricingFiles=['cafe-trial.html','mobile/app/subscription.tsx','PRICING-DECISION.md'];
-const pricingTokens=['$9.99','3 active jobs','first job','first hire','founder price'];
+const pricingTokens=['$9.99','3 active jobs','first job','second job','schedule interviews','founder price'];
 for(const file of pricingFiles){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
   for(const token of pricingTokens)if(!source.includes(token.toLowerCase()))throw new Error(`${file}: pricing is missing ${token}`);
@@ -165,7 +206,7 @@ for(const file of pricingFiles){
 }
 for(const file of ['mobile/app/home.tsx','mobile/app/settings.tsx']){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
-  if(!source.includes('first job')||!source.includes('first hire'))throw new Error(`${file}: Free plan summary is out of sync`);
+  if(!source.includes('first job')||!source.includes('interview'))throw new Error(`${file}: Free plan summary is out of sync`);
 }
 if(!stripeCheckout.includes('monthlyPriceCents: 999')||!stripeCheckout.includes('maxActiveJobs: 3'))throw new Error('Billing status metadata is out of sync with the Founder plan');
 if(!stripeCheckout.includes('currentPeriodEnd: subscription?.current_period_end')||!stripeCheckout.includes('connectedToBilling'))throw new Error('Billing status omits paying-café renewal details');
