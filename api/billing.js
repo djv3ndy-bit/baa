@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeMode, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
+import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeErrorDiagnostics, stripeMode, stripeOperation, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
 
 export const config = { api: { bodyParser: false } };
 const BILLING_PAUSED_MESSAGE = "Billing is not active. Café accounts will not be charged during the plan preview.";
@@ -67,13 +67,13 @@ async function openSubscriptionCheckoutSessions(stripe, customerId) {
   const sessions = [];
   let startingAfter;
   for (let page = 0; page < 10; page += 1) {
-    const result = await stripe.checkout.sessions.list({
+    const result = await stripeOperation("checkout_list", () => stripe.checkout.sessions.list({
       customer: customerId,
       status: "open",
       limit: 100,
       expand: ["data.line_items"],
       ...(startingAfter ? { starting_after: startingAfter } : {})
-    });
+    }));
     sessions.push(...result.data.filter((session) => session.mode === "subscription"));
     if (!result.has_more) return sessions;
     startingAfter = result.data.at(-1)?.id;
@@ -86,12 +86,12 @@ async function customerSubscriptions(stripe, customerId) {
   const subscriptions = [];
   let startingAfter;
   for (let page = 0; page < 10; page += 1) {
-    const result = await stripe.subscriptions.list({
+    const result = await stripeOperation("subscriptions_list", () => stripe.subscriptions.list({
       customer: customerId,
       status: "all",
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {})
-    });
+    }));
     subscriptions.push(...result.data);
     if (!result.has_more) return subscriptions;
     startingAfter = result.data.at(-1)?.id;
@@ -140,7 +140,7 @@ async function reconcileCurrentCustomerSubscription(stripe, userId, customerId, 
     if (!billing || (billing.stripe_customer_id && billing.stripe_customer_id !== customerId)) return false;
     const subscriptions = await customerSubscriptions(stripe, customerId);
     if (observedSubscription?.id && !subscriptions.some(candidate => candidate.id === observedSubscription.id)) {
-      const currentObservedSubscription = await stripe.subscriptions.retrieve(observedSubscription.id);
+      const currentObservedSubscription = await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(observedSubscription.id));
       if (!subscriptionBelongsToCafe(currentObservedSubscription, userId, customerId)) {
         throw new Error("The observed Stripe subscription changed ownership during reconciliation.");
       }
@@ -234,11 +234,11 @@ async function recoverOwnedStripeCustomers(stripe, userId, email) {
   };
   let searchPage;
   for (let page = 0; page < 10; page += 1) {
-    const result = await stripe.customers.search({
+    const result = await stripeOperation("customer_search", () => stripe.customers.search({
       query: `metadata['cafe_user_id']:'${userId}'`,
       limit: 100,
       ...(searchPage ? { page: searchPage } : {})
-    });
+    }));
     collect(result.data);
     if (!result.has_more) break;
     searchPage = result.next_page;
@@ -247,7 +247,7 @@ async function recoverOwnedStripeCustomers(stripe, userId, email) {
   if (email) {
     let startingAfter;
     for (let page = 0; page < 10; page += 1) {
-      const result = await stripe.customers.list({ email, limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
+      const result = await stripeOperation("customer_list", () => stripe.customers.list({ email, limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) }));
       collect(result.data);
       if (!result.has_more) break;
       startingAfter = result.data.at(-1)?.id;
@@ -364,7 +364,7 @@ async function billingStatus(req, res) {
       maxActiveJobs: 3
     });
   } catch (error) {
-    console.error("Billing status failed", error?.message || error);
+    console.error("Billing status failed", stripeErrorDiagnostics(error, "billing_status"));
     return res.status(503).json({ error: "Subscription details are temporarily unavailable." });
   }
 }
@@ -399,7 +399,7 @@ async function createCheckout(req, res) {
       // That gives every worker the exact same Stripe idempotency key and payload.
       const checkoutChannel = checkoutClaim.channel;
       const mobile = checkoutChannel === "app";
-      const stripe = await stripeClient();
+      const stripe = await stripeOperation("price_validation", () => stripeClient());
       if (!await checkoutClaimIsCurrent(user.id, checkoutClaim.claimId)) {
         return res.status(409).json({ error: "Secure checkout was interrupted. Please try again." });
       }
@@ -414,11 +414,11 @@ async function createCheckout(req, res) {
           customerCreateStarted = true;
           let customer;
           try {
-            customer = await stripe.customers.create({
+            customer = await stripeOperation("customer_create", () => stripe.customers.create({
               email: user.email,
               name: user.profile.cafe_name || user.profile.display_name || undefined,
               metadata: { cafe_user_id: user.id }
-            }, { idempotencyKey: `baristamatch-customer-${user.id}` });
+            }, { idempotencyKey: `baristamatch-customer-${user.id}` }));
           } catch (customerError) {
             // These errors conclusively reject the request before Customer
             // creation. Transport, rate-limit, and server errors stay marked as
@@ -437,10 +437,10 @@ async function createCheckout(req, res) {
           // makes immediate removal both necessary and race-free.
           if (attachment === "missing") {
             try {
-              const removed = await stripe.customers.del(customerId);
+              const removed = await stripeOperation("customer_delete", () => stripe.customers.del(customerId));
               checkoutAttemptSettled = removed?.deleted === true && removed.id === customerId;
             }
-            catch (cleanupError) { console.error("Interrupted Stripe Customer cleanup failed", cleanupError?.message || cleanupError); }
+            catch (cleanupError) { console.error("Interrupted Stripe Customer cleanup failed", stripeErrorDiagnostics(cleanupError, "customer_cleanup")); }
           }
           throw new Error("The café billing record is no longer available.");
         }
@@ -483,7 +483,7 @@ async function createCheckout(req, res) {
       }
       await Promise.all(openSessions
         .filter((session) => session.id !== reusableSession?.id)
-        .map((session) => stripe.checkout.sessions.expire(session.id)));
+        .map((session) => stripeOperation("checkout_expire", () => stripe.checkout.sessions.expire(session.id))));
       if (reusableSession) {
         checkoutAttemptSettled = true;
         return res.status(200).json({ url: reusableSession.url, reused: true });
@@ -491,7 +491,7 @@ async function createCheckout(req, res) {
       const site = origin(req);
       const subscriptionData = { metadata: { cafe_user_id: user.id } };
       checkoutCreateStarted = true;
-      const session = await stripe.checkout.sessions.create({
+      const session = await stripeOperation("checkout_create", () => stripe.checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
         client_reference_id: user.id,
@@ -502,16 +502,16 @@ async function createCheckout(req, res) {
         metadata: { cafe_user_id: user.id, checkout_channel: checkoutChannel },
         subscription_data: subscriptionData,
         allow_promotion_codes: true
-      }, { idempotencyKey: `baristamatch-checkout-${user.id}-${checkoutClaim.attemptId}` });
+      }, { idempotencyKey: `baristamatch-checkout-${user.id}-${checkoutClaim.attemptId}` }));
       checkoutAttemptSettled = true;
       return res.status(200).json({ url: session.url });
     } finally {
       const clearAttempt = checkoutAttemptSettled || (!checkoutClaim.recovered && !customerCreateStarted && !checkoutCreateStarted);
       try { await releaseCheckoutCreation(user.id, checkoutClaim.claimId, clearAttempt); }
-      catch (releaseError) { console.error("Stripe Checkout claim release failed", releaseError?.message || releaseError); }
+      catch (releaseError) { console.error("Stripe Checkout claim release failed", stripeErrorDiagnostics(releaseError, "checkout_claim_release")); }
     }
   } catch (error) {
-    console.error("Stripe Checkout failed", error?.type || error?.message || error);
+    console.error("Stripe Checkout failed", stripeErrorDiagnostics(error, "checkout"));
     return res.status(502).json({ error: "Secure checkout could not be opened. Please try again." });
   }
 }
@@ -530,10 +530,10 @@ async function createPortal(req, res) {
     const mobile = payload.channel === "mobile";
     // Existing subscribers must retain access to cancellation and payment
     // method management even if the canonical Price is later archived.
-    const stripe = await stripeWebhookClient();
+    const stripe = await stripeOperation("price_validation", () => stripeWebhookClient());
     const expectedLivemode = stripeMode() === "live";
-    const customer = await stripe.customers.retrieve(billing.stripe_customer_id);
-    const subscription = await stripe.subscriptions.retrieve(billing.stripe_subscription_id);
+    const customer = await stripeOperation("customer_retrieve", () => stripe.customers.retrieve(billing.stripe_customer_id));
+    const subscription = await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(billing.stripe_subscription_id));
     if (
       customer?.deleted === true ||
       customer?.id !== billing.stripe_customer_id ||
@@ -547,13 +547,13 @@ async function createPortal(req, res) {
     ) {
       return res.status(409).json({ error: "There is no current subscription to manage. Open the café plans to subscribe." });
     }
-    const session = await stripe.billingPortal.sessions.create({
+    const session = await stripeOperation("portal_create", () => stripe.billingPortal.sessions.create({
       customer: customer.id,
       return_url: mobile ? `${origin(req)}/mobile-billing-return.html?billing=portal` : `${origin(req)}/dashboard.html`
-    });
+    }));
     return res.status(200).json({ url: session.url });
   } catch (error) {
-    console.error("Stripe portal failed", error?.type || error?.message || error);
+    console.error("Stripe portal failed", stripeErrorDiagnostics(error, "portal"));
     return res.status(502).json({ error: "Billing management could not be opened. Please try again." });
   }
 }
@@ -570,7 +570,7 @@ async function confirmCheckout(req, res) {
     const billing = await subscriptionFor(user.id);
     if (!billing?.stripe_customer_id) return res.status(409).json({ error: "The checkout does not match this café account." });
     const stripe = stripeApiClient();
-    const session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] });
+    const session = await stripeOperation("checkout_retrieve", () => stripe.checkout.sessions.retrieve(sessionId, { expand: ["subscription"] }));
     if (!checkoutSessionBelongsToCafe(session, user.id, billing.stripe_customer_id)) {
       return res.status(404).json({ error: "The checkout does not match this café account." });
     }
@@ -587,7 +587,7 @@ async function confirmCheckout(req, res) {
     const updated = await subscriptionFor(user.id);
     return res.status(200).json({ confirmed: subscriptionHasPaidAccess(updated), status: updated?.status || "pending" });
   } catch (error) {
-    console.error("Stripe Checkout confirmation failed", error?.type || error?.message || error);
+    console.error("Stripe Checkout confirmation failed", stripeErrorDiagnostics(error, "checkout_confirm"));
     return res.status(502).json({ error: "Your payment is still being confirmed. Refresh your subscription status shortly." });
   }
 }
@@ -647,7 +647,7 @@ export async function syncCheckoutSession(session, stripe = stripeApiClient(), e
   // can reuse the object expanded by its just-completed API request.
   const subscription = eventCreated == null && typeof source === "object" && source?.items
     ? source
-    : await stripe.subscriptions.retrieve(subscriptionId);
+    : await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(subscriptionId));
   const userId = session.metadata?.cafe_user_id;
   const sessionCustomer = typeof session.customer === "string" ? session.customer : session.customer?.id;
   const subscriptionCustomer = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
@@ -659,7 +659,7 @@ export async function syncCheckoutSession(session, stripe = stripeApiClient(), e
 
 export async function syncSubscriptionEvent(source, stripe = stripeApiClient(), eventCreated) {
   if (!source?.id) return false;
-  const subscription = await stripe.subscriptions.retrieve(source.id);
+  const subscription = await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(source.id));
   return syncPreferredCustomerSubscription(subscription, stripe, eventCreated);
 }
 
@@ -681,7 +681,7 @@ export async function recordInvoicePayment(invoice, fallbackStatus, eventCreated
   const source = invoice.subscription || invoice.parent?.subscription_details?.subscription;
   const subscriptionId = typeof source === "string" ? source : source?.id;
   if (!subscriptionId) return false;
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(subscriptionId));
   const usesConfiguredPrice = subscriptionUsesConfiguredPrice(subscription, process.env.STRIPE_MONTHLY_PRICE_ID);
   const userId = subscription.metadata?.cafe_user_id;
   if (!await syncPreferredCustomerSubscription(subscription, stripe, eventCreated)) return false;
@@ -705,7 +705,7 @@ export async function recordInvoicePayment(invoice, fallbackStatus, eventCreated
 async function recordRefund(eventCharge, eventCreated, stripe = stripeApiClient()) {
   const chargeId = String(eventCharge?.id || "");
   if (!/^ch_[A-Za-z0-9_]+$/.test(chargeId)) return false;
-  const charge = await stripe.charges.retrieve(chargeId);
+  const charge = await stripeOperation("charge_retrieve", () => stripe.charges.retrieve(chargeId));
   const customerId = typeof charge?.customer === "string" ? charge.customer : charge?.customer?.id;
   const paymentIntentId = typeof charge?.payment_intent === "string" ? charge.payment_intent : charge?.payment_intent?.id;
   const amountRefunded = Number(charge?.amount_refunded);
@@ -721,11 +721,11 @@ async function recordRefund(eventCharge, eventCreated, stripe = stripeApiClient(
     charge?.currency !== "usd"
   ) return false;
 
-  const invoicePayments = await stripe.invoicePayments.list({
+  const invoicePayments = await stripeOperation("invoice_payments_list", () => stripe.invoicePayments.list({
     payment: { type: "payment_intent", payment_intent: paymentIntentId },
     status: "paid",
     limit: 2
-  });
+  }));
   if (invoicePayments?.has_more || invoicePayments?.data?.length !== 1) return false;
   const invoicePayment = invoicePayments.data[0];
   const linkedPaymentIntentId = typeof invoicePayment?.payment?.payment_intent === "string"
@@ -743,7 +743,7 @@ async function recordRefund(eventCharge, eventCreated, stripe = stripeApiClient(
     invoicePayment.amount_paid < amountRefunded
   ) return false;
 
-  const invoice = await stripe.invoices.retrieve(invoiceId);
+  const invoice = await stripeOperation("invoice_retrieve", () => stripe.invoices.retrieve(invoiceId));
   const invoiceCustomerId = typeof invoice?.customer === "string" ? invoice.customer : invoice?.customer?.id;
   const source = invoice?.subscription || invoice?.parent?.subscription_details?.subscription;
   const subscriptionId = typeof source === "string" ? source : source?.id;
@@ -755,7 +755,7 @@ async function recordRefund(eventCharge, eventCreated, stripe = stripeApiClient(
     !/^sub_[A-Za-z0-9_]+$/.test(String(subscriptionId || ""))
   ) return false;
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscription = await stripeOperation("subscription_retrieve", () => stripe.subscriptions.retrieve(subscriptionId));
   const subscriptions = await adminRows(
     `cafe_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&stripe_subscription_id=eq.${encodeURIComponent(subscriptionId)}&select=user_id,stripe_customer_id,stripe_subscription_id&limit=2`
   );
@@ -800,7 +800,7 @@ async function stripeWebhook(req, res) {
   try {
     event = constructStripeEvent(await rawBody(req), req.headers["stripe-signature"], secret);
   } catch (error) {
-    console.error("Stripe webhook signature rejected", error?.message || error);
+    console.error("Stripe webhook signature rejected", stripeErrorDiagnostics(error, "webhook_signature"));
     return res.status(400).send("Webhook signature rejected");
   }
   const webhookClaimId = randomUUID();
@@ -836,10 +836,10 @@ async function stripeWebhook(req, res) {
           body: JSON.stringify({ p_event_id: event.id, p_claim_id: webhookClaimId })
         });
       } catch (claimError) {
-        console.error("Stripe webhook claim cleanup failed", claimError?.message || claimError);
+        console.error("Stripe webhook claim cleanup failed", stripeErrorDiagnostics(claimError, "webhook_claim_cleanup"));
       }
     }
-    console.error("Stripe webhook processing failed", error?.message || error);
+    console.error("Stripe webhook processing failed", stripeErrorDiagnostics(error, "webhook"));
     return res.status(500).send("Webhook processing failed");
   }
 }

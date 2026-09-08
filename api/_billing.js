@@ -3,6 +3,34 @@ import Stripe from "stripe";
 let stripeClientPromise;
 let stripeWebhookClientPromise;
 let stripeApiClientInstance;
+const stripeErrorStages = new WeakMap();
+
+// Keep the original exception for retry/ownership decisions, but never log its
+// message, raw response, or headers: Stripe errors can include credentials.
+export async function stripeOperation(stage, operation) {
+  try { return await operation(); }
+  catch (error) {
+    if (error && (typeof error === "object" || typeof error === "function") && !stripeErrorStages.has(error)) {
+      stripeErrorStages.set(error, stage);
+    }
+    throw error;
+  }
+}
+
+export function stripeErrorDiagnostics(error, fallbackStage = "billing") {
+  const safeToken = value => typeof value === "string" && /^[A-Za-z][A-Za-z0-9_.\[\]-]{0,119}$/.test(value)
+    && !/(?:[sr]k_(?:live|test)_|whsec_|sb_secret_|Bearer)/i.test(value);
+  const containsObjectId = value => /(?:^|[.\[\]-])(?:cus|sub|cs|ch|pi|pm|seti|src|in|price|prod|acct|card|ba|tok|re|evt|si|il|dp|po|tr|txn|req)_/i.test(value);
+  const stage = error && (typeof error === "object" || typeof error === "function")
+    ? stripeErrorStages.get(error) : null;
+  const details = { stage: safeToken(stage) ? stage : safeToken(fallbackStage) ? fallbackStage : "billing" };
+  for (const field of ["type", "code", "param"]) {
+    if (safeToken(error?.[field]) && !containsObjectId(error[field])) details[field] = error[field];
+  }
+  if (typeof error?.requestId === "string" && /^req_[A-Za-z0-9]{1,100}$/.test(error.requestId)) details.requestId = error.requestId;
+  if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) details.statusCode = error.statusCode;
+  return details;
+}
 
 const PAID_STATUSES = new Set(["active", "trialing"]);
 const MANAGEABLE_STATUSES = new Set(["active", "trialing", "past_due", "unpaid", "incomplete", "paused"]);
@@ -80,7 +108,7 @@ export async function stripeClient() {
       // A Price can only be retrieved with a key from its Stripe account. Its
       // metadata binds that account-specific resource to our explicit account
       // configuration without granting the key Accounts Read permission.
-      const price = await client.prices.retrieve(priceId);
+      const price = await stripeOperation("price_retrieve", () => client.prices.retrieve(priceId));
       if (!validateConfiguredPrice(price, { accountId: expectedAccountId, priceId, mode })) {
         throw new Error(`Stripe restricted key does not match the configured ${mode} plan and account.`);
       }
@@ -102,7 +130,7 @@ export async function stripeWebhookClient() {
   if (!stripeWebhookClientPromise) {
     stripeWebhookClientPromise = (async () => {
       const client = stripeApiClient();
-      const price = await client.prices.retrieve(priceId);
+      const price = await stripeOperation("price_retrieve", () => client.prices.retrieve(priceId));
       if (!validateConfiguredPrice(price, { accountId: expectedAccountId, priceId, mode, requireActive: false })) {
         throw new Error(`Stripe restricted key does not match the configured ${mode} webhook plan and account.`);
       }
