@@ -216,7 +216,7 @@ test("Checkout reconciles an ambiguous Customer attachment, uses a fenced attemp
       billingReads += 1;
       return new Response(JSON.stringify([{ user_id: CAFE_ID, status: "free", stripe_customer_id: billingReads > 1 ? "cus_checkout" : null, stripe_subscription_id: null, stripe_subscription_event_created_at: null, stripe_subscription_sync_revision: 0 }]));
     }
-    if (target.endsWith("/rpc/claim_stripe_checkout")) return new Response(JSON.stringify({ attemptId: body.p_attempt_id, channel: body.p_channel, recovered: false }));
+    if (target.endsWith("/rpc/claim_stripe_checkout")) return new Response(JSON.stringify({ attemptId: body.p_attempt_id, channel: body.p_channel, uiMode: "hosted", recovered: false }));
     if (target.endsWith("/rpc/stripe_checkout_claim_is_current")) return new Response("true");
     if (target.endsWith("/rpc/attach_stripe_checkout_customer")) throw new TypeError("simulated lost attachment response");
     if (target.endsWith("/rpc/release_stripe_checkout")) return new Response("true");
@@ -260,7 +260,7 @@ test("Checkout reconciles an ambiguous Customer attachment, uses a fenced attemp
   assert.equal("payment_method_types" in createdSession, false);
   const claim = databaseCalls.find(({ target }) => target.endsWith("/rpc/claim_stripe_checkout")).body;
   assert.equal(createdOptions.idempotencyKey, `baristamatch-checkout-${CAFE_ID}-${claim.p_attempt_id}`);
-  assert.equal(databaseCalls.filter(({ target }) => target.endsWith("/rpc/stripe_checkout_claim_is_current")).length, 2);
+  assert.equal(databaseCalls.filter(({ target }) => target.endsWith("/rpc/stripe_checkout_claim_is_current")).length, 3);
   const attachment = databaseCalls.find(({ target }) => target.endsWith("/rpc/attach_stripe_checkout_customer")).body;
   assert.deepEqual(attachment, { p_user_id: CAFE_ID, p_claim_id: claim.p_claim_id, p_customer_id: "cus_checkout" });
   const release = databaseCalls.find(({ target }) => target.endsWith("/rpc/release_stripe_checkout")).body;
@@ -276,7 +276,7 @@ test("a recovered Checkout attempt reuses its metadata-owned Customer instead of
     if (target.endsWith("/auth/v1/user")) return new Response(JSON.stringify({ id: CAFE_ID, email: "cafe@example.com" }));
     if (target.includes("/rest/v1/profiles?")) return new Response(JSON.stringify([{ role: "cafe_owner_manager", cafe_name: "Test Café", display_name: null, suspended_at: null }]));
     if (target.includes("/rest/v1/cafe_subscriptions?")) return new Response(JSON.stringify([{ user_id: CAFE_ID, status: "free", stripe_customer_id: null, stripe_subscription_id: null, stripe_subscription_event_created_at: null, stripe_subscription_sync_revision: 0 }]));
-    if (target.endsWith("/rpc/claim_stripe_checkout")) return new Response(JSON.stringify({ attemptId: body.p_attempt_id, channel: body.p_channel, recovered: true }));
+    if (target.endsWith("/rpc/claim_stripe_checkout")) return new Response(JSON.stringify({ attemptId: body.p_attempt_id, channel: body.p_channel, uiMode: "hosted", recovered: true }));
     if (target.endsWith("/rpc/stripe_checkout_claim_is_current")) return new Response("true");
     if (target.endsWith("/rpc/attach_stripe_checkout_customer")) return new Response(JSON.stringify("attached"));
     if (target.endsWith("/rpc/release_stripe_checkout")) return new Response("true");
@@ -334,7 +334,7 @@ function checkoutRetryFixture(t, error, recovered = true) {
       state.attemptId ??= body.p_attempt_id;
       state.channel ??= body.p_channel;
       calls.claims.push({ ...body, attemptId: state.attemptId });
-      return Response.json({ attemptId: state.attemptId, channel: state.channel, recovered: recovering });
+      return Response.json({ attemptId: state.attemptId, channel: state.channel, uiMode: "hosted", recovered: recovering });
     }
     if (target.endsWith("/rpc/stripe_checkout_claim_is_current")) return Response.json(state.claimId === body.p_claim_id);
     if (target.endsWith("/rpc/release_stripe_checkout")) {

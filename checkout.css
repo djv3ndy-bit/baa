@@ -1,0 +1,31 @@
+:root{color-scheme:light;font-family:Arial,Helvetica,sans-serif;color:#18181b;background:#fff;font-synthesis:none}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0}
+a{color:inherit;text-underline-offset:3px}
+button{font:inherit;cursor:pointer}
+button:disabled{cursor:wait;opacity:.6}
+.checkout-header{min-height:88px;padding:18px max(24px,calc((100% - 1120px)/2));display:flex;justify-content:space-between;align-items:center;gap:22px;border-bottom:1px solid #e4e4e7;background:#fff}
+.checkout-brand{display:flex;gap:10px;align-items:center;text-decoration:none;font-size:24px;font-weight:750;letter-spacing:-.7px;white-space:nowrap}
+.checkout-brand img{height:42px;width:42px;object-fit:contain}
+.checkout-brand b{color:#aa5423}
+.checkout-back{font-size:14px;font-weight:600}
+.checkout-main{max-width:1160px;margin:auto;padding:38px 24px 30px}
+.checkout-intro{margin:0 0 28px;text-align:center}
+.checkout-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;color:#71717a;margin:0 0 12px}
+.checkout-intro h1{font-size:34px;line-height:1.2;letter-spacing:-1.1px;margin:0 0 12px;font-weight:700}
+.checkout-intro>p:last-child{font-size:15px;line-height:1.5;color:#606068;margin:0}
+.checkout-surface{background:#fff;min-width:0;border:1px solid #e4e4e7;border-radius:16px;padding:24px}
+#checkout-mount{min-width:0;width:100%}
+.checkout-message{text-align:center;padding:55px 18px;max-width:510px;margin:auto}
+.checkout-message h2{font-size:22px;line-height:1.3;letter-spacing:-.45px;margin:17px 0 10px}
+.checkout-message p{font-size:15px;line-height:1.6;margin:0;color:#606068;overflow-wrap:anywhere}
+.checkout-spinner{display:inline-block;width:28px;height:28px;border:3px solid #e4e4e7;border-top-color:#18181b;border-radius:50%;animation:checkout-spin .8s linear infinite}
+@keyframes checkout-spin{to{transform:rotate(360deg)}}
+.checkout-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin-top:22px}
+.checkout-actions button,.checkout-actions a{border:1px solid #18181b;border-radius:7px;padding:12px 18px;font-size:14px;font-weight:600;background:#18181b;color:#fff;text-decoration:none;min-height:44px}
+.checkout-footer{padding:17px 0 0;text-align:center;color:#71717a;font-size:12px;line-height:1.6}
+.checkout-footer p{margin:7px 0}
+.checkout-footer span{margin:0 12px}
+@media(max-width:600px){.checkout-header{min-height:72px;padding:14px 18px;gap:14px}.checkout-brand{font-size:20px;gap:6px}.checkout-brand img{width:32px;height:32px}.checkout-back{font-size:12px}.checkout-main{padding:27px 12px 24px}.checkout-intro{margin-bottom:22px;padding-inline:10px}.checkout-intro h1{font-size:27px}.checkout-intro>p:last-child{font-size:14px}.checkout-surface{padding:12px;border-radius:12px}.checkout-message{padding:42px 12px}}
+@media(prefers-reduced-motion:reduce){.checkout-spinner{animation:none}}

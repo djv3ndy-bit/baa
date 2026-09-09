@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeErrorDiagnostics, stripeMode, stripeOperation, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
+import { adminRows, authenticatedCafe, constructStripeEvent, json, origin, stripeApiClient, stripeClient, stripeErrorDiagnostics, stripeMode, stripeOperation, stripePublishableKey, stripeWebhookClient, subscriptionCanBeManaged, subscriptionFor, subscriptionHasPaidAccess, subscriptionIsConnected, subscriptionUsesConfiguredPrice } from "./_billing.js";
 
 export const config = { api: { bodyParser: false } };
 const BILLING_PAUSED_MESSAGE = "Billing is not active. Café accounts will not be charged during the plan preview.";
@@ -61,6 +61,41 @@ function checkoutSessionUsesPrice(session, priceId) {
     const price = item?.price;
     return (typeof price === "string" ? price : price?.id) === priceId;
   }));
+}
+
+function checkoutSessionUiMode(session) {
+  if (session?.ui_mode === "embedded_page") return "embedded";
+  if (["hosted_page", "hosted"].includes(session?.ui_mode) || (!session?.ui_mode && session?.url)) return "hosted";
+  return null;
+}
+
+async function verifiedCheckoutSession(stripe, sessionId, userId, customerId, uiMode) {
+  if (!/^cs_(?:test_|live_)?[A-Za-z0-9]+$/.test(String(sessionId || ""))) throw new Error("Invalid Stripe Checkout Session.");
+  const session = await stripeOperation("checkout_retrieve", () => stripe.checkout.sessions.retrieve(sessionId, { expand: ["line_items"] }));
+  if (session.id !== sessionId || !checkoutSessionBelongsToCafe(session, userId, customerId)
+      || session.livemode !== (stripeMode() === "live") || checkoutSessionUiMode(session) !== uiMode
+      || !checkoutSessionUsesPrice(session, process.env.STRIPE_MONTHLY_PRICE_ID)
+      || session.line_items.data.length !== 1 || session.line_items.data[0].quantity !== 1
+      || !["open", "complete", "expired"].includes(session.status)
+      || (uiMode === "embedded" && (session.metadata?.checkout_channel !== "web" || session.managed_payments?.enabled !== true))) {
+    throw new Error("Stripe Checkout ownership or configuration could not be verified.");
+  }
+  return session;
+}
+
+function embeddedCheckoutResponse(session, publishableKey, reused) {
+  if (session.status !== "open" || typeof session.client_secret !== "string"
+      || !session.client_secret.startsWith(`${session.id}_secret_`)
+      || !/^cs_(?:test_|live_)?[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(session.client_secret)) {
+    throw new Error("The embedded Checkout Session is not available.");
+  }
+  return { uiMode: "embedded", sessionId: session.id, clientSecret: session.client_secret, publishableKey, ...(reused ? { reused: true } : {}) };
+}
+
+function settledCheckoutMessage(status) {
+  return status === "complete"
+    ? { error: "This checkout is complete. Refresh your subscription status." }
+    : { retryCheckout: true, error: "Checkout was refreshed. Please try again." };
 }
 
 async function openSubscriptionCheckoutSessions(stripe, customerId) {
@@ -257,7 +292,7 @@ async function recoverOwnedStripeCustomers(stripe, userId, email) {
   return [...ids];
 }
 
-async function claimCheckoutCreation(userId, requestedChannel) {
+async function claimCheckoutCreation(userId, requestedChannel, requestedUiMode) {
   const claimId = randomUUID();
   const requestedAttemptId = randomUUID();
   const claimed = await adminRows("rpc/claim_stripe_checkout", {
@@ -266,11 +301,14 @@ async function claimCheckoutCreation(userId, requestedChannel) {
       p_user_id: userId,
       p_claim_id: claimId,
       p_attempt_id: requestedAttemptId,
-      p_channel: requestedChannel
+      p_channel: requestedChannel,
+      p_ui_mode: requestedUiMode
     })
   });
-  if (!claimed || !UUID.test(String(claimed.attemptId || "")) || !["web", "app"].includes(claimed.channel) || typeof claimed.recovered !== "boolean") return null;
-  return { claimId, attemptId: claimed.attemptId, channel: claimed.channel, recovered: claimed.recovered };
+  if (!claimed || !UUID.test(String(claimed.attemptId || "")) || !["web", "app"].includes(claimed.channel)
+      || !["hosted", "embedded"].includes(claimed.uiMode) || typeof claimed.recovered !== "boolean"
+      || (claimed.channel === "app" && claimed.uiMode !== "hosted")) return null;
+  return { claimId, attemptId: claimed.attemptId, channel: claimed.channel, uiMode: claimed.uiMode, recovered: claimed.recovered };
 }
 
 async function releaseCheckoutCreation(userId, claimId, clearAttempt) {
@@ -380,6 +418,8 @@ async function createCheckout(req, res) {
     if (!user) return res.status(401).json({ error: "Please log in with a café account." });
     if (user.profile.suspended_at) return res.status(403).json({ error: "This café account cannot start checkout." });
     const requestedChannel = payload.channel === "mobile" ? "app" : "web";
+    const requestedUiMode = requestedChannel === "web" && payload.uiMode === "embedded" ? "embedded" : "hosted";
+    const publishableKey = requestedUiMode === "embedded" ? stripePublishableKey() : null;
     const billing = await subscriptionFor(user.id);
     if (!billing) return res.status(409).json({ error: "Open your Free café plan before subscribing." });
     if (billing.stripe_subscription_id && subscriptionCanBeManaged(billing)) {
@@ -389,16 +429,18 @@ async function createCheckout(req, res) {
           : "This café's Stripe subscription link is incomplete. Contact support before starting another subscription."
       });
     }
-    const checkoutClaim = await claimCheckoutCreation(user.id, requestedChannel);
+    const checkoutClaim = await claimCheckoutCreation(user.id, requestedChannel, requestedUiMode);
     if (!checkoutClaim) return res.status(409).json({ error: "Secure checkout is already opening for this café. Please try again shortly." });
     let checkoutAttemptSettled = false;
     let customerCreateStarted = false;
     let checkoutCreateStarted = false;
     try {
-      // A reclaimed worker deliberately keeps the original attempt and channel.
+      // A reclaimed worker keeps the original attempt, channel, and UI mode.
       // That gives every worker the exact same Stripe idempotency key and payload.
       const checkoutChannel = checkoutClaim.channel;
       const mobile = checkoutChannel === "app";
+      const checkoutUiMode = checkoutClaim.uiMode;
+      const changingUiMode = checkoutUiMode !== requestedUiMode;
       const stripe = await stripeOperation("price_validation", () => stripeClient());
       if (!await checkoutClaimIsCurrent(user.id, checkoutClaim.claimId)) {
         return res.status(409).json({ error: "Secure checkout was interrupted. Please try again." });
@@ -468,7 +510,7 @@ async function createCheckout(req, res) {
       }
       const openSessions = await openSubscriptionCheckoutSessions(stripe, customerId);
       const matchingSessions = openSessions.filter((session) =>
-        session.url &&
+        checkoutSessionUiMode(session) === checkoutUiMode &&
         session.client_reference_id === user.id &&
         session.metadata?.cafe_user_id === user.id &&
         checkoutSessionUsesPrice(session, process.env.STRIPE_MONTHLY_PRICE_ID)
@@ -484,12 +526,30 @@ async function createCheckout(req, res) {
       await Promise.all(openSessions
         .filter((session) => session.id !== reusableSession?.id)
         .map((session) => stripeOperation("checkout_expire", () => stripe.checkout.sessions.expire(session.id))));
-      if (reusableSession) {
+      // Resolve an ambiguous embedded attempt through its original key before
+      // delivering any secret; an unrelated open Session is not its receipt.
+      if (reusableSession && !changingUiMode && !(checkoutClaim.recovered && checkoutUiMode === "embedded")) {
+        if (checkoutUiMode === "embedded") {
+          const verified = await verifiedCheckoutSession(stripe, reusableSession.id, user.id, customerId, checkoutUiMode);
+          if (!await checkoutClaimIsCurrent(user.id, checkoutClaim.claimId)) {
+            return res.status(409).json({ error: "Secure checkout was interrupted. Please try again." });
+          }
+          if (verified.status !== "open") {
+            checkoutAttemptSettled = true;
+            return res.status(409).json(settledCheckoutMessage(verified.status));
+          }
+          const result = embeddedCheckoutResponse(verified, publishableKey, true);
+          checkoutAttemptSettled = true;
+          return res.status(200).json(result);
+        }
         checkoutAttemptSettled = true;
         return res.status(200).json({ url: reusableSession.url, reused: true });
       }
       const site = origin(req);
       const subscriptionData = { metadata: { cafe_user_id: user.id } };
+      if (!await checkoutClaimIsCurrent(user.id, checkoutClaim.claimId)) {
+        return res.status(409).json({ error: "Secure checkout was interrupted. Please try again." });
+      }
       checkoutCreateStarted = true;
       let session;
       try {
@@ -498,8 +558,18 @@ async function createCheckout(req, res) {
           customer: customerId,
           client_reference_id: user.id,
           line_items: [{ price: process.env.STRIPE_MONTHLY_PRICE_ID, quantity: 1 }],
-          success_url: mobile ? `${site}/mobile-billing-return.html?billing=success&session_id={CHECKOUT_SESSION_ID}` : `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: mobile ? `${site}/mobile-billing-return.html?billing=canceled` : `${site}/dashboard.html?billing=canceled`,
+          // Do not add even equivalent parameters to the legacy hosted branch:
+          // its exact payload can already be cached under a recovered key.
+          ...(checkoutUiMode === "embedded" ? {
+            ui_mode: "embedded_page",
+            managed_payments: { enabled: true },
+            return_url: `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
+            redirect_on_completion: "if_required",
+            branding_settings: { background_color: "#FFFFFF", button_color: "#000000" }
+          } : {
+            success_url: mobile ? `${site}/mobile-billing-return.html?billing=success&session_id={CHECKOUT_SESSION_ID}` : `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: mobile ? `${site}/mobile-billing-return.html?billing=canceled` : `${site}/dashboard.html?billing=canceled`
+          }),
           integration_identifier: mobile ? "baristamatch_app_yhvkqjpw" : "baristamatch_web_qtmzjvka",
           metadata: { cafe_user_id: user.id, checkout_channel: checkoutChannel },
           subscription_data: subscriptionData,
@@ -517,6 +587,29 @@ async function createCheckout(req, res) {
           checkoutAttemptSettled = true;
         }
         throw error;
+      }
+      if (changingUiMode || checkoutUiMode === "embedded") {
+        // A create response can be an old idempotent replay. Read current state
+        // before exposing a secret or deciding it is safe to change UI modes.
+        const verified = await verifiedCheckoutSession(stripe, session.id, user.id, customerId, checkoutUiMode);
+        if (!await checkoutClaimIsCurrent(user.id, checkoutClaim.claimId)) {
+          return res.status(409).json({ error: "Secure checkout was interrupted. Please try again." });
+        }
+        if (verified.status !== "open") {
+          checkoutAttemptSettled = true;
+          return res.status(409).json(settledCheckoutMessage(verified.status));
+        }
+        if (changingUiMode) {
+          // Resolve the original request first, then retire only its verified
+          // open Session. Failed/ambiguous expiration retains the durable key.
+          const expired = await stripeOperation("checkout_expire", () => stripe.checkout.sessions.expire(verified.id));
+          if (expired.id !== verified.id || expired.status !== "expired") throw new Error("Stripe Checkout expiration could not be verified.");
+          checkoutAttemptSettled = true;
+          return res.status(409).json(settledCheckoutMessage("expired"));
+        }
+        const result = embeddedCheckoutResponse(verified, publishableKey, false);
+        checkoutAttemptSettled = true;
+        return res.status(200).json(result);
       }
       checkoutAttemptSettled = true;
       return res.status(200).json({ url: session.url });

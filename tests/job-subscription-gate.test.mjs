@@ -207,11 +207,12 @@ async function checkoutRoute(canManageBilling) {
   await ctx.continueJobUpgrade(button); return { calls, assigned, status };
 }
 
-test('the upgrade retry chooses Checkout for Free and Portal only for manageable billing', async () => {
+test('the upgrade retry keeps new Checkout on the website and Portal only for manageable billing', async () => {
   const checkout = await checkoutRoute(false), portal = await checkoutRoute(true);
-  assert.equal(checkout.calls[0].url, '/api/create-checkout-session');
+  assert.equal(checkout.calls.length, 0);
+  assert.deepEqual(checkout.assigned, ['/checkout.html']);
   assert.equal(portal.calls[0].url, '/api/create-portal-session');
-  for (const result of [checkout, portal]) {
+  for (const result of [portal]) {
     assert.equal(JSON.parse(result.calls[0].options.body).channel, 'web');
     assert.equal(result.calls[0].options.headers.Authorization, 'Bearer token-cafe');
     assert.deepEqual(result.assigned, ['https://checkout.stripe.example/session']);

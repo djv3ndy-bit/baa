@@ -96,7 +96,7 @@ test("real billing handlers report the failing Stripe stage and keep the fronten
           stripe_subscription_id: portal ? "sub_diagnostics" : null,
           stripe_subscription_event_created_at: null, stripe_subscription_sync_revision: 0,
         }]);
-        if (target.endsWith("/rpc/claim_stripe_checkout")) return Response.json({ attemptId: body.p_attempt_id, channel: body.p_channel, recovered: recovering });
+        if (target.endsWith("/rpc/claim_stripe_checkout")) return Response.json({ attemptId: body.p_attempt_id, channel: body.p_channel, uiMode: "hosted", recovered: recovering });
         if (target.endsWith("/rpc/stripe_checkout_claim_is_current")) return Response.json(true);
         if (target.endsWith("/rpc/attach_stripe_checkout_customer")) return Response.json("attached");
         if (target.endsWith("/rpc/release_stripe_checkout")) { releases.push(body); return Response.json(true); }

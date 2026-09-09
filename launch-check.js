@@ -36,7 +36,8 @@ if(!stripeWebhook.includes('if (!usesConfiguredPrice) return true'))throw new Er
 if(!stripeCheckout.includes('async function confirmCheckout')||!stripeCheckout.includes('checkoutSessionBelongsToCafe')||!dashboard.includes('/api/confirm-checkout-session'))throw new Error('Authenticated Stripe Checkout return reconciliation is missing');
 if(dashboard.includes('Payment received. Subscription status is still syncing')||!dashboard.includes('result.confirmed!==true')||!dashboard.includes('We have not confirmed a payment.'))throw new Error('Website must not claim payment from an unverified Checkout return');
 if(!dashboard.includes('billing.canManageBilling')||!stripeCheckout.includes('canManageBilling'))throw new Error('Canceled and recoverable subscriptions are not routed safely');
-if(!dashboard.includes('/api/create-checkout-session')||dashboard.includes("fetch('/api/billing/checkout'"))throw new Error('Website Stripe Checkout route is not connected to the production endpoint');
+const embeddedCheckout=fs.readFileSync('checkout.js','utf8');
+if(!dashboard.includes("location.assign('/checkout.html')")||!embeddedCheckout.includes('/api/create-checkout-session')||!embeddedCheckout.includes('createEmbeddedCheckoutPage'))throw new Error('Website embedded Checkout is not connected to the production endpoint');
 const stripeRuntimeMigration='supabase/migrations/20260908090000_harden_stripe_runtime_coordination.sql';
 if(!fs.existsSync(stripeRuntimeMigration))throw new Error('Missing Stripe runtime-coordination migration');
 const stripeRuntimeSql=fs.readFileSync(stripeRuntimeMigration,'utf8');
