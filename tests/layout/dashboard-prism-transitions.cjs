@@ -42,7 +42,14 @@ const repo=path.resolve(__dirname,'../..');
    let chrome;
    for(const section of sections){
     await page.evaluate(s=>openSection(s,currentView,currentRole),section);await page.waitForTimeout(180);
-    const m=await page.evaluate(()=>{const measure=s=>{const el=document.querySelector(s),r=el.getBoundingClientRect(),c=getComputedStyle(el);return {x:r.x,y:r.y,width:r.width,height:r.height,background:c.backgroundColor,borderRadius:c.borderRadius}};return {section:currentSection,chromeMounted:originalDashboardChrome.every(el=>el.isConnected),hasPermanentTheme:document.body.classList.contains('prism-dashboard-page')&&document.getElementById('app').classList.contains('prism-dashboard-shell'),expectedTitle:BaristaMatchQuietFocus.menuLabel(currentSection,currentRole),visiblePageTitle:[...document.querySelectorAll('.top h1,#content h1')].filter(el=>el.getClientRects().length).map(el=>el.textContent.trim()),width:innerWidth,scroll:document.documentElement.scrollWidth,chrome:{side:innerWidth>760?measure('.side'):null,nav:innerWidth>760?measure('.menu'):null,header:measure('.quiet-shell-header'),bottom:measure('.quiet-mobile-nav'),background:getComputedStyle(document.body).backgroundColor},content:measure('#content'),headings:[...document.querySelectorAll('.top h1,#content h1,#content h2,#content h3')].filter(el=>el.getClientRects().length).map(el=>({text:el.textContent,font:getComputedStyle(el).fontFamily})),buttons:[...document.querySelectorAll('#content button')].filter(el=>el.getClientRects().length).map(el=>{const r=el.getBoundingClientRect();return {text:el.textContent.trim(),left:r.x,right:r.right,width:r.width}})};});
+    const m=await page.evaluate(()=>{const measure=s=>{const el=document.querySelector(s),r=el.getBoundingClientRect(),c=getComputedStyle(el);return {x:r.x,y:r.y,width:r.width,height:r.height,background:c.backgroundColor,borderRadius:c.borderRadius}};
+     const bounds=r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom});
+     // Ranges measure the full text, including text hidden by overflow/ellipsis.
+     const navLabels=[...document.querySelectorAll(innerWidth>760?'.side .menu .nav-label':'.quiet-mobile-nav small')].filter(el=>el.getClientRects().length).map(el=>{
+      const range=document.createRange();range.selectNodeContents(el);
+      return {text:el.textContent.trim(),textBounds:bounds(range.getBoundingClientRect()),labelBounds:bounds(el.getBoundingClientRect()),buttonBounds:bounds(el.closest('button').getBoundingClientRect())};
+     });
+     return {section:currentSection,chromeMounted:originalDashboardChrome.every(el=>el.isConnected),hasPermanentTheme:document.body.classList.contains('prism-dashboard-page')&&document.getElementById('app').classList.contains('prism-dashboard-shell'),expectedTitle:BaristaMatchQuietFocus.menuLabel(currentSection,currentRole),visiblePageTitle:[...document.querySelectorAll('.top h1,#content h1')].filter(el=>el.getClientRects().length).map(el=>el.textContent.trim()),width:innerWidth,height:innerHeight,navLabels,scroll:document.documentElement.scrollWidth,chrome:{side:innerWidth>760?measure('.side'):null,nav:innerWidth>760?measure('.menu'):null,header:measure('.quiet-shell-header'),bottom:measure('.quiet-mobile-nav'),background:getComputedStyle(document.body).backgroundColor},content:measure('#content'),headings:[...document.querySelectorAll('.top h1,#content h1,#content h2,#content h3')].filter(el=>el.getClientRects().length).map(el=>({text:el.textContent,font:getComputedStyle(el).fontFamily})),buttons:[...document.querySelectorAll('#content button')].filter(el=>el.getClientRects().length).map(el=>{const r=el.getBoundingClientRect();return {text:el.textContent.trim(),left:r.x,right:r.right,width:r.width}})};});
     assert.ok(m.scroll<=width,JSON.stringify({role,populated,overflow:m}));
     if(!chrome)chrome=m.chrome;else assert.deepEqual(m.chrome,chrome,`shared chrome shifted: ${role}/${section}/${width}`);
     assert.ok(m.chromeMounted&&m.hasPermanentTheme,`Dashboard chrome was replaced or lost its theme on ${section}`);
@@ -51,6 +58,13 @@ const repo=path.resolve(__dirname,'../..');
     if(section!=='Overview')assert.deepEqual(m.visiblePageTitle,[m.expectedTitle],`Missing or duplicated page title: ${role}/${section}/${width}`);
     assert.ok(m.headings.every(h=>!/(Georgia|Times New Roman)/i.test(h.font)),`Old serif heading returned on ${role}/${section}/${width}`);
     assert.ok(m.buttons.every(b=>b.left>=-1&&b.right<=width+1),JSON.stringify({role,populated,section,width,buttons:m.buttons}));
+    assert.ok(m.navLabels.length>0,`No visible navigation labels: ${role}/${section}/${width}`);
+    for(const label of m.navLabels){
+     for(const [container,b] of Object.entries({label:label.labelBounds,button:label.buttonBounds,viewport:{left:0,right:width,top:0,bottom:m.height}})){
+      const t=label.textBounds;
+      assert.ok(t.left>=b.left-1&&t.right<=b.right+1&&t.top>=b.top-1&&t.bottom<=b.bottom+1,`Navigation label clips ${container}: ${JSON.stringify({role,populated,section,width,...label})}`);
+     }
+    }
     if(section==='Account Settings'&&!populated){
      const cardPadding=await page.locator('.google-password-card').evaluate(el=>parseFloat(getComputedStyle(el).paddingLeft));
      assert.ok(cardPadding>=16,`Provider security card content touches its rounded border at ${width}px`);
