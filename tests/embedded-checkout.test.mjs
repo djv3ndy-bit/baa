@@ -148,6 +148,18 @@ test('embedded checkout mounts with the current SDK and sends completion only to
   assert.equal(h.state.timers.size, 0);
 });
 
+test('embedded checkout passes an opaque encoded client secret to Stripe unchanged', async () => {
+  const clientSecret = `${checkoutResult.sessionId}_secret_encoded%2Fpart_with%3Dpadding`;
+  const h = browser({ result: { clientSecret } });
+  await settle();
+  assert.equal(h.state.instances.length, 1);
+  const [instance] = h.state.instances;
+  assert.deepEqual(instance.mountTargets, ['#checkout-mount']);
+  assert.equal(await instance.callbacks.fetchClientSecret(), clientSecret);
+  assert.equal(h.state.navigations.length, 0);
+  assert.equal(h.state.logs.length, 0);
+});
+
 test('account changes and sign-out invalidate mounted checkout and its captured callbacks', async t => {
   for (const nextSession of [account('another-owner'), null]) await t.test(nextSession ? 'account changed' : 'signed out', async () => {
     const h = browser();

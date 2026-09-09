@@ -84,9 +84,11 @@ async function verifiedCheckoutSession(stripe, sessionId, userId, customerId, ui
 }
 
 function embeddedCheckoutResponse(session, publishableKey, reused) {
+  const secretPrefix = `${session.id}_secret_`;
+  // Stripe owns the opaque suffix format, including any encoded characters.
   if (session.status !== "open" || typeof session.client_secret !== "string"
-      || !session.client_secret.startsWith(`${session.id}_secret_`)
-      || !/^cs_(?:test_|live_)?[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(session.client_secret)) {
+      || !session.client_secret.startsWith(secretPrefix)
+      || session.client_secret.length <= secretPrefix.length) {
     throw new Error("The embedded Checkout Session is not available.");
   }
   return { uiMode: "embedded", sessionId: session.id, clientSecret: session.client_secret, publishableKey, ...(reused ? { reused: true } : {}) };
