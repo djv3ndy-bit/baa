@@ -50,5 +50,11 @@ jobs:
           pnpm --dir tests/database install --frozen-lockfile --ignore-scripts
       - name: Verify database authorization and workflow rules
         run: npm run test:database
+      - name: Install isolated locked browser test runtime
+        run: |
+          npm ci --prefix tests/layout --ignore-scripts --no-audit --no-fund
+          node tests/layout/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Verify dashboard navigation and section layouts
+        run: node tests/layout/dashboard-prism-transitions.cjs
 # All identities and requests are synthetic. No live account, database,
 # payment, notification, or deployment credentials are available to this job.

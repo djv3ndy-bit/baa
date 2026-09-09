@@ -9,6 +9,7 @@ function compile(file, mocks = {}) {
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   const load = name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === '@/lib/dashboardPrism') return compile('lib/dashboardPrism.ts');
     if (name === './floridaLocation') return compile('lib/floridaLocation.ts');
     throw new Error(`Unmocked import ${name}`);
   };

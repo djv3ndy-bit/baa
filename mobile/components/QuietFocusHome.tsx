@@ -14,6 +14,7 @@ import {
 import { AppBottomNav } from '@/components/AppBottomNav';
 import { getTimeGreeting } from '@/lib/timeGreeting';
 import type { DashboardCounts } from '@/lib/homeSummary';
+import { dashboardPrism as prism, prismPanel as floatingSurface } from '@/lib/dashboardPrism';
 
 type Role = 'barista' | 'cafe_owner_manager';
 
@@ -32,26 +33,6 @@ type QuietFocusHomeProps = {
 
 const CAFE_IMAGE = require('../assets/editorial-latte-v3.jpg');
 const BRAND_IMAGE = require('../assets/website-favicon.png');
-const prism = {
-  background: '#ffffff',
-  surface: '#ffffff',
-  soft: '#f7f7f7',
-  ink: '#292521',
-  muted: '#706b66',
-  line: '#e9e7e5',
-  accent: '#a94716',
-};
-
-const floatingSurface = {
-  backgroundColor: prism.surface,
-  borderWidth: 1,
-  borderColor: prism.line,
-  shadowColor: '#25211d',
-  shadowOffset: { width: 0, height: 6 },
-  shadowOpacity: 0.035,
-  shadowRadius: 12,
-  elevation: 1,
-};
 
 export function QuietFocusHome({
   role,
