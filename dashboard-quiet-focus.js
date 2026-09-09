@@ -194,13 +194,12 @@
           activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];
 
-    return `<section class="quiet-dashboard ${isCafe ? 'quiet-cafe' : 'quiet-guided'}">
+    return `<section class="quiet-dashboard quiet-prism ${isCafe ? 'quiet-cafe' : 'quiet-guided'}">
       ${hero({ name: firstName, location, isCafe })}
       <div class="quiet-layout">
         <div class="quiet-primary-column">
           <div class="quiet-section-heading"><h3>${isCafe ? 'Your hiring focus' : 'Latest job in your work area'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">${isCafe ? 'Manage jobs' : 'See all jobs'} <span aria-hidden="true">→</span></button></div>
           ${feature}
-          ${moreJobs(context, isCafe)}
         </div>
         <aside class="quiet-activity-panel">
           <h3>Your activity</h3>
@@ -212,6 +211,7 @@
           ].map(([icon, label, section]) => `<button type="button" data-go="${section}">${iconSvg(icon)}<span>${label}</span><span aria-hidden="true">›</span></button>`).join('')}</div>`}
           <button class="quiet-note" type="button" data-go="${isCafe ? 'Café Profile' : 'My Profile'}"><span aria-hidden="true">⌁</span><span><strong>Good people.<br>Better opportunities.</strong><small>${isCafe ? 'Keep your café profile current.' : 'Keep your profile ready.'}</small></span><span aria-hidden="true">→</span></button>
         </aside>
+        ${moreJobs(context, isCafe)}
       </div>
     </section>`;
   }
