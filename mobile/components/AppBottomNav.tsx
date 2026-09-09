@@ -56,10 +56,11 @@ export function AppBottomNav({
               allowFontScaling={false}
               minimumFontScale={0.78}
               numberOfLines={1}
-              style={[styles.label, isCandidates && styles.candidatesLabel, isActive && styles.active]}
+              style={[styles.label, role === 'cafe_owner_manager' && styles.cafeLabel, isCandidates && styles.candidatesLabel, isActive && styles.active]}
             >
               {item.label}
             </Text>
+            {isActive ? <View accessible={false} importantForAccessibility="no" pointerEvents="none" style={styles.selectedIndicator} /> : null}
           </Pressable>
         );
       })}
@@ -91,27 +92,39 @@ const styles = StyleSheet.create({
   },
   selectedItem: {
     borderRadius: 14,
-    backgroundColor: prism.soft,
+    backgroundColor: prism.selected,
+  },
+  selectedIndicator: {
+    position: 'absolute',
+    bottom: 7,
+    width: 14,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: prism.accent,
   },
   icon: {
     fontSize: 19,
     lineHeight: 22,
-    color: prism.muted,
+    color: prism.navInactive,
   },
   label: {
     width: '100%',
     marginTop: 3,
-    color: prism.muted,
-    fontSize: 9,
-    lineHeight: 11,
+    color: prism.navInactive,
+    fontSize: 11,
+    lineHeight: 13,
     fontWeight: '700',
     textAlign: 'center',
   },
+  cafeLabel: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
   candidatesLabel: {
-    fontSize: 8.5,
+    fontSize: 10,
     letterSpacing: -0.15,
   },
   active: {
-    color: prism.ink,
+    color: prism.accent,
   },
 });

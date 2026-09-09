@@ -12,7 +12,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fffaf3' },
   prismSafe: { backgroundColor: prism.background },
   prismCopy: { color: prism.muted },
-  prismLabel: { color: prism.ink, fontWeight: '600' },
+  prismLabel: { color: prism.accent, fontWeight: '700' },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
   copy: { color: '#746a61', textAlign: 'center', fontSize: 16, lineHeight: 24 },
   button: { minHeight: 44, padding: 12 },

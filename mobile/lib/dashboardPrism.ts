@@ -7,6 +7,9 @@ export const dashboardPrism = {
   muted: '#706b66',
   line: '#e9e7e5',
   accent: '#a94716',
+  accentSoft: '#fff6f0',
+  selected: '#fff1e8',
+  navInactive: '#49413b',
 } as const;
 
 export const prismPanel = {
