@@ -175,6 +175,31 @@ test("a recovered embedded attempt resolves its durable key before exposing a li
   assert.equal(calls.expires.length, 0);
 });
 
+test("opaque embedded client secrets survive creation, reuse, and durable recovery unchanged", async t => {
+  for (const path of ["creation", "reuse", "recovery"]) await t.test(path, async t => {
+    const { calls, control, state, run } = fixture(t, path === "recovery" ? "embedded" : null);
+    const ownedSession = session("cs_test_Opaque123");
+    // Synthetic encoded token: no real Stripe credential or response is used.
+    ownedSession.client_secret = `${ownedSession.id}_secret_synthetic_private_%2Fpart_%3D`;
+    if (path !== "creation") control.sessions = [ownedSession];
+    control.created = ownedSession;
+    const res = await run();
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.clientSecret, ownedSession.client_secret);
+    assert.equal(res.body.sessionId, ownedSession.id);
+    assert.equal(res.body.reused, path === "reuse" ? true : undefined);
+    assert.equal(calls.creates.length, path === "reuse" ? 0 : 1);
+    assert.deepEqual(calls.retrieves, [{ id: ownedSession.id, params: { expand: ["line_items"] } }]);
+    assert.equal(calls.expires.length, 0);
+    if (path === "recovery") {
+      assert.equal(calls.creates[0].options.idempotencyKey, `baristamatch-checkout-${CAFE}-${OLD_ATTEMPT}`);
+    }
+    assert.equal(state.attemptId, null);
+    assert.equal(calls.releases[0].p_clear_attempt, true);
+    assert.equal(JSON.stringify(calls.logs).includes("private"), false);
+  });
+});
+
 test("embedded secrets are withheld for mismatched or malformed Stripe sessions", async t => {
   const mutations = [
     ["session id", value => { value.id = "cs_test_Other"; }],
@@ -190,6 +215,7 @@ test("embedded secrets are withheld for mismatched or malformed Stripe sessions"
     ["quantity", value => { value.line_items.data[0].quantity = 2; }],
     ["Managed Payments", value => { value.managed_payments.enabled = false; }],
     ["missing secret", value => { value.client_secret = null; }],
+    ["empty secret suffix", value => { value.client_secret = `${value.id}_secret_`; }],
     ["another secret", value => { value.client_secret = "cs_test_Other_secret_private123"; }],
   ];
   for (const [name, mutate] of mutations) await t.test(name, async t => {
