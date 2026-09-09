@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { dashboardPrism as prism } from '@/lib/dashboardPrism';
 
 type Tab = 'home' | 'discover' | 'candidates' | 'matches' | 'messages' | 'profile';
 
@@ -42,7 +43,7 @@ export function AppBottomNav({
             hitSlop={4}
             key={item.key}
             onPress={() => router.replace(item.path as never)}
-            style={[styles.item, isCandidates && styles.candidatesItem]}
+            style={[styles.item, isCandidates && styles.candidatesItem, isActive && styles.selectedItem]}
           >
             <Text
               allowFontScaling={false}
@@ -70,8 +71,8 @@ const styles = StyleSheet.create({
   bar: {
     height: 72,
     borderTopWidth: 1,
-    borderTopColor: '#eadfd5',
-    backgroundColor: '#fff',
+    borderTopColor: prism.line,
+    backgroundColor: prism.surface,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -88,15 +89,19 @@ const styles = StyleSheet.create({
   candidatesItem: {
     flex: 1.14,
   },
+  selectedItem: {
+    borderRadius: 14,
+    backgroundColor: prism.soft,
+  },
   icon: {
     fontSize: 19,
     lineHeight: 22,
-    color: '#99897f',
+    color: prism.muted,
   },
   label: {
     width: '100%',
     marginTop: 3,
-    color: '#99897f',
+    color: prism.muted,
     fontSize: 9,
     lineHeight: 11,
     fontWeight: '700',
@@ -107,6 +112,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.15,
   },
   active: {
-    color: '#c45b1d',
+    color: prism.ink,
   },
 });

@@ -16,6 +16,11 @@ const flatten = value => Array.isArray(value) ? Object.assign({}, ...value.map(f
 const kids = value => [value].flat(Infinity).filter(x => x !== null && x !== undefined && x !== false && x !== true);
 const textOf = element => typeof element === 'string' || typeof element === 'number' ? String(element) : kids(element?.props?.children).map(textOf).join('');
 const absoluteFillObject = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 };
+const prismModule = { exports: {} };
+vm.runInNewContext(ts.transpileModule(readFileSync(resolve(ROOT, 'mobile/lib/dashboardPrism.ts'), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
+}).outputText, { exports: prismModule.exports });
+const { dashboardPrism: prism } = prismModule.exports;
 function bundledImageSource(file) {
   const bytes = readFileSync(file);
   if (bytes.subarray(1, 4).toString() === 'PNG') {
@@ -33,7 +38,7 @@ function bundledImageSource(file) {
   }
   throw new Error(`${file}: missing JPEG dimensions`);
 }
-function render(file, { states = {}, props = {}, platform = 'ios', width = 393, height = 844, fontScale = 1, insets = { top: 59, bottom: 34, left: 0, right: 0 } } = {}) {
+function render(file, { states = {}, props = {}, platform = 'ios', width = 393, height = 844, fontScale = 1, cafeAccess = { ready: true, error: '', retry: async () => {} }, insets = { top: 59, bottom: 34, left: 0, right: 0 } } = {}) {
   const sheets = [], routes = [];
   let index = 0;
   const react = {
@@ -56,12 +61,13 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return native;
+    if (name.endsWith('/dashboardPrism')) return prismModule.exports;
     if (name === 'expo-router') return { useFocusEffect() {}, router: { push: path => routes.push(path), replace: path => routes.push(path), back: () => routes.push('back') }, useLocalSearchParams: () => ({ id: 'test-match', kind: 'discovery' }) };
     if (name === 'expo-web-browser') return { maybeCompleteAuthSession() {}, openAuthSessionAsync: async () => ({ type: 'cancel' }) };
     if (name === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets };
     if (/\.(png|jpg)$/.test(name)) return bundledImageSource(resolve(ROOT, dirname(file), name));
     if (name.endsWith('/loginLayout')) return { LOGIN_LAYOUT_METRICS, resolveLoginLayout };
-    if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => ({ ready: true, error: '', retry: async () => {} }) };
+    if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => cafeAccess };
     if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
     if (name.endsWith('/profilePrivacy')) return { getProfileReadiness: () => ({ complete: false, missing: ['Profile picture'], visible: false }), normalizeOptionalGender: () => null };
     if (name.endsWith('/floridaLocation')) return { workAreaLabel: () => 'Miami, FL', floridaCityFromLocation: () => 'Miami' };
@@ -74,7 +80,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
   const source = readFileSync(resolve(ROOT, file), 'utf8');
   const output = ts.transpileModule(source, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(output, { module, exports: module.exports, require, console, URL, process: { env: {} } }, { filename: file });
-  const component = module.exports.default || module.exports.QuietFocusHome || module.exports.AppBottomNav;
+  const component = module.exports.default || module.exports.QuietFocusHome || module.exports.AppBottomNav || module.exports.CafeAccessCheck;
   const tree = component({ ...props, onOpenSettings: () => routes.push('/settings') });
   function findStyle(key) {
     const style = sheets.map(s => s[key]).find(Boolean);
@@ -89,7 +95,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     }
     const found = visit(tree); assert.ok(found, `${file}: rendered ${key} exists`); return found;
   }
-  return { tree, findStyle, routes };
+  return { tree, findStyle, routes, styles: Object.assign({}, ...sheets) };
 }
 
 const edges = { '': Yoga.EDGE_ALL, Top: Yoga.EDGE_TOP, Right: Yoga.EDGE_RIGHT, Bottom: Yoga.EDGE_BOTTOM, Left: Yoga.EDGE_LEFT, Horizontal: Yoga.EDGE_HORIZONTAL, Vertical: Yoga.EDGE_VERTICAL };
@@ -351,6 +357,100 @@ for (const role of ['cafe_owner_manager', 'barista']) test(`Prism home preserves
   const navigation = findElement(rendered.tree, node => node.props?.active === 'home');
   assert.equal(navigation.props.role, role);
 });
+const prismDestinations = [
+  { name: 'Home café', file: 'mobile/components/QuietFocusHome.tsx', props: homeProps, panels: ['feature', 'planCard'], active: 'home', role: 'cafe_owner_manager' },
+  { name: 'Home barista', file: 'mobile/components/QuietFocusHome.tsx', props: { ...homeProps, role: 'barista' }, panels: ['feature', 'profileCard'], active: 'home', role: 'barista' },
+  { name: 'Jobs', file: 'mobile/app/jobs.tsx', states: { 0: false }, panels: ['card'], active: 'home', role: 'cafe_owner_manager' },
+  { name: 'Candidates', file: 'mobile/app/candidates.tsx', states: { 0: false }, panels: ['card'], active: 'candidates', role: 'cafe_owner_manager' },
+  ...['barista', 'cafe_owner_manager'].flatMap(role => [
+    { name: `Discover ${role}`, file: 'mobile/app/discover.tsx', states: { 0: false, 2: role }, panels: ['card'], active: 'discover', role },
+    { name: `Matches ${role}`, file: 'mobile/app/matches.tsx', states: { 0: false, 2: role }, panels: ['row'], active: 'matches', role },
+    { name: `Messages ${role}`, file: 'mobile/app/messages.tsx', states: { 0: false, 3: role }, panels: ['row'], active: 'messages', role },
+    { name: `Profile ${role}`, file: 'mobile/app/profile.tsx', states: { 0: false, 3: role }, panels: ['card'], active: 'profile', role },
+    { name: `Settings ${role}`, file: 'mobile/app/settings.tsx', states: { 0: role, 1: 'test-user', 2: false }, panels: ['card'] },
+  ]),
+  { name: 'Subscription', file: 'mobile/app/subscription.tsx', panels: ['freeCard', 'proCard', 'baristaNote'] },
+];
+for (const spec of prismDestinations) test(`Prism destination stays white and preserves navigation: ${spec.name}`, () => {
+  const rendered = render(spec.file, spec);
+  const safe = findElement(rendered.tree, node => node.type === 'SafeAreaView');
+  assert.equal(flatten(safe.props.style).backgroundColor, '#ffffff');
+  for (const key of spec.panels) {
+    assert.equal(rendered.styles[key].backgroundColor, prism.surface, `${key}: white panel`);
+    assert.equal(rendered.styles[key].borderColor, prism.line, `${key}: neutral outline`);
+  }
+  for (const style of Object.values(rendered.styles)) assert.ok(!/Georgia|serif/.test(style.fontFamily || ''), 'dashboard typography stays sans serif');
+  if (rendered.styles.primary) assert.equal(rendered.styles.primary.backgroundColor, prism.ink);
+  if (spec.active) {
+    const nav = findElement(rendered.tree, node => node.props?.active === spec.active);
+    assert.ok(nav, 'existing bottom navigation remains rendered');
+    assert.equal(nav.props.role, spec.role);
+  }
+});
+
+for (const role of ['barista', 'cafe_owner_manager']) test(`Prism navigation follows every existing ${role} destination`, () => {
+  const expected = role === 'barista' ? ['home', 'discover', 'matches', 'messages', 'profile'] : ['home', 'discover', 'candidates', 'matches', 'messages', 'profile'];
+  for (const active of expected) {
+    const rendered = render('mobile/components/AppBottomNav.tsx', { props: { role, active } });
+    assert.equal(flatten(rendered.tree.props.style).backgroundColor, prism.surface);
+    const selected = kids(rendered.tree.props.children).filter(node => node.props.accessibilityState?.selected);
+    assert.equal(selected.length, 1);
+    assert.equal(flatten(selected[0].props.style).backgroundColor, prism.soft);
+    for (const label of kids(selected[0].props.children)) assert.equal(flatten(label.props.style).color, prism.ink);
+    selected[0].props.onPress();
+    assert.equal(rendered.routes[0], `/${active}`);
+  }
+});
+
+test('Prism café loading and retry stay scoped to Subscription', () => {
+  const loading = render('mobile/app/subscription.tsx', { cafeAccess: { ready: false, error: '', retry: async () => {} } });
+  assert.equal(loading.tree.props.appearance, 'prism');
+  assert.equal(render('mobile/app/cafe-trial.tsx', { cafeAccess: { ready: false } }).tree.props.appearance, undefined);
+  assert.equal(flatten(render('mobile/components/CafeAccessCheck.tsx', { props: { error: '', retry: async () => {} } }).tree.props.style).backgroundColor, '#fffaf3');
+  let retries = 0;
+  for (const error of ['', 'Connection unavailable']) {
+    const rendered = render('mobile/components/CafeAccessCheck.tsx', { props: { appearance: 'prism', error, retry: async () => { retries++; } } });
+    assert.equal(flatten(rendered.tree.props.style).backgroundColor, prism.background);
+    if (error) {
+      assert.ok(textOf(rendered.tree).includes(error));
+      findElement(rendered.tree, node => node.type === 'Pressable' && textOf(node) === 'Try again').props.onPress();
+      findElement(rendered.tree, node => node.type === 'Pressable' && textOf(node) === 'Back to home').props.onPress();
+      assert.equal(rendered.routes[0], '/home');
+    } else assert.equal(findElement(rendered.tree, node => node.type === 'ActivityIndicator').props.color, prism.ink);
+  }
+  assert.equal(retries, 1);
+});
+
+test('Prism subscription retains readable fine print and informational purchase notice', () => {
+  const rendered = render('mobile/app/subscription.tsx');
+  assert.equal(rendered.styles.finePrint.color, prism.muted);
+  assert.equal(rendered.styles.proPrice.color, prism.ink);
+  const notice = rendered.findStyle('proButton');
+  assert.equal(notice.type, 'View');
+  assert.equal(notice.props.onPress, undefined);
+  assert.equal(textOf(notice), 'Pro purchases are not available in this app');
+});
+
+for (const width of [320, 393]) for (const fontScale of [1, 2]) {
+  test(`Prism subscription panels: ${width}px, scale ${fontScale}`, () => {
+    const rendered = render('mobile/app/subscription.tsx', { width, fontScale });
+    for (const key of ['freeCard', 'proCard', 'baristaNote']) {
+      const result = layout(rendered.findStyle(key), width - 36, fontScale);
+      try { assertContained(result, `subscription ${key}`); } finally { result.free(); }
+    }
+  });
+  for (const file of ['messages', 'matches']) test(`Prism ${file} populated row: ${width}px, scale ${fontScale}`, () => {
+    const row = { id: 'test-match', kind: 'discovery', name: 'A long café and barista display name', detail: 'Lead barista opportunity', preview: 'Checking the time for our conversation', unread: 123 };
+    const states = file === 'messages' ? { 0: false, 2: [row], 3: 'cafe_owner_manager' } : { 0: false, 1: [row] };
+    const rendered = render(`mobile/app/${file}.tsx`, { states, width, fontScale });
+    const card = rendered.findStyle('row');
+    const result = layout(card, width - 36, fontScale);
+    try { assertContained(result, `${file} populated row`); } finally { result.free(); }
+    card.props.onPress();
+    assert.deepEqual(JSON.parse(JSON.stringify(rendered.routes[0])), { pathname: '/chat/[id]', params: { id: row.id, kind: row.kind } });
+  });
+}
+
 const cases = [
   { name: 'café profile', file: 'mobile/app/profile.tsx', states: { 0: false, 3: 'cafe_owner_manager' } },
   { name: 'barista profile', file: 'mobile/app/profile.tsx', states: { 0: false } },
