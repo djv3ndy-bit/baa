@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'dashboard.html'
+      - 'checkout.*'
       - 'cafe-trial.html'
       - 'pricing.html'
       - 'PRICING-DECISION.md'
@@ -44,6 +45,8 @@ jobs:
         run: |
           node --test \
             tests/apple-account-deletion.test.mjs \
+            tests/embedded-checkout.test.mjs \
+            tests/dashboard-inline-checkout.test.mjs \
             tests/job-subscription-gate.test.mjs \
             tests/layout-refresh.test.mjs \
             tests/marketplace-repairs.test.mjs \
@@ -55,6 +58,7 @@ jobs:
       - run: |
           node --check api/_billing.js
           node --check api/billing.js
+          node --check checkout.js
           node --check api/analytics.js
           node --check api/send-message.js
           node --check api/apply-job.js
