@@ -316,6 +316,41 @@ test('login keyboard fallback retains the compact hero copy without clipping', (
 });
 
 const homeProps = { role: 'cafe_owner_manager', firstName: 'A very long café name', location: 'Miami, Florida', profileProgress: 80, counts: { jobs: 3, matches: 5, alerts: 1, candidates: 999, applications: 12, messages: 5 }, refreshing: false, cafePlanCopy: 'First hire free', onRefresh() {} };
+for (const role of ['cafe_owner_manager', 'barista']) for (const width of [320, 393]) for (const fontScale of [1, 1.6, 2]) {
+  test(`Prism home cards: ${role}, ${width}px, font scale ${fontScale}`, () => {
+    const rendered = render('mobile/components/QuietFocusHome.tsx', { props: { ...homeProps, role }, width, fontScale });
+    for (const key of ['searchStack', 'feature', role === 'barista' ? 'guidedActivity' : 'activityRow', role === 'barista' ? 'profileCard' : 'planCard']) {
+      const result = layout(rendered.findStyle(key), width - 36, fontScale);
+      try { assertContained(result, `Prism ${role} ${key}`); } finally { result.free(); }
+    }
+  });
+}
+for (const role of ['cafe_owner_manager', 'barista']) test(`Prism home preserves ${role} content, actions, and refresh`, () => {
+  let refreshes = 0;
+  const rendered = render('mobile/components/QuietFocusHome.tsx', { props: { ...homeProps, role, onRefresh: () => refreshes++ } });
+  const press = (label, expected) => {
+    const action = findElement(rendered.tree, node => node.type === 'Pressable' && (node.props.accessibilityLabel === label || textOf(node).includes(label)));
+    assert.ok(action, `existing action ${label} is present`);
+    action.props.onPress(); assert.equal(rendered.routes.at(-1), expected);
+  };
+  assert.ok(textOf(rendered.tree).includes(homeProps.firstName));
+  assert.ok(textOf(rendered.tree).includes(homeProps.location));
+  press('Open settings', '/settings');
+  press(role === 'barista' ? 'Search jobs' : 'Find local baristas', '/discover');
+  press(homeProps.location, '/profile');
+  press(role === 'barista' ? 'Explore jobs' : 'Discover talent', '/discover');
+  if (role === 'cafe_owner_manager') {
+    assert.ok(textOf(rendered.tree).includes(homeProps.cafePlanCopy));
+    for (const [label, path] of [['3 Active jobs', '/jobs'], ['999 Candidates', '/candidates'], ['5 Matches', '/matches'], ['5 Unread messages', '/messages'], ['View café plans', '/subscription'], ['Manage job posts', '/jobs'], ['Post a new job', '/post-job']]) press(label, path);
+  } else {
+    for (const [label, path] of [['Open jobs', '/discover'], ['Applications & interests', '/discover?tab=sent'], ['Matches', '/matches'], ['Messages', '/messages'], ['My Profile', '/profile'], ['80% complete', '/profile']]) press(label, path);
+  }
+  const scroll = findElement(rendered.tree, node => node.type === 'ScrollView');
+  assert.equal(scroll.props.refreshControl.props.refreshing, false);
+  scroll.props.refreshControl.props.onRefresh(); assert.equal(refreshes, 1);
+  const navigation = findElement(rendered.tree, node => node.props?.active === 'home');
+  assert.equal(navigation.props.role, role);
+});
 const cases = [
   { name: 'café profile', file: 'mobile/app/profile.tsx', states: { 0: false, 3: 'cafe_owner_manager' } },
   { name: 'barista profile', file: 'mobile/app/profile.tsx', states: { 0: false } },
