@@ -414,7 +414,7 @@ export default function Profile() {
                   disabled={saving}
                   value={profile.visible_to_cafes === true}
                   onValueChange={(value) => set("visible_to_cafes", value)}
-                  trackColor={{ false: prism.line, true: prism.ink }}
+                  trackColor={{ false: prism.line, true: prism.accent }}
                 />
               </View>
               <Text style={s.privateHelp}>Save your profile to apply this choice. Turning it off hides your profile from new discovery results. Existing matches and conversations stay available.</Text>
@@ -846,7 +846,7 @@ function Info({ label, value }: { label: string; value: string }) {
 const s = StyleSheet.create({
   visibilityCard: { padding: 15, borderWidth: 1, borderColor: prism.line, borderRadius: 14, backgroundColor: prism.soft, marginBottom: 18 },
   visibilityRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  visibilityLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 21, color: prism.ink, fontWeight: '600' },
+  visibilityLabel: { flex: 1, minWidth: 0, fontSize: 15, lineHeight: 21, color: prism.ink, fontWeight: '700' },
   safe: { flex: 1, backgroundColor: prism.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
@@ -859,7 +859,7 @@ const s = StyleSheet.create({
   },
   // Reserve the trailing action width; long subtitles must wrap, not push it off screen.
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { fontSize: 31, fontWeight: '500', color: prism.ink },
+  title: { fontSize: 31, fontWeight: '700', color: prism.ink },
   sub: { fontSize: 13, color: prism.muted, marginTop: 4 },
   settings: {
     flexShrink: 0,
@@ -878,13 +878,13 @@ const s = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: prism.soft,
+    backgroundColor: prism.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
   barPhoto: { width: "100%", height: 180, borderRadius: 22 },
   profilePhoto: { width: 88, height: 88, borderRadius: 44 },
-  name: { maxWidth: "100%", textAlign: "center", fontSize: 28, fontWeight: '600', color: prism.ink, marginTop: 12 },
+  name: { maxWidth: "100%", textAlign: "center", fontSize: 28, fontWeight: '700', color: prism.ink, marginTop: 12 },
   location: { maxWidth: "100%", textAlign: "center", fontSize: 14, color: prism.muted, marginTop: 5 },
   edit: {
     marginTop: 14,
@@ -893,9 +893,9 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: prism.line,
     borderRadius: 12,
-    backgroundColor: prism.surface,
+    backgroundColor: prism.accentSoft,
   },
-  editText: { fontWeight: '600', color: prism.ink },
+  editText: { fontWeight: '700', color: prism.accent },
   card: { ...prismPanel,
     backgroundColor: prism.surface,
     borderWidth: 1,
@@ -905,7 +905,7 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
   field: { marginBottom: 14 },
-  label: { fontSize: 12, fontWeight: '600', color: prism.ink, marginBottom: 6 },
+  label: { fontSize: 12, fontWeight: '700', color: prism.ink, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: prism.line,
@@ -932,12 +932,12 @@ const s = StyleSheet.create({
   mediaButton: {
     maxWidth: "100%",
     flexShrink: 0,
-    backgroundColor: prism.soft,
+    backgroundColor: prism.accentSoft,
     borderRadius: 9,
     paddingHorizontal: 11,
     paddingVertical: 9,
   },
-  mediaButtonText: { flexShrink: 1, textAlign: "center", fontSize: 11, fontWeight: '600', color: prism.accent },
+  mediaButtonText: { flexShrink: 1, textAlign: "center", fontSize: 11, fontWeight: '700', color: prism.accent },
   mediaHelp: { fontSize: 10, lineHeight: 15, color: prism.muted, marginTop: 5 },
   hoursList: { gap: 8, marginBottom: 7 },
   hoursRow: {
@@ -961,7 +961,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
   },
-  dayText: { flexShrink: 1, fontSize: 13, fontWeight: '600', color: prism.ink },
+  dayText: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: prism.ink },
   hoursInput: {
     flexGrow: 1,
     width: 116,
@@ -996,7 +996,7 @@ const s = StyleSheet.create({
   choiceText: { flexShrink: 1, fontSize: 11, fontWeight: "700", color: prism.ink },
   choiceTextSelected: { color: "#3f6738" },
   privateCard: { marginTop: 16, padding: 16, borderWidth: 1, borderColor: prism.line, borderRadius: 16, backgroundColor: prism.soft },
-  privateTitle: { fontSize: 15, fontWeight: '600', color: prism.ink, marginBottom: 2 },
+  privateTitle: { fontSize: 15, fontWeight: '700', color: prism.ink, marginBottom: 2 },
   dateInput: { marginTop: 7, borderWidth: 1, borderColor: prism.line, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: prism.surface, color: prism.ink, fontSize: 15, fontWeight: "700" },
   privateHelp: {
     fontSize: 11,
@@ -1013,15 +1013,15 @@ const s = StyleSheet.create({
     padding: 12,
     alignItems: "center",
   },
-  photoLinkText: { fontWeight: '600', color: prism.accent },
+  photoLinkText: { fontWeight: '700', color: prism.accent },
   primary: {
-    backgroundColor: prism.ink,
+    backgroundColor: prism.accent,
     borderRadius: 14,
     padding: 14,
     alignItems: "center",
     marginTop: 18,
   },
-  primaryText: { color: prism.surface, fontWeight: '600' },
+  primaryText: { color: prism.surface, fontWeight: '700' },
   info: {
     paddingVertical: 13,
     borderBottomWidth: 1,
@@ -1031,7 +1031,7 @@ const s = StyleSheet.create({
     fontSize: 11,
     textTransform: "uppercase",
     letterSpacing: 1,
-    fontWeight: '600',
+    fontWeight: '700',
     color: prism.muted,
   },
   infoValue: { fontSize: 14, lineHeight: 21, color: prism.ink, marginTop: 5 },

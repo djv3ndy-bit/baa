@@ -1094,8 +1094,8 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
   .job-item > .applicant-actions button { flex:1 1 140px; min-height:44px; }
 }
 
-/* White Prism belongs to the signed-in dashboard shell. Content is replaced
-   on navigation, so shared chrome must not depend on the Home renderer. */
+/* Warm Espresso keeps the white Prism shell consistent between destinations.
+   Content is replaced on navigation, so shared chrome belongs to the shell. */
 body.prism-dashboard-page,
 .prism-dashboard-shell {
   background:#fff;
@@ -1111,6 +1111,10 @@ body.prism-dashboard-page {
   --prism-ink:#292521;
   --prism-line:#e9e7e5;
   --prism-soft:#f7f7f7;
+  --prism-accent:#a94716;
+  --prism-selected:#fff1e8;
+  --prism-wash:#fff8f3;
+  --prism-nav-ink:#49413b;
   --prism-font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   color:var(--prism-ink);
   font-family:var(--prism-font);
@@ -1151,7 +1155,7 @@ body.prism-dashboard-page {
 }
 .quiet-prism .quiet-hero h2 {
   margin:7px 0 8px;
-  font:500 clamp(28px,3.2vw,38px)/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font:700 clamp(28px,3.2vw,38px)/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   letter-spacing:-1.1px;
   overflow-wrap:anywhere;
 }
@@ -1190,9 +1194,9 @@ body.prism-dashboard-page {
   min-width:0;
   margin:0;
   padding:12px 17px;
-  background:var(--quiet-ink);
+  background:var(--prism-accent);
   color:#fff;
-  font-weight:500;
+  font-weight:700;
 }
 .quiet-prism .quiet-search-bar .quiet-search-action span { color:inherit; }
 .quiet-prism .quiet-layout { grid-template-columns:minmax(0,1.38fr) minmax(0,1fr);gap:18px;align-items:start; }
@@ -1209,14 +1213,14 @@ body.prism-dashboard-page {
   display:flex;
   min-height:0;
   margin:0;
-  padding:22px 25px 0;
+  padding:18px 25px 12px;
   gap:12px;
   border:0;
   border-radius:0;
-  background:transparent;
+  background:var(--prism-wash);
 }
 .quiet-prism .quiet-section-heading h3,
-.quiet-prism .quiet-activity-panel>h3 { font:500 16px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:-.3px; }
+.quiet-prism .quiet-activity-panel>h3 { font:700 16px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:-.3px; }
 .quiet-prism .quiet-primary-column>.quiet-section-heading h3:before { content:none; }
 .quiet-prism .quiet-section-heading button {
   display:inline-flex;
@@ -1226,7 +1230,7 @@ body.prism-dashboard-page {
   padding:8px 0;
   color:var(--quiet-orange);
   font-size:12px;
-  font-weight:500;
+  font-weight:700;
 }
 .quiet-prism .quiet-feature-card,
 .quiet-prism.quiet-guided .quiet-empty-feature {
@@ -1264,7 +1268,7 @@ body.prism-dashboard-page {
 .quiet-prism .quiet-title-row h3,
 .quiet-prism .quiet-empty-feature .quiet-feature-body h3,
 .quiet-prism.quiet-guided .quiet-empty-feature .quiet-feature-body h3 {
-  font:500 28px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font:700 28px/1.15 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   letter-spacing:-.8px;
   margin:0;
 }
@@ -1290,9 +1294,9 @@ body.prism-dashboard-page {
   padding:12px 16px;
   border-radius:12px;
   color:#fff;
-  background:var(--quiet-ink);
+  background:var(--prism-accent);
   font-size:13px;
-  font-weight:500;
+  font-weight:700;
   text-align:left;
 }
 .quiet-prism .quiet-feature-body .quiet-primary { margin-top:22px; }
@@ -1322,14 +1326,14 @@ body.prism-dashboard-page {
 }
 .quiet-prism .quiet-activity-tile:last-child { border-bottom:0; }
 .quiet-prism .quiet-activity-tile:hover { transform:none; }
-.quiet-prism .quiet-activity-icon { width:34px;height:34px;background:var(--prism-soft);border-radius:12px;color:var(--quiet-taupe); }
+.quiet-prism .quiet-activity-icon { width:34px;height:34px;background:var(--prism-selected);border-radius:12px;color:var(--prism-accent); }
 .quiet-prism .quiet-activity-icon .quiet-icon { width:18px;height:18px; }
-.quiet-prism .quiet-activity-tile strong { display:block;float:right;font:500 18px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0 0 0 10px;color:var(--quiet-ink); }
-.quiet-prism .quiet-activity-tile b { display:block;font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--quiet-ink); }
+.quiet-prism .quiet-activity-tile strong { display:block;float:right;font:700 18px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0 0 0 10px;color:var(--quiet-ink); }
+.quiet-prism .quiet-activity-tile b { display:block;font:700 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--quiet-ink); }
 .quiet-prism .quiet-activity-tile small { display:block;margin:4px 0 0;color:var(--quiet-taupe);font-size:11px;line-height:1.4; }
 .quiet-prism .quiet-chevron { display:block;color:var(--quiet-taupe);font-size:21px; }
 .quiet-prism .quiet-guided-activity { display:none;margin-top:9px;padding:0;border:0;border-radius:0;background:transparent; }
-.quiet-prism .quiet-guided-activity button { color:var(--quiet-taupe);border-color:var(--prism-line);font-size:12px;min-height:44px; }
+.quiet-prism .quiet-guided-activity button { color:var(--prism-nav-ink);border-color:var(--prism-line);font-size:13px;font-weight:700;min-height:44px; }
 .quiet-prism .quiet-note {
   display:grid;
   grid-template-columns:minmax(0,1fr) 12px;
@@ -1361,7 +1365,7 @@ body.prism-dashboard-page {
 .quiet-prism .quiet-more-grid { grid-template-columns:1fr;gap:0;margin-top:5px; }
 .quiet-prism .quiet-mini-job { grid-template-columns:40px minmax(0,1fr) auto;gap:14px;padding:18px 0;border:0;border-top:1px solid var(--prism-line);border-radius:0;background:#fff; }
 .quiet-prism .quiet-mini-photo { width:40px;height:40px;border-radius:13px; }
-.quiet-prism .quiet-mini-job strong { font:500 14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:normal;overflow-wrap:anywhere; }
+.quiet-prism .quiet-mini-job strong { font:700 14px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:normal;overflow-wrap:anywhere; }
 .quiet-prism .quiet-mini-job small { margin-top:4px;color:var(--quiet-taupe);font-size:12px;white-space:normal;overflow-wrap:anywhere; }
 .quiet-prism .quiet-mini-job>b { font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:normal;text-align:right; }
 @media(min-width:761px) {
@@ -1395,14 +1399,15 @@ body.prism-dashboard-page {
     background:#fff;
     box-shadow:0 8px 26px #25211d09;
   }
-  .prism-dashboard-shell>.side .menu button { min-height:44px;gap:8px;padding:11px 13px;border:0;border-radius:14px;background:transparent;box-shadow:none;color:#706b66;font-size:12px;font-weight:500; }
-  .prism-dashboard-shell>.side .menu button.active { color:#4c423a;background:#f7f7f7;box-shadow:none; }
-  .prism-dashboard-shell>.side .menu button:hover { color:#a94716;background:#f7f7f7;transform:none; }
+  .prism-dashboard-shell>.side .menu button { position:relative;min-height:44px;gap:8px;padding:11px 13px;border:0;border-radius:14px;background:transparent;box-shadow:none;color:var(--prism-nav-ink);font-size:13px;font-weight:700; }
+  .prism-dashboard-shell>.side .menu button.active { color:var(--prism-accent);background:var(--prism-selected);box-shadow:none; }
+  .prism-dashboard-shell>.side .menu button.active::after { content:"";position:absolute;left:50%;bottom:4px;width:14px;height:3px;transform:translateX(-50%);border-radius:3px;background:var(--prism-accent); }
+  .prism-dashboard-shell>.side .menu button:hover { color:var(--prism-accent);background:var(--prism-selected);transform:none; }
   .prism-dashboard-shell>.side .nav-icon,.prism-dashboard-shell>.side .nav-icon .quiet-icon { width:18px;height:18px;flex-basis:18px; }
 }
 @media(min-width:761px) and (max-width:1040px) {
   .quiet-prism .quiet-layout { grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); }
-  .prism-dashboard-shell>.side .menu button { padding-inline:9px;gap:6px;font-size:11px; }
+  .prism-dashboard-shell>.side .menu button { padding-inline:9px;gap:6px;font-size:13px; }
   .quiet-prism .quiet-primary-column>.quiet-section-heading { padding-inline:22px; }
   .quiet-prism .quiet-feature-card { padding-inline:22px;grid-template-columns:44px minmax(0,1fr);gap:14px; }
   .quiet-prism .quiet-feature-image { width:44px;height:44px;border-radius:12px; }
@@ -1412,7 +1417,8 @@ body.prism-dashboard-page {
   body.prism-dashboard-page .content { padding:23px 16px calc(110px + env(safe-area-inset-bottom))!important; }
   .prism-dashboard-shell>.side { background:#fff!important;box-shadow:none!important; }
   body.mobile-menu-open .prism-dashboard-shell>.side { box-shadow:18px 0 50px #160a0533!important; }
-  .prism-dashboard-shell>.side .menu button.active { background:#f7f7f7!important;color:#4c423a!important; }
+  .prism-dashboard-shell>.side .menu button { font-weight:700!important;color:var(--prism-nav-ink)!important; }
+  .prism-dashboard-shell>.side .menu button.active { background:var(--prism-selected)!important;color:var(--prism-accent)!important;box-shadow:inset 3px 0 var(--prism-accent)!important; }
   .prism-dashboard-shell .quiet-shell-header { background:#fff;border-color:#e9e7e5; }
   .prism-dashboard-shell .quiet-mobile-brand { color:#292521; }
   .prism-dashboard-shell .quiet-mobile-brand b { color:#a94716; }
@@ -1427,7 +1433,7 @@ body.prism-dashboard-page {
   .quiet-prism .quiet-search-desktop-label { display:none; }
   .quiet-prism .quiet-search-mobile-label { display:inline; }
   .quiet-prism .quiet-layout { grid-template-columns:1fr;gap:18px; }
-  .quiet-prism .quiet-primary-column>.quiet-section-heading { padding:18px 20px 0; }
+  .quiet-prism .quiet-primary-column>.quiet-section-heading { padding:18px 20px 12px; }
   .quiet-prism .quiet-feature-card,
   .quiet-prism.quiet-guided .quiet-empty-feature { padding:17px 20px 22px;grid-template-columns:44px minmax(0,1fr);gap:13px; }
   .quiet-prism .quiet-feature-image,
@@ -1448,8 +1454,10 @@ body.prism-dashboard-page {
   .quiet-prism .quiet-mini-job { gap:12px;padding:16px 0; }
   .quiet-prism .quiet-note { margin-top:12px; }
   .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav { left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));min-height:64px;padding:6px;border:1px solid #e9e7e5;border-radius:22px;background:#fff;box-shadow:0 7px 25px #25211d09; }
-  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button { min-height:50px;border-radius:16px;color:#706b66; }
-  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button.active { color:#4c423a;background:#f7f7f7; }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button { position:relative;min-height:54px;padding:6px 2px 10px;border-radius:16px;color:var(--prism-nav-ink); }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button>small { font:700 11px/1.2 var(--prism-font); }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button.active { color:var(--prism-accent);background:var(--prism-selected); }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button.active::after { content:"";position:absolute;left:50%;bottom:4px;width:14px;height:3px;transform:translateX(-50%);border-radius:3px;background:var(--prism-accent); }
   .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav .quiet-icon { width:20px;height:20px; }
 }
 @media(max-width:390px) {
@@ -1483,7 +1491,7 @@ body.prism-dashboard-page {
 }
 .prism-dashboard-shell .main>.top h1 {
   color:var(--prism-ink);
-  font:500 30px/1.2 var(--prism-font);
+  font:700 30px/1.2 var(--prism-font);
   letter-spacing:-.8px;
   overflow-wrap:anywhere;
 }
@@ -1494,7 +1502,7 @@ body.prism-dashboard-page {
 .prism-dashboard-shell .content:not(:has(.quiet-prism)) :is(h2,h3),
 body.prism-dashboard-page .profile-dialog :is(h2,h3) {
   font-family:var(--prism-font);
-  font-weight:500;
+  font-weight:700;
   letter-spacing:-.35px;
 }
 .prism-dashboard-shell .content:not(:has(.quiet-prism)) h3 { font-size:20px;line-height:1.3; }
@@ -1511,7 +1519,7 @@ body.prism-dashboard-page .profile-dialog :is(h2,h3) {
   color:var(--prism-ink);
   box-shadow:none;
 }
-.prism-dashboard-shell .content .stat strong { font-family:var(--prism-font);font-weight:500; }
+.prism-dashboard-shell .content .stat strong { font-family:var(--prism-font);font-weight:700; }
 .prism-dashboard-shell .content .stat:after { background:var(--prism-line); }
 .prism-dashboard-shell .content .settings-stack { max-width:none; }
 .prism-dashboard-shell .content .google-password-card { padding:20px; }
@@ -1519,16 +1527,20 @@ body.prism-dashboard-page .profile-dialog :is(h2,h3) {
 body.prism-dashboard-page .profile-dialog :is(.primary,.secondary) {
   min-height:44px;
   border-radius:12px;
-  font-weight:500;
+  font-weight:700;
 }
 .prism-dashboard-shell .content :is(.primary,.message-button),
-body.prism-dashboard-page .profile-dialog .primary { background:var(--prism-ink);color:#fff; }
+body.prism-dashboard-page .profile-dialog .primary { background:var(--prism-accent);color:#fff; }
 .prism-dashboard-shell .content .secondary,
 body.prism-dashboard-page .profile-dialog .secondary { background:#fff;border-color:#d5d2cf;color:var(--prism-ink); }
 .prism-dashboard-shell .content .primary:hover { transform:none;box-shadow:0 4px 12px #25211d15; }
 .prism-dashboard-shell .content .search { border-radius:14px;border-color:var(--prism-line); }
 .prism-dashboard-shell .content .chat-panel { background:var(--prism-soft); }
-.prism-dashboard-shell .content .conversation-row:is(:hover,.active) { background:var(--prism-soft); }
+.prism-dashboard-shell .content .conversation-row:is(:hover,.active) { background:var(--prism-selected); }
+.prism-dashboard-shell .content .conversation-row.active { box-shadow:inset 3px 0 var(--prism-accent); }
+.prism-dashboard-shell .content :is(.conversation-copy strong,.chat-header strong) { font-weight:700; }
+.prism-dashboard-shell .content :is(.chat-send,.conversation-unread) { background:var(--prism-accent);color:#fff; }
+.prism-dashboard-shell .content .conversation-avatar { background:var(--prism-selected);color:var(--prism-accent); }
 .prism-dashboard-shell .content .chat-bubble { border-color:var(--prism-line);box-shadow:none; }
 .prism-dashboard-shell .content .chat-bubble-wrap.mine .chat-bubble { border-color:var(--prism-ink); }
 .prism-dashboard-shell .content .chat-compose textarea { background:#fff;border-color:#d5d2cf; }
@@ -1542,7 +1554,7 @@ body.prism-dashboard-page .profile-dialog :is(.pricing-price,.job-upgrade-summar
 body.prism-dashboard-page .profile-dialog .job-upgrade-summary { border-color:var(--prism-line);background:#fff; }
 /* The payment form still belongs to Stripe; these rules theme its outer panel. */
 .prism-dashboard-shell #subscription-checkout { padding-top:0;color:var(--prism-ink);font-family:var(--prism-font); }
-.prism-dashboard-shell #subscription-checkout .subscription-page-title { font-size:30px;letter-spacing:-.8px; }
+.prism-dashboard-shell #subscription-checkout .subscription-page-title { font-size:30px;font-weight:700;letter-spacing:-.8px; }
 .prism-dashboard-shell #subscription-checkout .subscription-plan { border:1px solid var(--prism-line);box-shadow:0 6px 20px #25211d09; }
 .prism-dashboard-shell #subscription-checkout .subscription-price-value strong { font-family:var(--prism-font);font-weight:500; }
 .prism-dashboard-shell #subscription-checkout .subscription-first-job { background:var(--prism-soft);color:var(--caramel); }

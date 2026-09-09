@@ -380,7 +380,7 @@ for (const spec of prismDestinations) test(`Prism destination stays white and pr
     assert.equal(rendered.styles[key].borderColor, prism.line, `${key}: neutral outline`);
   }
   for (const style of Object.values(rendered.styles)) assert.ok(!/Georgia|serif/.test(style.fontFamily || ''), 'dashboard typography stays sans serif');
-  if (rendered.styles.primary) assert.equal(rendered.styles.primary.backgroundColor, prism.ink);
+  if (rendered.styles.primary) assert.equal(rendered.styles.primary.backgroundColor, prism.accent);
   if (spec.active) {
     const nav = findElement(rendered.tree, node => node.props?.active === spec.active);
     assert.ok(nav, 'existing bottom navigation remains rendered');
@@ -395,8 +395,8 @@ for (const role of ['barista', 'cafe_owner_manager']) test(`Prism navigation fol
     assert.equal(flatten(rendered.tree.props.style).backgroundColor, prism.surface);
     const selected = kids(rendered.tree.props.children).filter(node => node.props.accessibilityState?.selected);
     assert.equal(selected.length, 1);
-    assert.equal(flatten(selected[0].props.style).backgroundColor, prism.soft);
-    for (const label of kids(selected[0].props.children)) assert.equal(flatten(label.props.style).color, prism.ink);
+    assert.equal(flatten(selected[0].props.style).backgroundColor, prism.selected);
+    for (const label of kids(selected[0].props.children).filter(node => node.type === 'Text')) assert.equal(flatten(label.props.style).color, prism.accent);
     selected[0].props.onPress();
     assert.equal(rendered.routes[0], `/${active}`);
   }
