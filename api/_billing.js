@@ -46,6 +46,15 @@ export function stripeMode(environment = process.env) {
   return environment.STRIPE_LIVEMODE === "true" ? "live" : "test";
 }
 
+export function stripePublishableKey(environment = process.env) {
+  const key = environment.STRIPE_PUBLISHABLE_KEY;
+  const prefix = `pk_${stripeMode(environment)}_`;
+  if (typeof key !== "string" || !key.startsWith(prefix) || !/^pk_(live|test)_[A-Za-z0-9]+$/.test(key)) {
+    throw new Error("Embedded Stripe Checkout requires a matching publishable key.");
+  }
+  return key;
+}
+
 export function validateConfiguredPrice(price, { accountId, priceId, mode, requireActive = true }) {
   const liveMode = mode === "live";
   return Boolean(
