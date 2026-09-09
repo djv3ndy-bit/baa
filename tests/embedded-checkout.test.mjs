@@ -26,7 +26,7 @@ function browser(options = {}) {
     billing: options.billing || {},
     result: { ...checkoutResult, ...options.result },
     requests: [], instances: [], stripeKeys: [], navigations: [], logs: [],
-    authCallbacks: [], timers: new Map(), clientOptions: [], sessionReads: 0,
+    authCallbacks: [], timers: new Map(), clientOptions: [], sessionReads: 0, scripts: [], unsubscribed: 0,
   };
   const elements = new Map();
   const events = new Map();
@@ -35,6 +35,7 @@ function browser(options = {}) {
       hidden: false, disabled: false, textContent: '', attributes: {}, listeners: new Map(),
       setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(name, callback) { this.listeners.set(name, callback); },
+      removeEventListener(name, callback) { if (this.listeners.get(name) === callback) this.listeners.delete(name); },
       replaceChildren() { this.clearCount = (this.clearCount || 0) + 1; },
     });
     return elements.get(id);
@@ -46,7 +47,7 @@ function browser(options = {}) {
     },
     onAuthStateChange(callback) {
       state.authCallbacks.push(callback);
-      return { data: { subscription: { unsubscribe() {} } } };
+      return { data: { subscription: { unsubscribe() { state.authCallbacks = state.authCallbacks.filter(item => item !== callback); state.unsubscribed++; } } } };
     },
   };
   const forbiddenStorage = {
@@ -74,10 +75,17 @@ function browser(options = {}) {
       };
     },
     addEventListener(name, callback) { events.set(name, callback); },
+    removeEventListener(name, callback) { if (events.get(name) === callback) events.delete(name); },
   };
+  const stripeFactory = window.Stripe;
+  if (options.stripeAbsent) delete window.Stripe;
   let timerId = 0;
   vm.runInNewContext(source, {
-    window, document: { getElementById: element }, URL, AbortController,
+    window, document: {
+      getElementById: element,
+      createElement() { return { remove() { this.removed = true; } }; },
+      head: { appendChild(script) { state.scripts.push(script); } },
+    }, URL, AbortController,
     location: { assign(url) { state.navigations.push(url); } },
     localStorage: forbiddenStorage, sessionStorage: forbiddenStorage,
     console: Object.fromEntries(['log', 'info', 'warn', 'error'].map(name => [name, (...args) => state.logs.push(args)])),
@@ -89,15 +97,21 @@ function browser(options = {}) {
       if (custom !== undefined) return custom;
       if (url === '/api/config') return response({
         supabaseUrl: 'https://fixture.supabase.co', supabasePublishableKey: 'sb_publishable_fixture',
+        stripeEmbeddedCheckoutConfigured: true, ...options.config,
       });
       if (url === '/api/billing-status') return response(state.billing);
       if (url === '/api/create-checkout-session') return response(state.result);
       throw new Error(`Unstubbed network request: ${url}`);
     },
   }, { filename: 'checkout.js' });
+  window.BaristaMatchCheckout.mount(options.sharedClient ? { client: { auth }, ownerId: state.session?.user.id } : undefined);
   return {
     state, element,
     clickRetry() { element('checkout-retry').listeners.get('click')(); },
+    clickHosted() { element('checkout-hosted').listeners.get('click')(); },
+    destroy() { window.BaristaMatchCheckout.destroy(); },
+    remount() { window.BaristaMatchCheckout.mount({ client: { auth }, ownerId: state.session?.user.id }); },
+    installStripe() { window.Stripe = stripeFactory; },
     dispatch(name, event = {}) { events.get(name)?.(event); },
     changeAuth(session, event = 'SIGNED_IN') {
       state.session = session;
@@ -303,4 +317,107 @@ test('browser back-forward restoration creates a new form while old callbacks re
   oldInstance.callbacks.onComplete();
   assert.equal(h.state.navigations.length, 0);
   await assert.rejects(oldInstance.callbacks.fetchClientSecret(), /closed/);
+});
+
+test('dashboard integration reuses its authenticated client and tears down on section changes', async () => {
+  const h = browser({ sharedClient: true });
+  await settle();
+  assert.equal(h.state.clientOptions.length, 0);
+  const [oldInstance] = h.state.instances;
+  h.destroy();
+  assert.equal(oldInstance.destroyCount, 1);
+  assert.equal(h.state.unsubscribed, 1);
+  assert.equal(h.state.authCallbacks.length, 0);
+  h.dispatch('pageshow', { persisted: true });
+  await settle();
+  assert.equal(h.state.instances.length, 1, 'a departed section cannot reopen on browser restoration');
+  h.remount();
+  await settle();
+  assert.equal(h.state.instances.length, 2);
+  assert.equal(h.state.authCallbacks.length, 1);
+  oldInstance.callbacks.onComplete();
+  assert.equal(h.state.navigations.length, 0);
+});
+
+test('departing the section during delayed Stripe initialization destroys the late form', async () => {
+  const pending = deferred();
+  const h = browser({ initialize: () => pending.promise, sharedClient: true });
+  await settle();
+  h.destroy();
+  pending.resolve();
+  await settle();
+  assert.equal(h.state.instances[0].destroyCount, 1);
+  assert.deepEqual(h.state.instances[0].mountTargets, []);
+  assert.equal(h.state.authCallbacks.length, 0);
+});
+
+test('missing embedded readiness preserves hosted checkout behind an explicit click', async t => {
+  for (const configured of [false, undefined]) await t.test(String(configured), async () => {
+    const url = 'https://checkout.stripe.com/c/pay/cs_live_hosted';
+    const h = browser({ config: { stripeEmbeddedCheckoutConfigured: configured }, result: { url }, stripeAbsent: true, sharedClient: true });
+    await settle();
+    assert.equal(h.element('checkout-intro').hidden, false);
+    assert.equal(h.element('checkout-hosted').hidden, false);
+    assert.equal(createRequests(h).length, 0);
+    assert.equal(h.state.scripts.length, 0, 'hosted fallback does not load Stripe.js');
+    h.clickHosted();
+    h.clickHosted();
+    await settle();
+    assert.equal(createRequests(h).length, 1);
+    assert.deepEqual(JSON.parse(createRequests(h)[0].body), { channel: 'web' });
+    assert.deepEqual(h.state.navigations, [url]);
+    assert.equal(h.state.instances.length, 0);
+  });
+});
+
+test('hosted fallback withholds unsafe redirects and stale-account responses', async t => {
+  await t.test('unsafe redirect', async () => {
+    const h = browser({ config: { stripeEmbeddedCheckoutConfigured: false }, result: { url: 'https://checkout.stripe.com.attacker.invalid/pay' } });
+    await settle(); h.clickHosted(); await settle();
+    assert.equal(h.state.navigations.length, 0);
+    assert.equal(h.element('checkout-retry').hidden, false);
+  });
+  await t.test('account changed', async () => {
+    const pending = deferred();
+    const h = browser({ config: { stripeEmbeddedCheckoutConfigured: false }, fetch: url => url === '/api/create-checkout-session' ? pending.promise : undefined });
+    await settle(); h.clickHosted(); await settle();
+    h.changeAuth(account('another-owner'));
+    pending.resolve(response({ url: 'https://checkout.stripe.com/c/pay/cs_live_hosted' }));
+    await settle();
+    assert.equal(h.state.navigations.length, 0);
+    assert.equal(h.element('checkout-intro').hidden, true);
+  });
+});
+
+test('embedded readiness is checked again before the hosted fallback continues', async () => {
+  let configured = false;
+  const h = browser({ fetch: url => url === '/api/config' ? response({ stripeEmbeddedCheckoutConfigured: configured }) : undefined, sharedClient: true });
+  await settle();
+  assert.equal(h.element('checkout-hosted').hidden, false);
+  configured = true;
+  h.clickHosted();
+  await settle();
+  assert.equal(h.state.instances.length, 1);
+  assert.deepEqual(JSON.parse(createRequests(h)[0].body), { channel: 'web', uiMode: 'embedded' });
+  assert.equal(h.state.navigations.length, 0);
+});
+
+test('the real Stripe SDK loads only for embedded checkout and a load failure can retry', async () => {
+  const h = browser({ stripeAbsent: true });
+  await settle();
+  assert.equal(h.state.scripts.length, 1);
+  assert.equal(h.state.scripts[0].src, 'https://js.stripe.com/dahlia/stripe.js');
+  assert.equal(createRequests(h).length, 0);
+  h.state.scripts[0].onerror();
+  await settle();
+  assert.equal(h.element('checkout-retry').hidden, false);
+  assert.equal(h.state.scripts[0].removed, true);
+  h.clickRetry();
+  await settle();
+  assert.equal(h.state.scripts.length, 2);
+  h.installStripe();
+  h.state.scripts[1].onload();
+  await settle();
+  assert.equal(h.state.instances.length, 1);
+  assert.equal(h.state.timers.size, 0);
 });

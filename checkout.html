@@ -1,35 +1,12 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="robots" content="noindex,nofollow">
-  <meta name="description" content="Subscribe to BaristaMatch Café Pro securely.">
-  <meta name="referrer" content="strict-origin-when-cross-origin">
-  <title>Café Pro checkout — BaristaMatch</title>
-  <link rel="icon" type="image/png" href="/assets/favicon-32-v2.png">
-  <link rel="stylesheet" href="/checkout.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
-  <script defer src="https://js.stripe.com/dahlia/stripe.js"></script>
-  <script defer src="/checkout.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="refresh" content="0;url=/dashboard.html?section=subscription">
+<title>Opening your subscription — BaristaMatch</title>
+<script>location.replace('/dashboard.html?section=subscription');</script>
 </head>
-<body>
-  <header class="checkout-header">
-    <a class="checkout-brand" href="/dashboard.html"><img src="/assets/favicon-transparent-v2.png" alt=""><span>Barista<b>Match</b></span></a>
-    <a class="checkout-back" href="/dashboard.html?section=subscription">Back to my café</a>
-  </header>
-  <main class="checkout-main">
-    <div class="checkout-intro" id="checkout-intro" hidden><p class="checkout-eyebrow">CAFÉ PRO</p><h1>Make room for your next hire.</h1><p>More job posts. More possibilities. $9.99 per month, plus applicable tax.</p></div>
-    <section class="checkout-surface" aria-label="Secure Café Pro checkout" aria-busy="true" id="checkout-surface">
-      <div class="checkout-message" id="checkout-message" role="status" aria-live="polite">
-        <span class="checkout-spinner" id="checkout-spinner" aria-hidden="true"></span>
-        <h2 id="checkout-message-title">Opening secure checkout…</h2>
-        <p id="checkout-message-detail">Checking your café account and subscription.</p>
-        <div class="checkout-actions"><button type="button" id="checkout-retry" hidden>Try again</button><a href="/login.html?reason=required" id="checkout-login" hidden>Log in</a><a href="/dashboard.html?section=subscription" id="checkout-manage" hidden>View my subscription</a></div>
-      </div>
-      <div id="checkout-mount"></div>
-    </section>
-    <footer class="checkout-footer"><p>Secure payments by Stripe. Billed monthly. Cancel anytime.</p><p><a href="/support.html?type=question">Contact support</a><span aria-hidden="true">·</span><a href="/privacy.html">Privacy</a><span aria-hidden="true">·</span><a href="/terms.html">Terms</a></p></footer>
-  </main>
-</body>
+<body><p>Opening your café subscription… <a href="/dashboard.html?section=subscription">Continue to your dashboard</a></p></body>
 </html>

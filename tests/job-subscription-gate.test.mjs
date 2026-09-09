@@ -16,7 +16,7 @@ function source(name) {
 }
 
 function context(names, extra = {}) {
-  const value = { console, Date, ...extra };
+  const value = { console, Date, URLSearchParams, ...extra };
   vm.createContext(value);
   vm.runInContext(names.map(source).join('\n'), value);
   return value;
@@ -195,7 +195,7 @@ test('storage failure keeps the in-page draft but prevents an unsafe Stripe redi
 });
 
 async function checkoutRoute(canManageBilling) {
-  const calls = [], assigned = [], status = { textContent: '' }, dialog = { close() { calls.push('close'); } }, button = { disabled: false, textContent: '' };
+  const calls = [], assigned = [], sections = [], status = { textContent: '' }, dialog = { close() { calls.push('close'); } }, button = { disabled: false, textContent: '' };
   const ctx = context(['continueJobUpgrade'], {
     readPendingJobDraft: () => ({ entries: [['title', 'Saved role']] }), persistPendingJobDraft: () => true,
     loadJobCreationAccess: async () => ({ allowed: false, firstJob: false, billing: { connectedToBilling: canManageBilling, plan: 'free', status: canManageBilling ? 'past_due' : 'free', canManageBilling } }),
@@ -203,14 +203,16 @@ async function checkoutRoute(canManageBilling) {
     document: { getElementById: id => id === 'job-upgrade-status' ? status : id === 'job-upgrade-dialog' ? dialog : null },
     fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({ url: 'https://checkout.stripe.example/session' }) }; },
     location: { assign: url => assigned.push(url) },
+    openSection: section => sections.push(section), currentView: {}, currentRole: 'cafe_owner_manager',
   });
-  await ctx.continueJobUpgrade(button); return { calls, assigned, status };
+  await ctx.continueJobUpgrade(button); return { calls, assigned, sections, status };
 }
 
 test('the upgrade retry keeps new Checkout on the website and Portal only for manageable billing', async () => {
   const checkout = await checkoutRoute(false), portal = await checkoutRoute(true);
-  assert.equal(checkout.calls.length, 0);
-  assert.deepEqual(checkout.assigned, ['/checkout.html']);
+  assert.deepEqual(checkout.calls, ['close']);
+  assert.deepEqual(checkout.sections, ['Subscription']);
+  assert.deepEqual(checkout.assigned, []);
   assert.equal(portal.calls[0].url, '/api/create-portal-session');
   for (const result of [portal]) {
     assert.equal(JSON.parse(result.calls[0].options.body).channel, 'web');
@@ -274,11 +276,12 @@ test('Checkout return resumes the saved draft only after confirmation; cancel an
 test('a plain Dashboard return from Stripe Portal restores the pending draft on startup', () => {
   let resumes = 0;
   const ctx = context(['resumePendingJobDraftOnStartup'], {
-    currentRole: 'cafe_owner_manager', location: { search: '' }, billingReturnState: search => search ? { result: 'success' } : null,
+    currentRole: 'cafe_owner_manager', location: { search: '' }, billingReturnState: search => search.includes('billing=') ? { result: 'success' } : null,
     resumePendingJobDraft: message => { resumes++; assert.match(message, /recheck current Pro access/); return true; },
   });
   assert.equal(ctx.resumePendingJobDraftOnStartup(''), true); assert.equal(resumes, 1);
   assert.equal(ctx.resumePendingJobDraftOnStartup('?billing=success'), false); assert.equal(resumes, 1);
+  assert.equal(ctx.resumePendingJobDraftOnStartup('?section=subscription'), false); assert.equal(resumes, 1);
   ctx.currentRole = 'barista'; assert.equal(ctx.resumePendingJobDraftOnStartup(''), false);
 });
 

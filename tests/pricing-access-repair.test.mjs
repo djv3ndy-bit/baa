@@ -69,7 +69,7 @@ test('Subscription deep link is allowed only for a café account',()=>{
  assert.match(reconciliation,/response\.status===202\)\{billingReturnReconciled=false/);
  assert.match(reconciliation,/catch\(error\)\{billingReturnReconciled=false/);
  assert.ok(reconciliation.lastIndexOf("history.replaceState(null,'',destination)")>reconciliation.indexOf("result.confirmed!==true"));
- assert.match(dashboard,/!billing\.canManageBilling\)\{location\.assign\('\/checkout\.html'\)/);
+ assert.match(dashboard,/!billing\.canManageBilling\)\{openSection\('Subscription',currentView,currentRole\)/);
  assert.match(dashboard,/openSection\(initialDashboardSection\(role\),view,role\)/);
 });
 test('switching directly to another account hides café prices and disables its action',async()=>{
