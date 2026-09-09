@@ -29,6 +29,10 @@ export function stripeErrorDiagnostics(error, fallbackStage = "billing") {
   }
   if (typeof error?.requestId === "string" && /^req_[A-Za-z0-9]{1,100}$/.test(error.requestId)) details.requestId = error.requestId;
   if (Number.isInteger(error?.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) details.statusCode = error.statusCode;
+  // Keep this as a boolean; never include response headers themselves.
+  const replayed = error?.headers?.["idempotent-replayed"];
+  if (replayed === "true" || replayed === true) details.idempotentReplayed = true;
+  if (replayed === "false" || replayed === false) details.idempotentReplayed = false;
   return details;
 }
 

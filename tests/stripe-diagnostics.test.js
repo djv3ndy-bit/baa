@@ -39,6 +39,22 @@ test("operation diagnostics preserve original errors and their innermost stage a
   assert.equal(await stripeOperation("checkout_create", async () => "unchanged"), "unchanged");
 });
 
+test("Stripe replay diagnostics expose only a validated boolean without leaking response headers", () => {
+  for (const [header, expected] of [["true", true], [true, true], ["false", false], [false, false]]) {
+    const error = Object.assign(new Error(PRIVATE_MESSAGE), {
+      headers: { "idempotent-replayed": header, authorization: PRIVATE_MESSAGE, "set-cookie": PRIVATE_MESSAGE },
+    });
+    assert.deepEqual(stripeErrorDiagnostics(error, "checkout_create"), {
+      stage: "checkout_create", idempotentReplayed: expected,
+    });
+  }
+  for (const header of [PRIVATE_MESSAGE, "true\n", "TRUE", 1, [], {}, null]) {
+    assert.deepEqual(stripeErrorDiagnostics({ headers: { "idempotent-replayed": header } }, "checkout_create"), {
+      stage: "checkout_create",
+    });
+  }
+});
+
 function replace(t, object, key, value) {
   const previous = object[key], owned = Object.hasOwn(object, key);
   object[key] = value;

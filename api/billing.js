@@ -491,18 +491,33 @@ async function createCheckout(req, res) {
       const site = origin(req);
       const subscriptionData = { metadata: { cafe_user_id: user.id } };
       checkoutCreateStarted = true;
-      const session = await stripeOperation("checkout_create", () => stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: customerId,
-        client_reference_id: user.id,
-        line_items: [{ price: process.env.STRIPE_MONTHLY_PRICE_ID, quantity: 1 }],
-        success_url: mobile ? `${site}/mobile-billing-return.html?billing=success&session_id={CHECKOUT_SESSION_ID}` : `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: mobile ? `${site}/mobile-billing-return.html?billing=canceled` : `${site}/dashboard.html?billing=canceled`,
-        integration_identifier: mobile ? "baristamatch_app_yhvkqjpw" : "baristamatch_web_qtmzjvka",
-        metadata: { cafe_user_id: user.id, checkout_channel: checkoutChannel },
-        subscription_data: subscriptionData,
-        allow_promotion_codes: true
-      }, { idempotencyKey: `baristamatch-checkout-${user.id}-${checkoutClaim.attemptId}` }));
+      let session;
+      try {
+        session = await stripeOperation("checkout_create", () => stripe.checkout.sessions.create({
+          mode: "subscription",
+          customer: customerId,
+          client_reference_id: user.id,
+          line_items: [{ price: process.env.STRIPE_MONTHLY_PRICE_ID, quantity: 1 }],
+          success_url: mobile ? `${site}/mobile-billing-return.html?billing=success&session_id={CHECKOUT_SESSION_ID}` : `${site}/dashboard.html?billing=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: mobile ? `${site}/mobile-billing-return.html?billing=canceled` : `${site}/dashboard.html?billing=canceled`,
+          integration_identifier: mobile ? "baristamatch_app_yhvkqjpw" : "baristamatch_web_qtmzjvka",
+          metadata: { cafe_user_id: user.id, checkout_channel: checkoutChannel },
+          subscription_data: subscriptionData,
+          allow_promotion_codes: true
+        }, { idempotencyKey: `baristamatch-checkout-${user.id}-${checkoutClaim.attemptId}` }));
+      } catch (error) {
+        // Stripe can cache a rejected 400 under this key even after its Product
+        // configuration is fixed. A recovered attempt must prove this is its
+        // cached rejection: a new validation error could mask an older unknown
+        // outcome. The next click still reconciles billing before a fresh create.
+        if (error?.type === "StripeInvalidRequestError" && error?.statusCode === 400
+            && !["idempotency_key_in_use", "lock_timeout"].includes(error?.code)
+            && error?.headers?.["stripe-should-retry"] !== "true"
+            && (!checkoutClaim.recovered || error?.headers?.["idempotent-replayed"] === "true")) {
+          checkoutAttemptSettled = true;
+        }
+        throw error;
+      }
       checkoutAttemptSettled = true;
       return res.status(200).json({ url: session.url });
     } finally {

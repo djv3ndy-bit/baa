@@ -314,6 +314,193 @@ test("a recovered Checkout attempt reuses its metadata-owned Customer instead of
   assert.equal(attachment.p_customer_id, "cus_recovered");
 });
 
+function checkoutRetryFixture(t, error, recovered = true) {
+  const oldAttempt = "33333333-3333-4333-8333-333333333333";
+  const state = { claimId: null, attemptId: recovered ? oldAttempt : null, channel: recovered ? "web" : null };
+  const calls = { claims: [], releases: [], creates: [], timeline: [], logs: [] };
+  const control = { error, subscriptions: [], sessions: [], beforeReject: null };
+  setup(t, async (url, init = {}) => {
+    const target = String(url), body = init.body ? JSON.parse(init.body) : null;
+    if (target.endsWith("/auth/v1/user")) return Response.json({ id: CAFE_ID, email: "cafe@example.com" });
+    if (target.includes("/rest/v1/profiles?")) return Response.json([{ role: "cafe_owner_manager", suspended_at: null }]);
+    if (target.includes("/rest/v1/cafe_subscriptions?")) return Response.json([{
+      user_id: CAFE_ID, status: "free", stripe_customer_id: "cus_retry", stripe_subscription_id: null,
+      stripe_subscription_event_created_at: null, stripe_subscription_sync_revision: 0,
+    }]);
+    if (target.endsWith("/rpc/claim_stripe_checkout")) {
+      assert.equal(state.claimId, null);
+      const recovering = state.attemptId !== null;
+      state.claimId = body.p_claim_id;
+      state.attemptId ??= body.p_attempt_id;
+      state.channel ??= body.p_channel;
+      calls.claims.push({ ...body, attemptId: state.attemptId });
+      return Response.json({ attemptId: state.attemptId, channel: state.channel, recovered: recovering });
+    }
+    if (target.endsWith("/rpc/stripe_checkout_claim_is_current")) return Response.json(state.claimId === body.p_claim_id);
+    if (target.endsWith("/rpc/release_stripe_checkout")) {
+      calls.releases.push(body);
+      if (state.claimId !== body.p_claim_id) return Response.json(false);
+      state.claimId = null;
+      if (body.p_clear_attempt) { state.attemptId = null; state.channel = null; }
+      return Response.json(true);
+    }
+    assert.fail(`Unexpected database request: ${target}`);
+  });
+  replaceMethod(t, console, "error", (...args) => calls.logs.push(args));
+  const stripe = stripeApiClient();
+  replaceMethod(t, stripe.customers, "create", async () => assert.fail("the attached Customer must be preserved"));
+  replaceMethod(t, stripe.customers, "del", async () => assert.fail("the attached Customer must be preserved"));
+  replaceMethod(t, stripe.subscriptions, "list", async () => {
+    calls.timeline.push("subscriptions");
+    if (control.preflightError) throw control.preflightError;
+    return { data: control.subscriptions, has_more: false };
+  });
+  replaceMethod(t, stripe.checkout.sessions, "list", async () => {
+    calls.timeline.push("sessions");
+    return { data: control.sessions, has_more: false };
+  });
+  replaceMethod(t, stripe.checkout.sessions, "expire", async () => assert.fail("no unrelated Session should be expired"));
+  replaceMethod(t, stripe.checkout.sessions, "create", async (params, options) => {
+    calls.timeline.push("create");
+    calls.creates.push({ params, options });
+    if (control.error) { control.beforeReject?.(); throw control.error; }
+    return { id: "cs_retry", url: "https://checkout.stripe.com/c/pay/cs_retry" };
+  });
+  return { state, calls, control, oldAttempt };
+}
+
+const rejectedCheckout = (overrides = {}) => Object.freeze(Object.assign(new Error("private provider message"), {
+  type: "StripeInvalidRequestError", statusCode: 400, headers: {}, ...overrides,
+}));
+
+test("a rejected Checkout rotates a fresh attempt or a verified replay and reconciles before the next create", async t => {
+  for (const recovered of [false, true]) {
+    await t.test(recovered ? "replayed durable attempt" : "fresh attempt", async t => {
+      const fixture = checkoutRetryFixture(t, rejectedCheckout({
+        headers: recovered ? { "idempotent-replayed": "true" } : {},
+      }), recovered);
+      const { state, calls, control, oldAttempt } = fixture;
+      const failed = response();
+      await handler(actionRequest("checkout"), failed);
+      assert.equal(failed.statusCode, 502);
+      assert.deepEqual(failed.body, { error: "Secure checkout could not be opened. Please try again." });
+      assert.equal(calls.creates.length, 1, "a rejection must not retry in the same request");
+      assert.equal(calls.releases[0].p_clear_attempt, true);
+      assert.deepEqual(state, { claimId: null, attemptId: null, channel: null });
+      assert.equal(calls.logs[0][1].stage, "checkout_create");
+      assert.equal(JSON.stringify(calls.logs).includes("private provider message"), false);
+      if (recovered) assert.equal(calls.creates[0].options.idempotencyKey, `baristamatch-checkout-${CAFE_ID}-${oldAttempt}`);
+
+      control.error = null;
+      const succeeded = response();
+      await handler(actionRequest("checkout", { channel: "mobile" }), succeeded);
+      assert.equal(succeeded.statusCode, 200);
+      assert.notEqual(calls.creates[1].options.idempotencyKey, calls.creates[0].options.idempotencyKey);
+      assert.equal(calls.creates[1].params.customer, "cus_retry");
+      assert.equal(calls.creates[1].params.metadata.checkout_channel, "app");
+      assert.deepEqual(calls.timeline, ["subscriptions", "sessions", "create", "subscriptions", "sessions", "create"]);
+    });
+  }
+});
+
+test("uncertain or concurrent Checkout failures preserve the durable key and channel on retry", async t => {
+  const errors = [
+    ["recovered rejection without replay confirmation", rejectedCheckout()],
+    ["recovered non-replayed rejection", rejectedCheckout({ headers: { "idempotent-replayed": "false" } })],
+    ["unverified replay header", rejectedCheckout({ headers: { "idempotent-replayed": "TRUE" } })],
+    ["transport failure", new TypeError("network failed")],
+    ["server failure", rejectedCheckout({ statusCode: 500, headers: { "idempotent-replayed": "true" } })],
+    ["rate limit", rejectedCheckout({ statusCode: 429, headers: { "idempotent-replayed": "true" } })],
+    ["conflict", rejectedCheckout({ statusCode: 409, headers: { "idempotent-replayed": "true" } })],
+    ["idempotency error", rejectedCheckout({ type: "StripeIdempotencyError", headers: { "idempotent-replayed": "true" } })],
+    ["in-progress key", rejectedCheckout({ code: "idempotency_key_in_use", headers: { "idempotent-replayed": "true" } })],
+    ["lock timeout", rejectedCheckout({ code: "lock_timeout", headers: { "idempotent-replayed": "true" } })],
+    ["provider requests retry", rejectedCheckout({ headers: { "idempotent-replayed": "true", "stripe-should-retry": "true" } })],
+    ["other invalid-request status", rejectedCheckout({ statusCode: 404, headers: { "idempotent-replayed": "true" } })],
+    ["unverified status", rejectedCheckout({ statusCode: "400", headers: { "idempotent-replayed": "true" } })],
+  ];
+  for (const [name, error] of errors) {
+    await t.test(name, async t => {
+      const { state, calls, oldAttempt } = checkoutRetryFixture(t, error);
+      for (const channel of ["web", "mobile"]) {
+        const failed = response();
+        await handler(actionRequest("checkout", { channel }), failed);
+        assert.equal(failed.statusCode, 502);
+        assert.deepEqual(state, { claimId: null, attemptId: oldAttempt, channel: "web" });
+      }
+      assert.equal(calls.creates.length, 2);
+      assert.equal(calls.creates[0].options.idempotencyKey, calls.creates[1].options.idempotencyKey);
+      assert.equal(calls.creates[1].params.metadata.checkout_channel, "web");
+      assert.ok(calls.releases.every(release => release.p_clear_attempt === false));
+    });
+  }
+});
+
+test("a recovered attempt keeps its key until Stripe confirms the cached rejection", async t => {
+  const { state, calls, control, oldAttempt } = checkoutRetryFixture(t, rejectedCheckout());
+  await handler(actionRequest("checkout"), response());
+  assert.equal(state.attemptId, oldAttempt);
+  control.error = rejectedCheckout({ headers: { "idempotent-replayed": "true" } });
+  await handler(actionRequest("checkout"), response());
+  assert.equal(state.attemptId, null);
+  assert.equal(calls.creates[0].options.idempotencyKey, calls.creates[1].options.idempotencyKey);
+  assert.deepEqual(calls.releases.map(release => release.p_clear_attempt), [false, true]);
+  control.error = null;
+  const succeeded = response();
+  await handler(actionRequest("checkout"), succeeded);
+  assert.equal(succeeded.statusCode, 200);
+  assert.notEqual(calls.creates[2].options.idempotencyKey, calls.creates[1].options.idempotencyKey);
+});
+
+test("a replayed rejection from another Stripe operation cannot settle a Checkout attempt", async t => {
+  const { state, calls, control, oldAttempt } = checkoutRetryFixture(t, null);
+  control.preflightError = rejectedCheckout({ headers: { "idempotent-replayed": "true" } });
+  const failed = response();
+  await handler(actionRequest("checkout"), failed);
+  assert.equal(failed.statusCode, 502);
+  assert.equal(calls.creates.length, 0);
+  assert.equal(calls.releases[0].p_clear_attempt, false);
+  assert.deepEqual(state, { claimId: null, attemptId: oldAttempt, channel: "web" });
+});
+
+test("a settled rejection still reuses a discovered Checkout or blocks an existing subscription", async t => {
+  for (const resource of ["session", "subscription"]) {
+    await t.test(resource, async t => {
+      const { calls, control } = checkoutRetryFixture(t, rejectedCheckout({ headers: { "idempotent-replayed": "true" } }));
+      await handler(actionRequest("checkout"), response());
+      control.error = null;
+      if (resource === "session") control.sessions = [{
+        id: "cs_discovered", mode: "subscription", url: "https://checkout.stripe.com/c/pay/cs_discovered",
+        client_reference_id: CAFE_ID, metadata: { cafe_user_id: CAFE_ID, checkout_channel: "web" },
+        line_items: { data: [{ price: { id: "price_baristamatch" } }] },
+      }];
+      else control.subscriptions = [{ id: "sub_discovered", status: "active" }];
+      const retried = response();
+      await handler(actionRequest("checkout"), retried);
+      assert.equal(retried.statusCode, resource === "session" ? 200 : 409);
+      if (resource === "session") assert.equal(retried.body.reused, true);
+      assert.equal(calls.creates.length, 1, "reconciliation must prevent another create");
+    });
+  }
+});
+
+test("a late rejected Checkout cannot clear a successor's claim or durable attempt", async t => {
+  const { state, calls, control } = checkoutRetryFixture(t, rejectedCheckout({ headers: { "idempotent-replayed": "true" } }));
+  const successor = {
+    claimId: "44444444-4444-4444-8444-444444444444",
+    attemptId: "55555555-5555-4555-8555-555555555555", channel: "app",
+  };
+  control.beforeReject = () => Object.assign(state, successor);
+  const failed = response();
+  await handler(actionRequest("checkout"), failed);
+  assert.equal(failed.statusCode, 502);
+  assert.equal(calls.releases[0].p_clear_attempt, true);
+  assert.equal(calls.releases[0].p_claim_id, calls.claims[0].p_claim_id);
+  assert.notEqual(calls.releases[0].p_claim_id, successor.claimId);
+  assert.deepEqual(state, successor);
+  assert.equal(calls.creates.length, 1);
+});
+
 test("a valid signed webhook is atomically claimed and completed without a Price API lookup", async (t) => {
   const calls = [];
   setup(t, databaseRecorder(calls));
