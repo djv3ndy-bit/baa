@@ -1094,11 +1094,26 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
   .job-item > .applicant-actions button { flex:1 1 140px; min-height:44px; }
 }
 
-/* White Prism: dashboard home presentation only. Other sections, including
-   the inline subscription form, keep their existing styles and behavior. */
-body:has(.quiet-prism),
-.shell:has(.quiet-prism) {
+/* White Prism belongs to the signed-in dashboard shell. Content is replaced
+   on navigation, so shared chrome must not depend on the Home renderer. */
+body.prism-dashboard-page,
+.prism-dashboard-shell {
   background:#fff;
+}
+body.prism-dashboard-page {
+  --brown:#292521;
+  --brown2:#4c423a;
+  --caramel:#a94716;
+  --cream:#fff;
+  --muted:#706b66;
+  --line:#e9e7e5;
+  --soft:#f7f7f7;
+  --prism-ink:#292521;
+  --prism-line:#e9e7e5;
+  --prism-soft:#f7f7f7;
+  --prism-font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  color:var(--prism-ink);
+  font-family:var(--prism-font);
 }
 .quiet-prism {
   --quiet-ink:#292521;
@@ -1112,7 +1127,7 @@ body:has(.quiet-prism),
   font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 }
 .quiet-prism button { font-family:inherit; }
-.shell:has(.quiet-prism) .content {
+.prism-dashboard-shell .content {
   max-width:1220px;
   padding:30px 30px 36px;
 }
@@ -1350,7 +1365,7 @@ body:has(.quiet-prism),
 .quiet-prism .quiet-mini-job small { margin-top:4px;color:var(--quiet-taupe);font-size:12px;white-space:normal;overflow-wrap:anywhere; }
 .quiet-prism .quiet-mini-job>b { font:500 13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;white-space:normal;text-align:right; }
 @media(min-width:761px) {
-  .shell:has(.quiet-prism)>.side {
+  .prism-dashboard-shell>.side {
     position:relative;
     top:auto;
     flex-wrap:wrap;
@@ -1365,10 +1380,10 @@ body:has(.quiet-prism),
     box-shadow:none;
     backdrop-filter:none;
   }
-  .shell:has(.quiet-prism)>.side .brand { width:100%;margin:0;padding:0;font-size:21px;color:#292521; }
-  .shell:has(.quiet-prism)>.side .brand img { width:36px;height:36px; }
-  .shell:has(.quiet-prism)>.side .brand b { color:#a94716; }
-  .shell:has(.quiet-prism)>.side .menu {
+  .prism-dashboard-shell>.side .brand { width:100%;margin:0;padding:0;font-size:21px;color:#292521; }
+  .prism-dashboard-shell>.side .brand img { width:36px;height:36px; }
+  .prism-dashboard-shell>.side .brand b { color:#a94716; }
+  .prism-dashboard-shell>.side .menu {
     width:100%;
     margin:0;
     padding:7px;
@@ -1380,28 +1395,28 @@ body:has(.quiet-prism),
     background:#fff;
     box-shadow:0 8px 26px #25211d09;
   }
-  .shell:has(.quiet-prism)>.side .menu button { min-height:44px;gap:8px;padding:11px 13px;border:0;border-radius:14px;background:transparent;box-shadow:none;color:#706b66;font-size:12px;font-weight:500; }
-  .shell:has(.quiet-prism)>.side .menu button.active { color:#4c423a;background:#f7f7f7;box-shadow:none; }
-  .shell:has(.quiet-prism)>.side .menu button:hover { color:#a94716;background:#f7f7f7;transform:none; }
-  .shell:has(.quiet-prism)>.side .nav-icon,.shell:has(.quiet-prism)>.side .nav-icon .quiet-icon { width:18px;height:18px;flex-basis:18px; }
+  .prism-dashboard-shell>.side .menu button { min-height:44px;gap:8px;padding:11px 13px;border:0;border-radius:14px;background:transparent;box-shadow:none;color:#706b66;font-size:12px;font-weight:500; }
+  .prism-dashboard-shell>.side .menu button.active { color:#4c423a;background:#f7f7f7;box-shadow:none; }
+  .prism-dashboard-shell>.side .menu button:hover { color:#a94716;background:#f7f7f7;transform:none; }
+  .prism-dashboard-shell>.side .nav-icon,.prism-dashboard-shell>.side .nav-icon .quiet-icon { width:18px;height:18px;flex-basis:18px; }
 }
 @media(min-width:761px) and (max-width:1040px) {
   .quiet-prism .quiet-layout { grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); }
-  .shell:has(.quiet-prism)>.side .menu button { padding-inline:9px;gap:6px;font-size:11px; }
+  .prism-dashboard-shell>.side .menu button { padding-inline:9px;gap:6px;font-size:11px; }
   .quiet-prism .quiet-primary-column>.quiet-section-heading { padding-inline:22px; }
   .quiet-prism .quiet-feature-card { padding-inline:22px;grid-template-columns:44px minmax(0,1fr);gap:14px; }
   .quiet-prism .quiet-feature-image { width:44px;height:44px;border-radius:12px; }
   .quiet-prism .quiet-title-row h3 { font-size:26px; }
 }
 @media(max-width:760px) {
-  body:has(.quiet-prism) .content { padding:23px 16px calc(110px + env(safe-area-inset-bottom))!important; }
-  .shell:has(.quiet-prism)>.side { background:#fff!important;box-shadow:none!important; }
-  body.mobile-menu-open .shell:has(.quiet-prism)>.side { box-shadow:18px 0 50px #160a0533!important; }
-  .shell:has(.quiet-prism)>.side .menu button.active { background:#f7f7f7!important;color:#4c423a!important; }
-  .shell:has(.quiet-prism) .quiet-shell-header { background:#fff;border-color:#e9e7e5; }
-  .shell:has(.quiet-prism) .quiet-mobile-brand { color:#292521; }
-  .shell:has(.quiet-prism) .quiet-mobile-brand b { color:#a94716; }
-  body:has(.quiet-prism) .mobile-menu-toggle { background:#fff!important;border-color:#e9e7e5!important;color:#292521!important; }
+  body.prism-dashboard-page .content { padding:23px 16px calc(110px + env(safe-area-inset-bottom))!important; }
+  .prism-dashboard-shell>.side { background:#fff!important;box-shadow:none!important; }
+  body.mobile-menu-open .prism-dashboard-shell>.side { box-shadow:18px 0 50px #160a0533!important; }
+  .prism-dashboard-shell>.side .menu button.active { background:#f7f7f7!important;color:#4c423a!important; }
+  .prism-dashboard-shell .quiet-shell-header { background:#fff;border-color:#e9e7e5; }
+  .prism-dashboard-shell .quiet-mobile-brand { color:#292521; }
+  .prism-dashboard-shell .quiet-mobile-brand b { color:#a94716; }
+  body.prism-dashboard-page .mobile-menu-toggle { background:#fff!important;border-color:#e9e7e5!important;color:#292521!important; }
   .quiet-prism .quiet-hero { margin-bottom:19px; }
   .quiet-prism .quiet-hero h2 { font-size:28px;line-height:1.15;margin:7px 0 8px; }
   .quiet-prism .quiet-search-bar,
@@ -1432,10 +1447,10 @@ body:has(.quiet-prism),
   .quiet-prism .quiet-more { padding:17px 20px 5px; }
   .quiet-prism .quiet-mini-job { gap:12px;padding:16px 0; }
   .quiet-prism .quiet-note { margin-top:12px; }
-  .shell:has(.quiet-prism) #dashboard-mobile-navigation .quiet-mobile-nav { left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));min-height:64px;padding:6px;border:1px solid #e9e7e5;border-radius:22px;background:#fff;box-shadow:0 7px 25px #25211d09; }
-  .shell:has(.quiet-prism) #dashboard-mobile-navigation .quiet-mobile-nav button { min-height:50px;border-radius:16px;color:#706b66; }
-  .shell:has(.quiet-prism) #dashboard-mobile-navigation .quiet-mobile-nav button.active { color:#4c423a;background:#f7f7f7; }
-  .shell:has(.quiet-prism) #dashboard-mobile-navigation .quiet-mobile-nav .quiet-icon { width:20px;height:20px; }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav { left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom));min-height:64px;padding:6px;border:1px solid #e9e7e5;border-radius:22px;background:#fff;box-shadow:0 7px 25px #25211d09; }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button { min-height:50px;border-radius:16px;color:#706b66; }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav button.active { color:#4c423a;background:#f7f7f7; }
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav .quiet-icon { width:20px;height:20px; }
 }
 @media(max-width:390px) {
   .quiet-prism .quiet-primary-column>.quiet-section-heading { flex-wrap:wrap;gap:0; }
@@ -1450,4 +1465,93 @@ body:has(.quiet-prism),
   .quiet-prism .quiet-mini-job { grid-template-columns:36px minmax(0,1fr);gap:10px; }
   .quiet-prism .quiet-mini-photo { width:36px;height:36px;border-radius:11px; }
   .quiet-prism .quiet-mini-job>b { grid-column:2;text-align:left;margin-top:-5px; }
+}
+
+/* Section headings and existing functional components share the shell theme.
+   Only Home and Subscription provide their own page heading. */
+.prism-dashboard-shell .main>.top {
+  display:flex;
+  position:static;
+  min-height:0;
+  max-width:1220px;
+  margin:0 auto;
+  padding:30px 30px 0;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  backdrop-filter:none;
+}
+.prism-dashboard-shell .main>.top h1 {
+  color:var(--prism-ink);
+  font:500 30px/1.2 var(--prism-font);
+  letter-spacing:-.8px;
+  overflow-wrap:anywhere;
+}
+.prism-dashboard-shell .main>.top .rolebadge { display:none; }
+.prism-dashboard-shell .main:has(.quiet-prism)>.top,
+.prism-dashboard-shell .main:has(#subscription-checkout)>.top { display:none; }
+.prism-dashboard-shell .content:not(:has(.quiet-prism)):not(:has(#subscription-checkout)) { padding-top:18px; }
+.prism-dashboard-shell .content:not(:has(.quiet-prism)) :is(h2,h3),
+body.prism-dashboard-page .profile-dialog :is(h2,h3) {
+  font-family:var(--prism-font);
+  font-weight:500;
+  letter-spacing:-.35px;
+}
+.prism-dashboard-shell .content:not(:has(.quiet-prism)) h3 { font-size:20px;line-height:1.3; }
+.prism-dashboard-shell .content :is(.card:not(.danger-card),.messages-workspace,.profile-progress-card) {
+  border-color:var(--prism-line);
+  border-radius:25px;
+  background:#fff;
+  box-shadow:0 6px 20px #25211d09;
+}
+.prism-dashboard-shell .content :is(.item,.profile-detail,.conversation-row) { border-color:var(--prism-line); }
+.prism-dashboard-shell .content :is(.avatar,.conversation-avatar,.subscription-management-icon,.help-support-icon) {
+  border-color:var(--prism-line);
+  background:var(--prism-soft);
+  color:var(--prism-ink);
+  box-shadow:none;
+}
+.prism-dashboard-shell .content .stat strong { font-family:var(--prism-font);font-weight:500; }
+.prism-dashboard-shell .content .stat:after { background:var(--prism-line); }
+.prism-dashboard-shell .content .settings-stack { max-width:none; }
+.prism-dashboard-shell .content .google-password-card { padding:20px; }
+.prism-dashboard-shell .content :is(.primary,.secondary,.message-button),
+body.prism-dashboard-page .profile-dialog :is(.primary,.secondary) {
+  min-height:44px;
+  border-radius:12px;
+  font-weight:500;
+}
+.prism-dashboard-shell .content :is(.primary,.message-button),
+body.prism-dashboard-page .profile-dialog .primary { background:var(--prism-ink);color:#fff; }
+.prism-dashboard-shell .content .secondary,
+body.prism-dashboard-page .profile-dialog .secondary { background:#fff;border-color:#d5d2cf;color:var(--prism-ink); }
+.prism-dashboard-shell .content .primary:hover { transform:none;box-shadow:0 4px 12px #25211d15; }
+.prism-dashboard-shell .content .search { border-radius:14px;border-color:var(--prism-line); }
+.prism-dashboard-shell .content .chat-panel { background:var(--prism-soft); }
+.prism-dashboard-shell .content .conversation-row:is(:hover,.active) { background:var(--prism-soft); }
+.prism-dashboard-shell .content .chat-bubble { border-color:var(--prism-line);box-shadow:none; }
+.prism-dashboard-shell .content .chat-bubble-wrap.mine .chat-bubble { border-color:var(--prism-ink); }
+.prism-dashboard-shell .content .chat-compose textarea { background:#fff;border-color:#d5d2cf; }
+.prism-dashboard-shell .content .chat-time { color:var(--muted); }
+.prism-dashboard-shell .content .profile-progress-track { background:var(--prism-line); }
+.prism-dashboard-shell .content .profile-progress-ring { background:conic-gradient(var(--caramel) calc(var(--p)*1%),var(--prism-line) 0); }
+.prism-dashboard-shell .content .strength-score { background:conic-gradient(var(--green) var(--score),var(--prism-line) 0); }
+.prism-dashboard-shell .content .trust-banner:not(.ready) { background:#fff;border-color:var(--prism-line);color:var(--prism-ink); }
+body.prism-dashboard-page .profile-dialog { background:#fff;border:1px solid var(--prism-line);border-radius:25px; }
+body.prism-dashboard-page .profile-dialog :is(.pricing-price,.job-upgrade-summary strong) { font-family:var(--prism-font);font-weight:500; }
+body.prism-dashboard-page .profile-dialog .job-upgrade-summary { border-color:var(--prism-line);background:#fff; }
+/* The payment form still belongs to Stripe; these rules theme its outer panel. */
+.prism-dashboard-shell #subscription-checkout { padding-top:0;color:var(--prism-ink);font-family:var(--prism-font); }
+.prism-dashboard-shell #subscription-checkout .subscription-page-title { font-size:30px;letter-spacing:-.8px; }
+.prism-dashboard-shell #subscription-checkout .subscription-plan { border:1px solid var(--prism-line);box-shadow:0 6px 20px #25211d09; }
+.prism-dashboard-shell #subscription-checkout .subscription-price-value strong { font-family:var(--prism-font);font-weight:500; }
+.prism-dashboard-shell #subscription-checkout .subscription-first-job { background:var(--prism-soft);color:var(--caramel); }
+.prism-dashboard-shell #subscription-checkout :is(.subscription-checkout-region,.subscription-provider,.subscription-return) { border-color:var(--prism-line); }
+.prism-dashboard-shell #subscription-checkout .subscription-return { background:#fff; }
+@media(max-width:760px) {
+  .prism-dashboard-shell .main>.top { padding:23px 16px 0!important; }
+  .prism-dashboard-shell .content:not(:has(.quiet-prism)):not(:has(#subscription-checkout)) { padding-top:16px!important; }
+  .prism-dashboard-shell .content :is(.card,.messages-workspace,.profile-progress-card) { border-radius:20px; }
+  .prism-dashboard-shell .content:not(:has(.quiet-prism)) h3 { font-size:19px; }
+  .prism-dashboard-shell #subscription-checkout .subscription-page-title { font-size:24px; }
 }
