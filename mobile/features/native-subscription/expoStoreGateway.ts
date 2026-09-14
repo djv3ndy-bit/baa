@@ -195,7 +195,24 @@ export class ExpoStoreGateway<P extends NativePurchase> {
       const request = this.plan.provider === 'apple'
         ? { apple: { sku: product.id, appAccountToken: accountBinding, andDangerouslyFinishTransactionAutomatically: false as const } }
         : { google: { skus: [product.id], obfuscatedAccountId: accountBinding, subscriptionOffers: [{ sku: product.id, offerToken: this.selected!.offerToken! }] } };
-      void this.api.requestPurchase({ type: 'subs', request }).then(result => {
+      const waiter = this.waiter;
+      const requestPurchase = async () => {
+        try { return await this.api.requestPurchase({ type: 'subs', request }); }
+        catch (error: any) {
+          // OpenIAP 3.4.0 can finish a verified inactive subscription replay
+          // instead of opening a new purchase sheet. Only that exact response
+          // permits one retry within this same reservation and account binding.
+          // Network errors, deferred payments and unknown results remain pending.
+          if (this.plan.provider !== 'apple' || error?.code !== 'purchase-error'
+            || error?.productId !== product.id
+            || error?.message !== 'Finished an inactive subscription transaction. Please retry the purchase.'
+            || this.waiter !== waiter || this.disposed || this.interrupted) throw error;
+          await this.checkStorefront();
+          if (this.waiter !== waiter || this.disposed || this.interrupted) throw error;
+          return this.api.requestPurchase({ type: 'subs', request });
+        }
+      };
+      void requestPurchase().then(result => {
         // Some iOS SDK versions also return a transaction; the event path is
         // authoritative, and processing both is safe with server idempotency.
         if (result && !this.disposed) for (const purchase of Array.isArray(result) ? result : [result]) this.updated(purchase as P);
