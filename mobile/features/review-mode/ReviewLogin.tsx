@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { ConversationKeyboardView, ConversationTextInput } from '@/components/ConversationKeyboardView';
+
+const ReviewKeyboardView = Platform.OS === 'ios' ? View : ConversationKeyboardView;
 
 export default function ReviewLogin() {
   const [email, setEmail] = useState('');
@@ -47,8 +49,8 @@ export default function ReviewLogin() {
       if (mounted.current) setBusy(false);
     }
   }
-  return <ConversationKeyboardView style={styles.page}>
-    <ScrollView ref={scroll} onLayout={revealField} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+  return <ReviewKeyboardView style={styles.page}>
+    <ScrollView ref={scroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} onLayout={revealField} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <Text accessibilityRole="header" style={styles.heading}>App review sign-in</Text>
       <Text style={styles.copy}>Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.</Text>
       <Text style={styles.label}>Test-account email</Text>
@@ -61,7 +63,7 @@ export default function ReviewLogin() {
       </Pressable>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>
     </ScrollView>
-  </ConversationKeyboardView>;
+  </ReviewKeyboardView>;
 }
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#fff9f3' },
