@@ -77,6 +77,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     if (name === 'react-native-safe-area-context') return { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets };
     if (/\.(png|jpg)$/.test(name)) return bundledImageSource(resolve(ROOT, dirname(fromFile), name));
     if (name.endsWith('/loginLayout')) return { LOGIN_LAYOUT_METRICS, resolveLoginLayout };
+    if (name === '@/features/review-mode/environment') return { getAppEnvironment: () => ({ review: false }) };
     if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => cafeAccess };
     if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
     if (name.endsWith('/profilePrivacy')) return { getProfileReadiness: () => ({ complete: false, missing: ['Profile picture'], visible: false }), normalizeOptionalGender: () => null };
