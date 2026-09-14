@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   page: { flexGrow: 1, backgroundColor: '#fffaf4' },
   hero: { justifyContent: 'center', paddingBottom: 30, backgroundColor: '#352114', overflow: 'hidden', flexShrink: 0 },
   heroCompact: { paddingBottom: 22 },
-  heroShort: { paddingBottom: 14 },
+  heroShort: { paddingBottom: Platform.OS === 'android' ? 30 : 14 },
   heroReduced: { paddingBottom: 12 },
   heroShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(28, 14, 6, 0.30)' },
   brandBlock: { alignItems: 'flex-start', marginHorizontal: 28, maxWidth: 440, transform: [{ translateY: -4 }] },

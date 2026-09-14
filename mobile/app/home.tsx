@@ -1,3 +1,4 @@
+export { default } from '../features/approved-dashboard/ApprovedHomeScreen';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -11,7 +12,7 @@ import { LatestMessageRequest, messageError, withMessageDeadline } from '@/lib/m
 
 const CAFE_PLAN_COPY = 'Your first job, matches, and interview messaging are included.';
 
-export default function HomeScreen() {
+export function PreviousHomeScreen() {
   const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<Record<string, any> | null>(null);
   const [counts, setCounts] = useState<DashboardCounts>(emptyDashboardCounts);

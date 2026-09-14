@@ -1,0 +1,80 @@
+name: Native payments internal TestFlight review
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        type: string
+        required: true
+        description: Exact current main commit SHA approved for the TestFlight build
+      release_mode:
+        type: choice
+        required: true
+        description: Keep HOLD unless the owner is intentionally starting the TestFlight release
+        default: HOLD
+        options:
+          - HOLD
+          - BUILD_AND_SUBMIT_TO_INTERNAL_TESTFLIGHT
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  validate_source:
+    name: Validate the exact approved payment review revision
+    if: ${{ inputs.release_mode == 'BUILD_AND_SUBMIT_TO_INTERNAL_TESTFLIGHT' && github.ref_name == 'main' && github.sha == inputs.release_sha }}
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Confirm the exact approved commit
+        run: |
+          set -euo pipefail
+          current_sha="$(git rev-parse HEAD)"
+          test "$current_sha" = "${{ inputs.release_sha }}"
+          test -z "$(git status --porcelain)"
+      - name: Verify authentication release contracts
+        run: npm run release:verify-auth
+      - name: Type-check the complete mobile application
+        run: npm run typecheck
+
+  owner_testflight_approval:
+    name: Owner approval before Apple upload
+    type: require-approval
+    needs: [validate_source]
+
+  build_ios:
+    name: Build the isolated iOS payment review binary
+    type: build
+    needs: [owner_testflight_approval]
+    params:
+      platform: ios
+      profile: payment-review
+
+  submit_internal_testflight:
+    name: Upload the approved build to internal TestFlight
+    type: testflight
+    needs: [build_ios]
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: production
+      submit_beta_review: false
+      wait_processing_timeout_seconds: 1800
+
+  verification_checklist:
+    name: Required owner verification after TestFlight processing
+    type: doc
+    needs: [submit_internal_testflight]
+    params:
+      md: |
+        ## BaristaMatch internal payment review
+
+        This build uses testing.baristajobmatch.com and the isolated test database. It is for Apple Sandbox purchases and dedicated test accounts only. It is not the public-release candidate and must not be promoted to the App Store.
+
+        Record the actual App Store Connect build number and processing result. The existing production profile, website checkout and production authentication settings remain unchanged.
+
+        Before dispatch, complete and review the remaining gates in `review/current-review-status.md`. An approval in this workflow does not replace those checks.
+
+        After processing, verify the installed binary targets the isolated test services. Complete active purchase restoration, reinstall/device-change and remaining store-lifecycle checks. The owner declined separate test Google/Apple OAuth setup; use the dedicated test account's email sign-in and record this coverage limit.
+
+        This workflow does not submit for public App Review or publish an OTA update. The original production-release workflow remains available separately.

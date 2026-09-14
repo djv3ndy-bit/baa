@@ -169,7 +169,7 @@ for(const token of ['suspended_at=is.null','stripeBillingAttempted','restoreDele
 if(deleteAccount.indexOf('rpc/claim_stripe_deletion')>deleteAccount.indexOf('suspended_at=is.null'))throw new Error('Account deletion must own the billing lease before changing profile visibility');
 const deletionFailureHandler=deleteAccount.slice(deleteAccount.lastIndexOf('} catch (error) {'));
 if(deletionFailureHandler.indexOf('if (restoreDeletionLock)')>deletionFailureHandler.indexOf('if (releaseDeletionBillingClaim)'))throw new Error('Account deletion must restore its lock before handing off the billing lease');
-for(const source of [dashboard,mobileSettings])if(!source.includes('active Pro subscription')||(!source.includes('cancels it immediately')&&!source.includes('canceled immediately')))throw new Error('Account deletion must disclose immediate Pro subscription cancellation');
+for(const source of [dashboard,mobileSettings])if(!source.includes('Website subscriptions')||!(/cancel(?:s it|ed)? immediately/.test(source))||!source.includes('does not cancel Apple or Google Play subscriptions')||!source.includes('does not issue a refund'))throw new Error('Account deletion must disclose immediate website cancellation, separate store cancellation, and no automatic refund');
 const safetyMigration='supabase/migrations/20260831090000_add_member_safety_controls.sql';
 if(!fs.existsSync(safetyMigration)) throw new Error('Mobile safety controls migration is missing');
 const safetySql=fs.readFileSync(safetyMigration,'utf8');

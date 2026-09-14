@@ -1,0 +1,11 @@
+--- a/mobile/app/settings.tsx
++++ b/mobile/app/settings.tsx
+@@ -285,7 +285,7 @@
+         <Text style={s.title}>Account Settings</Text>
+         <View style={s.headerSpacer} />
+       </View>
+-      <ScrollView contentContainerStyle={s.wrap}>
++      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={s.wrap}>
+         {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading ? 'Loading your account…' : email} />}
+         {role === 'cafe_owner_manager' && accountId && returnResult && !returnOwner.current.invalidated && returnOwner.current.accountId === accountId ? <CheckoutReturnStatus key={accountId} accountId={accountId} result={returnResult} sessionId={returnSessionId} onBilling={acceptConfirmedBilling} /> : null}
+         {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling || loading} onPress={manageSubscription} /> : null}

@@ -1,7 +1,7 @@
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext, AppRole } from '@/lib/session';
 import { AppBottomNav } from '@/components/AppBottomNav';
@@ -9,6 +9,7 @@ import { loadApplications, MarketMatch, readAllRows, readProfiles } from '@/lib/
 
 type MatchRow = { id: string; kind: 'discovery' | 'application'; name: string; detail: string };
 export default function Matches() {
+  const { jobId } = useLocalSearchParams<{ jobId?: string }>();
   const [loading, setLoading] = useState(true), [rows, setRows] = useState<MatchRow[]>([]), [role, setRole] = useState<AppRole>('barista'), [error, setError] = useState('');
   const request = useRef(0);
   const load = useCallback(async () => {
@@ -22,14 +23,14 @@ export default function Matches() {
       const [applications, matches] = await Promise.all([loadApplications(id, accountRole), readAllRows<MarketMatch>(() => supabase.from('discovery_matches').select('id,barista_id,cafe_id').or(`barista_id.eq.${id},cafe_id.eq.${id}`).order('created_at', { ascending: false }).order('id'))]);
       const profiles = await readProfiles([...matches.flatMap(row => [row.barista_id, row.cafe_id]), ...applications.filter(row => row.status === 'matched').map(row => accountRole === 'barista' ? row.job?.owner_id || '' : row.barista_id)].filter(value => value && value !== id));
       if (version !== request.current) return;
-      const mutual: MatchRow[] = matches.map(match => { const person = profiles[accountRole === 'barista' ? match.cafe_id : match.barista_id]; return { id: match.id, kind: 'discovery', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: person?.location || 'Mutual profile match' }; });
-      const legacy: MatchRow[] = applications.filter(row => row.status === 'matched').map(row => { const person = profiles[accountRole === 'barista' ? row.job?.owner_id || '' : row.barista_id]; return { id: row.id, kind: 'application', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: row.job?.title || 'Matched job application' }; });
+      const mutual: MatchRow[] = (jobId ? [] : matches).map(match => { const person = profiles[accountRole === 'barista' ? match.cafe_id : match.barista_id]; return { id: match.id, kind: 'discovery', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: person?.location || 'Mutual profile match' }; });
+      const legacy: MatchRow[] = applications.filter(row => row.status === 'matched' && (!jobId || row.job_id === jobId)).map(row => { const person = profiles[accountRole === 'barista' ? row.job?.owner_id || '' : row.barista_id]; return { id: row.id, kind: 'application', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: row.job?.title || 'Matched job application' }; });
       setRole(accountRole); setRows([...mutual, ...legacy]);
     } catch (caught) { if (version === request.current) { setRows([]); setError(caught instanceof Error ? caught.message : 'Matches could not load. Please refresh.'); } }
     finally { if (version === request.current) setLoading(false); }
-  }, []);
+  }, [jobId]);
   useFocusEffect(useCallback(() => { void load(); return () => { request.current++; }; }, [load]));
-  return <SafeAreaView style={s.safe}><View style={s.header}><Text style={s.title}>Matches</Text><Text style={s.sub}>Both sides agreed — start a conversation</Text></View><ScrollView contentContainerStyle={s.list}>
+  return <SafeAreaView style={s.safe}><View style={s.header}><Text style={s.title}>Matches</Text><Text style={s.sub}>{jobId ? 'Mutual matches for this job' : 'Both sides agreed — start a conversation'}</Text></View><ScrollView contentContainerStyle={s.list}>{jobId ? <Pressable accessibilityRole="button" style={s.refresh} onPress={() => router.replace('/matches')}><Text style={s.name}>View all matches</Text></Pressable> : null}
     <Pressable disabled={loading} accessibilityRole="button" style={s.refresh} onPress={() => void load()}><Text style={s.name}>Refresh matches</Text></Pressable>
     {loading ? <ActivityIndicator size="large" color={prism.ink}/> : error ? <Text accessibilityRole="alert" style={s.emptyCopy}>{error}</Text> : rows.length ? rows.map(row => <Pressable accessibilityRole="button" accessibilityLabel={`Message ${row.name} about ${row.detail}`} key={`${row.kind}-${row.id}`} style={s.row} onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, kind: row.kind } })}><View style={{ flex: 1 }}><Text style={s.name}>{row.name}</Text><Text style={s.meta}>{row.detail} · Matched</Text></View><Text style={s.chev}>›</Text></Pressable>) : <View style={s.empty}><Text style={s.emptyTitle}>No matches yet</Text><Text style={s.emptyCopy}>Review incoming profile interests in Discover, or connect through a job application.</Text><Pressable style={s.refresh} onPress={() => router.push({ pathname: '/discover', params: { tab: 'received' } })}><Text style={s.name}>Review profile interests</Text></Pressable></View>}
   </ScrollView><AppBottomNav active="matches" role={role}/></SafeAreaView>;

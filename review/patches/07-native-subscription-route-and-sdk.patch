@@ -1,0 +1,112 @@
+--- a/mobile/app/subscription.tsx
++++ b/mobile/app/subscription.tsx
+@@ -1,3 +1,4 @@
++import ExpoSubscriptionEntry, { nativeSubscriptionScreenEnabled } from '../features/native-subscription/ExpoSubscriptionEntry';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+ import { router } from 'expo-router';
+@@ -21,6 +22,10 @@
+ ];
+ 
+ export default function SubscriptionScreen() {
++  return nativeSubscriptionScreenEnabled ? <ExpoSubscriptionEntry /> : <PreservedSubscriptionScreen />;
++}
++
++function PreservedSubscriptionScreen() {
+   const access = useCafeAccess();
+   if (!access.ready) return <CafeAccessCheck error={access.error} retry={access.retry} appearance="prism" />;
+ 
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "baristamatch-mobile",
+-  "version": "1.0.4",
++  "version": "1.0.5",
+   "private": true,
+   "main": "expo-router/entry",
+   "scripts": {
+@@ -32,7 +32,8 @@
+     "react-dom": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-safe-area-context": "~5.6.0",
+-    "react-native-screens": "~4.16.0"
++    "react-native-screens": "~4.16.0",
++    "expo-iap": "5.5.1"
+   },
+   "devDependencies": {
+     "@types/react": "~19.1.10",
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "baristamatch-mobile",
+-  "version": "1.0.4",
++  "version": "1.0.5",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "baristamatch-mobile",
+-      "version": "1.0.4",
++      "version": "1.0.5",
+       "dependencies": {
+         "@expo/vector-icons": "15.1.1",
+         "@react-native-async-storage/async-storage": "^2.1.2",
+@@ -16,6 +16,7 @@
+         "expo-constants": "~18.0.0",
+         "expo-device": "~8.0.10",
+         "expo-font": "14.0.12",
++        "expo-iap": "5.5.1",
+         "expo-image-picker": "~17.0.11",
+         "expo-linking": "~8.0.0",
+         "expo-notifications": "~0.32.17",
+@@ -5124,6 +5125,27 @@
+         "expo": "*",
+         "react": "*",
+         "react-native": "*"
++      }
++    },
++    "node_modules/expo-iap": {
++      "version": "5.5.1",
++      "resolved": "https://registry.npmjs.org/expo-iap/-/expo-iap-5.5.1.tgz",
++      "integrity": "sha512-8x4MkAPl+jUBo/syLllShqDhnK+xb8gAQtYEdb5WG3iyFhpofjVy4lEy+1AUn2THzHq9LDSNN4zAD8m041VwDg==",
++      "license": "MIT",
++      "peerDependencies": {
++        "@amazon-devices/keplerscript-appstore-iap-lib": "~2.13.0",
++        "@amazon-devices/package-manager-lib": "~1.0.1767254401",
++        "expo": "*",
++        "react": "*",
++        "react-native": "*"
++      },
++      "peerDependenciesMeta": {
++        "@amazon-devices/keplerscript-appstore-iap-lib": {
++          "optional": true
++        },
++        "@amazon-devices/package-manager-lib": {
++          "optional": true
++        }
+       }
+     },
+     "node_modules/expo-image-loader": {
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -4,7 +4,7 @@
+     "slug": "baristamatch",
+     "description": "Connect with local caf\u00e9s and baristas, discover opportunities, match, and message securely.",
+     "scheme": "baristamatch",
+-    "version": "1.0.4",
++    "version": "1.0.5",
+     "primaryColor": "#b75a1d",
+     "icon": "./assets/icon.png",
+     "orientation": "portrait",
+@@ -59,7 +59,8 @@
+           "color": "#b75a1d",
+           "defaultChannel": "baristamatch-alerts"
+         }
+-      ]
++      ],
++      "expo-iap"
+     ],
+     "experiments": {
+       "typedRoutes": true

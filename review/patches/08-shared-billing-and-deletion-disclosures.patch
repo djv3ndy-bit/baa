@@ -1,0 +1,106 @@
+--- a/vercel.json
++++ b/vercel.json
+@@ -1 +1 @@
+-{"cleanUrls":true,"trailingSlash":false,"redirects":[{"source":"/owner-reliability","destination":"/owner-dashboard","permanent":false}],"rewrites":[{"source":"/api/billing-status","destination":"/api/billing?action=status"},{"source":"/api/create-checkout-session","destination":"/api/billing?action=checkout"},{"source":"/api/confirm-checkout-session","destination":"/api/billing?action=confirm"},{"source":"/api/create-portal-session","destination":"/api/billing?action=portal"},{"source":"/api/stripe-webhook","destination":"/api/billing?action=webhook"},{"source":"/api/public-config","destination":"/api/config"},{"source":"/favicon.ico","destination":"/assets/favicon-32-v2.png"}],"headers":[{"source":"/(.*)","headers":[{"key":"Strict-Transport-Security","value":"max-age=63072000; includeSubDomains; preload"},{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"X-Frame-Options","value":"DENY"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"},{"key":"Permissions-Policy","value":"camera=(), microphone=(), payment=(self \"https://checkout.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\"), usb=()"},{"key":"Cross-Origin-Opener-Policy","value":"same-origin-allow-popups"}]},{"source":"/api/(.*)","headers":[{"key":"Cache-Control","value":"no-store"}]}]}
++{"cleanUrls":true,"trailingSlash":false,"redirects":[{"source":"/owner-reliability","destination":"/owner-dashboard","permanent":false}],"rewrites":[{"source":"/api/billing-status","destination":"/api/account-billing?action=status"},{"source":"/api/create-checkout-session","destination":"/api/billing?action=checkout"},{"source":"/api/confirm-checkout-session","destination":"/api/billing?action=confirm"},{"source":"/api/create-portal-session","destination":"/api/account-billing?action=portal"},{"source":"/api/stripe-webhook","destination":"/api/billing?action=webhook"},{"source":"/api/public-config","destination":"/api/config"},{"source":"/favicon.ico","destination":"/assets/favicon-32-v2.png"}],"headers":[{"source":"/(.*)","headers":[{"key":"Strict-Transport-Security","value":"max-age=63072000; includeSubDomains; preload"},{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"X-Frame-Options","value":"DENY"},{"key":"Referrer-Policy","value":"strict-origin-when-cross-origin"},{"key":"Permissions-Policy","value":"camera=(), microphone=(), payment=(self \"https://checkout.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\"), usb=()"},{"key":"Cross-Origin-Opener-Policy","value":"same-origin-allow-popups"}]},{"source":"/api/(.*)","headers":[{"key":"Cache-Control","value":"no-store"}]}]}
+--- a/mobile/app/settings.tsx
++++ b/mobile/app/settings.tsx
+@@ -1,3 +1,6 @@
++import { NativeSubscriptionSummary } from '../features/native-subscription/NativeSubscriptionSummary';
++import { nativeSubscriptionScreenEnabled } from '../features/native-subscription/ExpoSubscriptionEntry';
++import type { VerifiedSubscription } from '../features/native-subscription/purchaseCoordinator';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import {
+@@ -23,6 +26,7 @@
+ import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
+ 
+ type BillingStatus = {
++  nativeStatus?: VerifiedSubscription;
+   status: string;
+   plan: "free" | "pro";
+   currentPeriodEnd: string | null;
+@@ -155,7 +159,7 @@
+     try {
+       await requireAccountSession(expectedUserId);
+       if (!active.current || account.current !== expectedUserId) return;
+-      if (!canManage(billing)) return router.push('/subscription');
++      if (nativeSubscriptionScreenEnabled || !canManage(billing)) return router.push('/subscription');
+       const result = await authenticatedApi<{ url: string }>('/create-portal-session', { channel: 'mobile' }, 'POST', expectedUserId);
+       await requireAccountSession(expectedUserId);
+       if (!active.current || account.current !== expectedUserId) return;
+@@ -215,7 +219,7 @@
+     if (!expectedUserId || actionBusy.current || loading) return;
+     Alert.alert(
+       'Delete your account?',
+-      'This permanently removes your profile, jobs, matches, messages, and uploaded media. If this account has an active Pro subscription, deletion cancels it immediately. This cannot be undone.',
++      'This permanently removes your profile, jobs, matches, messages, and uploaded media. Website subscriptions are canceled immediately. Apple or Google Play subscriptions must be managed separately in your store subscription settings. This cannot be undone.',
+       [
+         { text: 'Cancel', style: 'cancel' },
+         { text: 'Continue', style: 'destructive', onPress: () => confirmAccountDeletion(expectedUserId) },
+@@ -226,7 +230,7 @@
+     if (account.current !== expectedUserId) return Alert.alert('Account changed', 'Please review the signed-in account before deleting.');
+     Alert.alert(
+       'Final confirmation',
+-      'Delete your BaristaMatch account now? Any active Pro subscription will be canceled immediately; deletion does not issue a refund. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
++      'Delete your BaristaMatch account now? Website subscriptions will be canceled immediately; deletion does not issue a refund. Deleting your account does not cancel Apple or Google Play subscriptions. Cancel those in your store subscription settings to stop renewal. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
+       [
+         { text: 'Keep my account', style: 'cancel' },
+         { text: 'Delete permanently', style: 'destructive', onPress: () => { void deleteAccount(expectedUserId); } },
+@@ -404,6 +408,7 @@
+               <Text style={s.copy}>
+                 Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
+               </Text>
++              {role === "cafe_owner_manager" && nativeSubscriptionScreenEnabled ? <Pressable accessibilityRole="button" disabled={disabled} style={s.secondary} onPress={() => router.push('/subscription')}><Text style={s.secondaryText}>Review subscriptions before deletion</Text></Pressable> : null}
+               <Pressable
+                 accessibilityRole="button"
+                 disabled={disabled}
+@@ -434,6 +439,7 @@
+ }
+ 
+ function SubscriptionCard({ billing, error, opening, onPress }: { billing: BillingStatus | null; error: string; opening: boolean; onPress: () => void }) {
++  if (billing?.nativeStatus) return <NativeSubscriptionSummary subscription={billing.nativeStatus} error={error} opening={opening} onPress={onPress} />;
+   const paying = billing?.plan === "pro" && billing.connectedToBilling && ['active', 'trialing'].includes(billing.status);
+   const paymentAttention = canManage(billing) && !paying;
+   const date = billing?.currentPeriodEnd ? new Date(billing.currentPeriodEnd).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "";
+--- a/dashboard.html
++++ b/dashboard.html
+@@ -421,10 +421,11 @@
+ <dialog class="profile-dialog" id="job-dialog"><form class="profile-form" id="job-form"><h2>Post a barista job</h2><p>Your café name and profile photo will appear automatically.</p><div class="form-grid"><label>Job title<input name="title" required placeholder="Lead Barista"></label><label class="form-wide">Street address<input name="address_line1" required autocomplete="street-address" placeholder="123 Main Street"></label><label class="form-wide">Suite / unit (optional)<input name="address_line2" autocomplete="address-line2" placeholder="Suite 200"></label><label>City<input name="city" required autocomplete="address-level2" placeholder="Miami"></label><label>State<input name="state" required autocomplete="address-level1" maxlength="2" placeholder="FL"></label><label>ZIP code<input name="postal_code" required autocomplete="postal-code" inputmode="numeric" maxlength="10" placeholder="33101"></label><label>Hourly pay<input name="hourly_pay" type="number" min="0.01" step=".01" required placeholder="20.00"></label><label>Maximum hourly pay (optional)<input name="max_hourly_pay" type="number" min="0.01" step=".01" placeholder="25.00"></label><label>Skills<input name="skills" placeholder="Espresso, latte art"></label><fieldset class="schedule-options form-wide"><legend>Schedule — check all that apply</legend><div class="schedule-checks"><label><input name="schedule" type="checkbox" value="Full-time"> Full-time</label><label><input name="schedule" type="checkbox" value="Part-time"> Part-time</label><label><input name="schedule" type="checkbox" value="Morning shift"> Morning shift</label><label><input name="schedule" type="checkbox" value="Evening shift"> Evening shift</label></div></fieldset><label class="form-wide">Description<textarea name="description" required placeholder="Describe the role, team, and what success looks like."></textarea></label></div><p class="form-status" id="job-status"></p><div class="form-actions"><button class="secondary" type="button" id="job-cancel">Cancel</button><button class="primary" type="submit">Publish job</button></div></form></dialog>
+ <dialog class="profile-dialog" id="job-upgrade-dialog"><div class="profile-form"><span class="pricing-kicker">Second job and beyond</span><h2 id="job-upgrade-title">Continue hiring with Pro</h2><p id="job-upgrade-copy">Your first lifetime job post stays free to edit, pause, and reopen. Publishing a second distinct job requires active Pro access.</p><div class="job-upgrade-summary"><strong>$9.99/month</strong><span>Up to 3 active job posts · cancel anytime</span></div><p class="job-upgrade-note">Your job remains a draft until Pro is confirmed. Matching, messages, and interview scheduling for your first job remain free.</p><p class="form-status" id="job-upgrade-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="job-upgrade-cancel">Back to draft</button><button class="primary" type="button" id="job-upgrade-action">Continue to secure checkout</button></div></div></dialog>
+ <dialog class="profile-dialog" id="message-dialog"><div class="profile-form"><h2 id="message-title">Messages</h2><p id="message-subtitle">Chat with your match.</p><div class="message-list" id="message-list"></div><form class="message-compose" id="message-form"><input name="body" maxlength="2000" autocomplete="off" placeholder="Write a message…" required><button class="primary" type="submit">Send</button></form><p class="form-status" id="message-status"></p><div class="form-actions"><button class="secondary" type="button" id="message-close">Close</button></div></div></dialog>
+-<dialog class="profile-dialog" id="delete-dialog"><form class="profile-form" id="delete-form"><h2>Delete your account?</h2><p>This permanently removes your profile and BaristaMatch activity. This action cannot be undone. If this account has an active Pro subscription, deletion cancels it immediately; it does not issue a refund.</p><p>Limited records may be retained as described in our Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after your account is deleted.</p><label class="delete-confirm">Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label><p class="form-status" id="delete-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="delete-cancel">Keep my account</button><button class="danger-button" type="submit">Permanently delete account</button></div></form></dialog>
++<dialog class="profile-dialog" id="delete-dialog"><form class="profile-form" id="delete-form"><h2>Delete your account?</h2><p>This permanently removes your profile and BaristaMatch activity. This action cannot be undone. Website subscriptions are canceled immediately; deletion does not issue a refund. Deleting your account does not cancel Apple or Google Play subscriptions. Cancel those in your store subscription settings to stop renewal.</p><p>Limited records may be retained as described in our Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after your account is deleted.</p><label class="delete-confirm">Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label><p id="delete-store-management" hidden><a href="https://apps.apple.com/account/subscriptions">Manage Apple subscriptions</a> · <a href="https://play.google.com/store/account/subscriptions?package=com.baristajobmatch.app">Manage Google Play subscriptions</a></p><p class="form-status" id="delete-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="delete-cancel">Keep my account</button><button class="danger-button" type="submit">Permanently delete account</button></div></form></dialog>
+ <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+ <script src="/dashboard-quiet-focus.js"></script>
+ <script src="/checkout.js"></script>
++<script src="/account-billing-presentation.js"></script>
+ <script>
+ const views={
+ barista:{label:'Barista account',menu:['Overview','Discover','Matches','Messages','Profile Views','My Profile'],html:`<div class="welcome"><div><h2>Welcome back</h2><p>Your next great café opportunity starts here.</p></div><button class="primary">Complete your profile</button></div><div class="stats"><article class="card stat"><span>Profile strength</span><strong>35%</strong></article><article class="card stat"><span>Open jobs</span><strong>0</strong></article><article class="card stat"><span>Matches</span><strong>0</strong></article><article class="card stat"><span>Applications</span><strong>0</strong></article></div><div class="grid"><article class="card"><h3>Recommended opportunities</h3><p class="empty">New local café positions that fit your availability and skills will appear here.</p><div class="item"><div class="avatar">☕</div><div class="itemtext"><b>Build your profile to start matching</b><small>Add your experience, skills, location, desired pay, and availability.</small></div><span class="pill">Next step</span></div></article><article class="card"><h3>Profile progress</h3><b>Let cafés discover you</b><div class="progress"><i></i></div><p class="empty">Add a photo, work history, skills, and weekly availability to improve your matches.</p></article></div>`},
+@@ -734,7 +735,7 @@
+   const helpSupportSection=`<article class="card settings-card help-support-card"><div class="help-support-copy"><span class="help-support-icon" aria-hidden="true">?</span><div><h3>Help & Support</h3><p>Need help, have a question, or found something that is not working? Contact BaristaMatch Support.</p></div></div><div class="help-support-actions"><a class="secondary" href="/support.html?type=question">Ask a question</a><a class="primary" href="/support.html?type=bug">Report a problem</a></div></article>`;
+   const accountActionsSection=`<article class="card settings-card account-actions-card"><div><h3>Account</h3><p>Manage your account session and sign out securely.</p></div><button class="secondary account-logout-button" type="button" data-account-logout>Log out</button></article>`;
+   const notificationSection=`<article class="card settings-card notification-card"><div><h3>Notifications</h3><p>Unread-message badges and email alerts are on. Browser alerts can also appear while BaristaMatch is open.</p><div class="notification-hint" id="notification-permission">Browser notifications: ${typeof Notification==='undefined'?'not supported':Notification.permission}</div></div><button class="secondary" type="button" data-enable-notifications>${typeof Notification!=='undefined'&&Notification.permission==='granted'?'Enabled':'Enable'}</button></article>`;
+-  const advancedSettings=`<details class="card settings-card advanced-settings"><summary>Advanced settings</summary><div class="advanced-body"><h3 style="margin-top:20px;color:#8c251d">Delete my account</h3><p>Permanently deleting your BaristaMatch account removes your profile, job activity, applications, and account data. If this account has an active Pro subscription, deletion cancels it immediately. This cannot be undone.</p><button class="danger-button" type="button" data-delete-account>Continue to account deletion</button></div></details>`;
++  const advancedSettings=`<details class="card settings-card advanced-settings"><summary>Advanced settings</summary><div class="advanced-body"><h3 style="margin-top:20px;color:#8c251d">Delete my account</h3><p>Permanently deleting your BaristaMatch account removes your profile, job activity, applications, and account data. Website subscriptions are canceled immediately. Apple or Google Play subscriptions must be managed separately in your store subscription settings. This cannot be undone.</p><button class="danger-button" type="button" data-delete-account>Continue to account deletion</button></div></details>`;
+   return `<div class="section-head"><div><h2>Account Settings</h2><p>Manage your login and account safely.</p></div></div><div class="settings-stack"><article class="card settings-card login-details-card"><h3>Login details</h3><p class="account-email">${escapeHtml(currentUser.email||'')}</p></article>${subscriptionSection}${notificationSection}${passwordSection}${helpSupportSection}${accountActionsSection}${advancedSettings}</div>`
+ }
+ function applicationsHtml(){
+@@ -877,6 +878,7 @@
+     const {data:{session}}=await activeClient.auth.getSession();
+     const response=await fetch('/api/billing-status',{headers:{Authorization:`Bearer ${session?.access_token||''}`},cache:'no-store'}),billing=await response.json().catch(()=>({}));
+     if(!response.ok)throw new Error(billing.error||'Subscription status is unavailable.');
++    if(window.BaristaMatchAccountBilling?.render({billing,accountId:currentUser.id,plan,detail,button}))return;
+     const paying=billing.plan==='pro'&&billing.connectedToBilling,needsPayment=billing.connectedToBilling&&['past_due','unpaid','incomplete'].includes(billing.status),status=String(billing.status||'').replaceAll('_',' ').replace(/\b\w/g,character=>character.toUpperCase()),date=billing.currentPeriodEnd?new Date(billing.currentPeriodEnd).toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}):'';
+     plan.textContent=paying?`Pro · ${status||'Active'} · $9.99/month`:needsPayment?`Pro · ${status||'Payment issue'}`:'Free · Active · $0';
+     if(paying&&billing.cancelAtPeriodEnd&&date)detail.textContent=`Canceled · Pro access ends ${date}`;
+@@ -1017,7 +1019,7 @@
+ document.getElementById('job-upgrade-action').onclick=event=>continueJobUpgrade(event.currentTarget);
+ document.getElementById('delete-cancel').onclick=()=>document.getElementById('delete-dialog').close();
+ document.getElementById('content').addEventListener('submit',event=>{if(event.target.id==='password-form')changePassword(event)});
+-document.getElementById('content').addEventListener('click',event=>{if(event.target.closest('[data-delete-account]')){const form=document.getElementById('delete-form');form.reset();document.getElementById('delete-status').textContent='';document.getElementById('delete-dialog').showModal();setTimeout(()=>form.confirmation.focus(),0)}});
++document.getElementById('content').addEventListener('click',event=>{if(event.target.closest('[data-delete-account]')){const form=document.getElementById('delete-form');form.reset();document.getElementById('delete-status').textContent='';document.getElementById('delete-store-management').hidden=currentRole!=='cafe_owner_manager';document.getElementById('delete-dialog').showModal();setTimeout(()=>form.confirmation.focus(),0)}});
+ document.getElementById('delete-form').onsubmit=async event=>{
+   event.preventDefault();
+   if(accountDeletionInProgress)return;

@@ -1,0 +1,22 @@
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -10,7 +10,8 @@
+     "typecheck": "tsc --noEmit",
+     "release:verify-auth": "node scripts/verify-authentication-release.mjs",
+     "release:verify-stores": "node scripts/verify-store-toolchain.mjs",
+-    "eas-build-pre-install": "node scripts/verify-store-toolchain.mjs"
++    "eas-build-pre-install": "node scripts/verify-store-toolchain.mjs",
++    "postinstall": "node scripts/fix-android-screen-removal.mjs"
+   },
+   "dependencies": {
+     "@expo/vector-icons": "15.1.1",
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -7,6 +7,7 @@
+     "": {
+       "name": "baristamatch-mobile",
+       "version": "1.0.5",
++      "hasInstallScript": true,
+       "dependencies": {
+         "@expo/vector-icons": "15.1.1",
+         "@react-native-async-storage/async-storage": "^2.1.2",

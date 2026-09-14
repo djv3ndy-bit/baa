@@ -1,0 +1,410 @@
+diff --git a/mobile/app/candidates.tsx b/mobile/app/candidates.tsx
+index d7d1d4a..759b82c 100644
+--- a/mobile/app/candidates.tsx
++++ b/mobile/app/candidates.tsx
+@@ -49,6 +49,7 @@ export default function CandidatesScreen() {
+     <View style={s.header}><View style={s.headerCopy}><Text style={s.title}>Candidates</Text><Text style={s.copy}>Review applications and keep their history</Text></View></View>
+     <ScrollView contentContainerStyle={s.wrap}>
+       <Pressable accessibilityRole="button" style={s.secondary} onPress={() => router.push({ pathname: '/discover', params: { tab: 'received' } })}><Text style={s.secondaryText}>Review profile interests</Text></Pressable>
++      <Pressable accessibilityRole="button" style={[s.secondary, { marginTop: 9 }]} onPress={() => router.push('/matches')}><Text style={s.secondaryText}>View matches</Text></Pressable>
+       <View style={s.actions}><Pressable accessibilityRole="tab" accessibilityState={{ selected: !history }} style={s.secondary} onPress={() => setHistory(false)}><Text style={s.secondaryText}>Awaiting review</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: history }} style={s.secondary} onPress={() => setHistory(true)}><Text style={s.secondaryText}>History</Text></Pressable><Pressable disabled={loading || busy} style={s.secondary} onPress={() => void load()}><Text style={s.secondaryText}>Refresh</Text></Pressable></View>
+       {loading ? <ActivityIndicator size="large" color={prism.ink} /> : error ? <Text accessibilityRole="alert" style={s.copy}>{error}</Text> : <><Text style={s.count}>{visible.length} {history ? 'reviewed applications' : 'applications awaiting review'}</Text>{visible.map(candidate => { const person = candidate.barista; return <View key={candidate.id} style={s.card}>
+         {person?.avatar_url ? <Image source={{ uri: person.avatar_url }} style={s.photo} accessibilityLabel="Barista profile photo" /> : null}<Text style={s.name}>{person?.display_name || 'Profile currently unavailable'}</Text><Text style={s.job}>{candidate.job?.title || 'Job no longer available'}{candidate.job?.active === false ? ' · Paused' : ''}</Text><Text style={s.copy}>{person?.location || 'Location not added'}</Text>
+diff --git a/mobile/app/settings.tsx b/mobile/app/settings.tsx
+index 3a84101..60b6e92 100644
+--- a/mobile/app/settings.tsx
++++ b/mobile/app/settings.tsx
+@@ -2,6 +2,7 @@ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useEffect, useRef, useState } from "react";
+ import {
+   Alert,
++  AppState,
+   Linking,
+   Pressable,
+   SafeAreaView,
+@@ -11,7 +12,7 @@ import {
+   TextInput,
+   View,
+ } from "react-native";
+-import { router, useFocusEffect } from "expo-router";
++import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+ import * as WebBrowser from "expo-web-browser";
+ import AsyncStorage from '@react-native-async-storage/async-storage';
+ import { AUTH_STORAGE_KEY, withAuthStorageLock, supabase } from "@/lib/supabase";
+@@ -19,6 +20,7 @@ import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } fro
+ import { getCurrentContext, AppRole } from "@/lib/session";
+ import { registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
+ import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
++import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
+ 
+ type BillingStatus = {
+   status: string;
+@@ -26,17 +28,31 @@ type BillingStatus = {
+   currentPeriodEnd: string | null;
+   cancelAtPeriodEnd: boolean;
+   connectedToBilling: boolean;
+-  canManageBilling: boolean;
+   billingPaused: boolean;
++  canManageBilling?: boolean;
+ };
+ 
++function canManage(billing: BillingStatus | null) {
++  return billing?.canManageBilling ?? Boolean(billing?.connectedToBilling && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(billing.status));
++}
++
+ export default function Settings() {
++  const returnParams = useLocalSearchParams<{ billing?: string; session_id?: string }>();
++  const returnResult = typeof returnParams.billing === 'string' ? returnParams.billing : undefined;
++  const returnSessionId = typeof returnParams.session_id === 'string' ? returnParams.session_id : undefined;
++  const returnOwner = useRef<{ key: string; accountId: string | null; invalidated: boolean }>({ key: '', accountId: null, invalidated: false });
+   const actionBusy = useRef(false);
+   const active = useRef(false);
+   const generation = useRef(0);
+   const account = useRef<string | null>(null);
+   const [role, setRole] = useState<AppRole | null>(null);
+   const [accountId, setAccountId] = useState<string | null>(null);
++  const returnKey = JSON.stringify([returnResult, returnSessionId]);
++  if (returnOwner.current.key !== returnKey) returnOwner.current = { key: returnKey, accountId: null, invalidated: false };
++  if (accountId && !returnOwner.current.invalidated) {
++    if (!returnOwner.current.accountId) returnOwner.current.accountId = accountId;
++    else if (returnOwner.current.accountId !== accountId) returnOwner.current.invalidated = true;
++  }
+   const [loading, setLoading] = useState(true);
+   const [loadError, setLoadError] = useState('');
+   const [email, setEmail] = useState('');
+@@ -95,9 +111,24 @@ export default function Settings() {
+     void load();
+     return () => { active.current = false; ++generation.current; };
+   }, [load]));
++  useEffect(() => {
++    const listener = AppState.addEventListener('change', state => {
++      if (state === 'active' && active.current) void load();
++    });
++    return () => listener.remove();
++  }, [load]);
++  const acceptConfirmedBilling = useCallback((expectedUserId: string, result: BillingStatus) => {
++    if (active.current && account.current === expectedUserId) {
++      ++generation.current;
++      setBilling(result);
++      setBillingError('');
++      setLoading(false);
++    }
++  }, []);
+   useEffect(() => {
+     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+       if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && account.current && session?.user.id !== account.current)) {
++        returnOwner.current.invalidated = true;
+         ++generation.current;
+         account.current = null;
+         setAccountId(null);
+@@ -124,11 +155,12 @@ export default function Settings() {
+     try {
+       await requireAccountSession(expectedUserId);
+       if (!active.current || account.current !== expectedUserId) return;
+-      if (!billing.canManageBilling) return router.push('/subscription');
++      if (!canManage(billing)) return router.push('/subscription');
+       const result = await authenticatedApi<{ url: string }>('/create-portal-session', { channel: 'mobile' }, 'POST', expectedUserId);
+       await requireAccountSession(expectedUserId);
+       if (!active.current || account.current !== expectedUserId) return;
+-      if (!result.url || new URL(result.url).origin !== 'https://billing.stripe.com') throw new Error('The billing link is unavailable. Please try again.');
++      const billingUrl = new URL(result.url);
++      if (billingUrl.origin !== 'https://billing.stripe.com' || billingUrl.username || billingUrl.password) throw new Error('The billing link is unavailable. Please try again.');
+       await WebBrowser.openBrowserAsync(result.url);
+       await load();
+     } catch (error) {
+@@ -183,7 +215,7 @@ export default function Settings() {
+     if (!expectedUserId || actionBusy.current || loading) return;
+     Alert.alert(
+       'Delete your account?',
+-      'This permanently removes your profile, jobs, matches, messages, and uploaded media. If this account has an active Pro subscription, deletion cancels it immediately. This cannot be undone.',
++      'This permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.',
+       [
+         { text: 'Cancel', style: 'cancel' },
+         { text: 'Continue', style: 'destructive', onPress: () => confirmAccountDeletion(expectedUserId) },
+@@ -194,7 +226,7 @@ export default function Settings() {
+     if (account.current !== expectedUserId) return Alert.alert('Account changed', 'Please review the signed-in account before deleting.');
+     Alert.alert(
+       'Final confirmation',
+-      'Delete your BaristaMatch account now? Any active Pro subscription will be canceled immediately; deletion does not issue a refund. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
++      'Delete your BaristaMatch account now? Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
+       [
+         { text: 'Keep my account', style: 'cancel' },
+         { text: 'Delete permanently', style: 'destructive', onPress: () => { void deleteAccount(expectedUserId); } },
+@@ -251,6 +283,7 @@ export default function Settings() {
+       </View>
+       <ScrollView contentContainerStyle={s.wrap}>
+         {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading ? 'Loading your account…' : email} />}
++        {role === 'cafe_owner_manager' && accountId && returnResult && !returnOwner.current.invalidated && returnOwner.current.accountId === accountId ? <CheckoutReturnStatus key={accountId} accountId={accountId} result={returnResult} sessionId={returnSessionId} onBilling={acceptConfirmedBilling} /> : null}
+         {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling || loading} onPress={manageSubscription} /> : null}
+         <View style={s.card}>
+           <Text style={s.cardTitle}>Notifications</Text>
+@@ -369,7 +402,7 @@ export default function Settings() {
+             <View style={s.dangerZone}>
+               <Text style={s.dangerTitle}>Delete my account</Text>
+               <Text style={s.copy}>
+-                Permanently removes your profile, jobs, matches, messages, and uploaded media. Any active Pro subscription is canceled immediately. This cannot be undone.
++                Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
+               </Text>
+               <Pressable
+                 accessibilityRole="button"
+@@ -388,21 +421,34 @@ export default function Settings() {
+   );
+ }
+ 
++function CheckoutReturnStatus({ accountId, result, sessionId, onBilling }: { accountId: string; result: string; sessionId?: string; onBilling: (accountId: string, billing: BillingStatus) => void }) {
++  const checkout = useWebsiteCheckout(accountId, { billing: result, sessionId });
++  useEffect(() => {
++    if (checkout.billing) onBilling(accountId, checkout.billing);
++  }, [accountId, checkout.billing, onBilling]);
++  return <View style={s.card}>
++    <Text style={s.cardTitle}>Subscription update</Text>
++    <Text accessibilityLiveRegion="polite" style={[s.copy, checkout.error ? s.errorText : undefined]}>{checkout.error || checkout.notice || (checkout.loading ? 'Checking your subscription…' : 'Your latest subscription status is shown below.')}</Text>
++    <Pressable accessibilityRole="button" disabled={checkout.loading} style={[s.secondary, checkout.loading && s.disabled]} onPress={() => { void checkout.refresh(); }}><Text style={s.secondaryText}>{checkout.loading ? 'Checking…' : 'Check subscription status'}</Text></Pressable>
++  </View>;
++}
++
+ function SubscriptionCard({ billing, error, opening, onPress }: { billing: BillingStatus | null; error: string; opening: boolean; onPress: () => void }) {
+-  const paying = billing?.plan === "pro" && billing.connectedToBilling;
+-  const needsPayment = Boolean(billing?.connectedToBilling && ["past_due", "unpaid", "incomplete"].includes(billing.status));
++  const paying = billing?.plan === "pro" && billing.connectedToBilling && ['active', 'trialing'].includes(billing.status);
++  const paymentAttention = canManage(billing) && !paying;
+   const date = billing?.currentPeriodEnd ? new Date(billing.currentPeriodEnd).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "";
+   const statusLabel = String(billing?.status || "").replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase());
+   let detail = "Checking your café plan…";
+   if (error) detail = error;
++  else if (paymentAttention) detail = "Your subscription payment needs attention. Open management to check or update your payment method.";
+   else if (paying && billing?.cancelAtPeriodEnd && date) detail = `Canceled · Pro access ends ${date}`;
+   else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
+-  else if (needsPayment) detail = "Payment needs attention. Update your payment method.";
++  else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
+   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
+-  else if (billing) detail = "Your first job, matches, and interview messaging are included. A second job requires Pro.";
+-  const action = error ? "Retry subscription status" : billing?.canManageBilling ? "Manage subscription" : "View Free and Pro plans";
++  else if (billing) detail = "Your first job and first hire are included. No upcoming charge.";
++  const action = error ? "Retry subscription status" : canManage(billing) ? "Manage subscription" : "View Free and Pro plans";
+   return <View style={s.card}>
+-    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : needsPayment ? `Pro · ${statusLabel || "Payment issue"}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
++    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : paymentAttention ? `Payment needs attention · ${statusLabel}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
+     <Pressable accessibilityRole="button" disabled={(!billing && !error) || opening} onPress={onPress} style={[s.secondary, ((!billing && !error) || opening) && s.disabled]}><Text style={s.secondaryText}>{opening ? "Opening…" : action}</Text></Pressable>
+   </View>;
+ }
+diff --git a/mobile/lib/useCafeAccess.ts b/mobile/lib/useCafeAccess.ts
+index b44cd00..f5e1dba 100644
+--- a/mobile/lib/useCafeAccess.ts
++++ b/mobile/lib/useCafeAccess.ts
+@@ -9,11 +9,13 @@ export function useCafeAccess() {
+   const focused = useRef(false);
+   const account = useRef<string | null>(null);
+   const [ready, setReady] = useState(false);
++  const [accountId, setAccountId] = useState<string | null>(null);
+   const [error, setError] = useState('');
+   const check = useCallback(async () => {
+     if (!focused.current) return;
+     const run = ++revision.current;
+     setReady(false);
++    setAccountId(null);
+     setError('');
+     try {
+       const context = await getCurrentContext();
+@@ -22,6 +24,7 @@ export function useCafeAccess() {
+       if (!context.role) return router.replace({ pathname: '/signup', params: { complete: '1' } });
+       if (context.role !== 'cafe_owner_manager') return router.replace('/home');
+       account.current = context.user.id;
++      setAccountId(context.user.id);
+       setReady(true);
+     } catch (cause) {
+       if (run === revision.current) setError(cause instanceof Error ? cause.message : 'Could not verify your café account. Please try again.');
+@@ -30,13 +33,14 @@ export function useCafeAccess() {
+   useFocusEffect(useCallback(() => {
+     focused.current = true;
+     void check();
+-    return () => { focused.current = false; ++revision.current; account.current = null; setReady(false); };
++    return () => { focused.current = false; ++revision.current; account.current = null; setAccountId(null); setReady(false); };
+   }, [check]));
+   useEffect(() => {
+     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+       if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && session?.user.id !== account.current)) {
+         ++revision.current;
+         account.current = null;
++        setAccountId(null);
+         setReady(false);
+         // Leave the auth callback before reading the profile/session again.
+         setTimeout(() => { void check(); }, 0);
+@@ -44,5 +48,5 @@ export function useCafeAccess() {
+     });
+     return () => subscription.unsubscribe();
+   }, [check]);
+-  return { ready, error, retry: check };
++  return { ready, accountId, error, retry: check };
+ }
+diff --git a/mobile/package-lock.json b/mobile/package-lock.json
+index 75ad552..ac42bda 100644
+--- a/mobile/package-lock.json
++++ b/mobile/package-lock.json
+@@ -8,12 +8,14 @@
+       "name": "baristamatch-mobile",
+       "version": "1.0.4",
+       "dependencies": {
++        "@expo/vector-icons": "15.1.1",
+         "@react-native-async-storage/async-storage": "^2.1.2",
+         "@supabase/supabase-js": "^2.57.0",
+         "decode-uri-component": "file:vendor/decode-uri-component",
+         "expo": "~54.0.0",
+         "expo-constants": "~18.0.0",
+         "expo-device": "~8.0.10",
++        "expo-font": "14.0.12",
+         "expo-image-picker": "~17.0.11",
+         "expo-linking": "~8.0.0",
+         "expo-notifications": "~0.32.17",
+@@ -2281,6 +2283,17 @@
+       "integrity": "sha512-HHQigo3rQWKMDzYDLkubN5WQOYXJJE2eNqIQC2axC2iO3mHdwnIR7FgZVvHWtBwAdzBgAP0ECp8KqS8TiMKvgw==",
+       "license": "MIT"
+     },
++    "node_modules/@expo/vector-icons": {
++      "version": "15.1.1",
++      "resolved": "https://registry.npmjs.org/@expo/vector-icons/-/vector-icons-15.1.1.tgz",
++      "integrity": "sha512-Iu2VkcoI5vygbtYngm7jb4ifxElNVXQYdDrYkT7UCEIiKLeWnQY0wf2ZhHZ+Wro6Sc5TaumpKUOqDRpLi5rkvw==",
++      "license": "MIT",
++      "peerDependencies": {
++        "expo-font": ">=14.0.4",
++        "react": "*",
++        "react-native": "*"
++      }
++    },
+     "node_modules/@expo/ws-tunnel": {
+       "version": "1.0.6",
+       "resolved": "https://registry.npmjs.org/@expo/ws-tunnel/-/ws-tunnel-1.0.6.tgz",
+@@ -5099,6 +5112,20 @@
+       "integrity": "sha512-5or11NJhSeDoHHI6zyvQDW2cz/yFyE+1Cz8NTs5NK8JzC7J0JrkUgptWtxyfB6Xs/21YRNifd3qgbBN3hfKVgA==",
+       "license": "MIT"
+     },
++    "node_modules/expo-font": {
++      "version": "14.0.12",
++      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-14.0.12.tgz",
++      "integrity": "sha512-QQzunE2Mxk45AsCWm3tK7OpVljbtVnKD58q4/qliev+cbye1IOduUnRIdD+P7DyButw17G9MTX795kgaQiz5hQ==",
++      "license": "MIT",
++      "dependencies": {
++        "fontfaceobserver": "^2.1.0"
++      },
++      "peerDependencies": {
++        "expo": "*",
++        "react": "*",
++        "react-native": "*"
++      }
++    },
+     "node_modules/expo-image-loader": {
+       "version": "6.0.0",
+       "resolved": "https://registry.npmjs.org/expo-image-loader/-/expo-image-loader-6.0.0.tgz",
+@@ -5908,17 +5935,6 @@
+         }
+       }
+     },
+-    "node_modules/expo/node_modules/@expo/vector-icons": {
+-      "version": "15.1.1",
+-      "resolved": "https://registry.npmjs.org/@expo/vector-icons/-/vector-icons-15.1.1.tgz",
+-      "integrity": "sha512-Iu2VkcoI5vygbtYngm7jb4ifxElNVXQYdDrYkT7UCEIiKLeWnQY0wf2ZhHZ+Wro6Sc5TaumpKUOqDRpLi5rkvw==",
+-      "license": "MIT",
+-      "peerDependencies": {
+-        "expo-font": ">=14.0.4",
+-        "react": "*",
+-        "react-native": "*"
+-      }
+-    },
+     "node_modules/expo/node_modules/ansi-styles": {
+       "version": "4.3.0",
+       "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
+@@ -6066,20 +6082,6 @@
+         "react-native": "*"
+       }
+     },
+-    "node_modules/expo/node_modules/expo-font": {
+-      "version": "14.0.12",
+-      "resolved": "https://registry.npmjs.org/expo-font/-/expo-font-14.0.12.tgz",
+-      "integrity": "sha512-QQzunE2Mxk45AsCWm3tK7OpVljbtVnKD58q4/qliev+cbye1IOduUnRIdD+P7DyButw17G9MTX795kgaQiz5hQ==",
+-      "license": "MIT",
+-      "dependencies": {
+-        "fontfaceobserver": "^2.1.0"
+-      },
+-      "peerDependencies": {
+-        "expo": "*",
+-        "react": "*",
+-        "react-native": "*"
+-      }
+-    },
+     "node_modules/expo/node_modules/expo-keep-awake": {
+       "version": "15.0.8",
+       "resolved": "https://registry.npmjs.org/expo-keep-awake/-/expo-keep-awake-15.0.8.tgz",
+diff --git a/mobile/package.json b/mobile/package.json
+index 5e09a7c..d230bcc 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -13,11 +13,14 @@
+     "eas-build-pre-install": "node scripts/verify-store-toolchain.mjs"
+   },
+   "dependencies": {
++    "@expo/vector-icons": "15.1.1",
+     "@react-native-async-storage/async-storage": "^2.1.2",
+     "@supabase/supabase-js": "^2.57.0",
++    "decode-uri-component": "file:vendor/decode-uri-component",
+     "expo": "~54.0.0",
+     "expo-constants": "~18.0.0",
+     "expo-device": "~8.0.10",
++    "expo-font": "14.0.12",
+     "expo-image-picker": "~17.0.11",
+     "expo-linking": "~8.0.0",
+     "expo-notifications": "~0.32.17",
+@@ -29,8 +32,7 @@
+     "react-dom": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-safe-area-context": "~5.6.0",
+-    "react-native-screens": "~4.16.0",
+-    "decode-uri-component": "file:vendor/decode-uri-component"
++    "react-native-screens": "~4.16.0"
+   },
+   "devDependencies": {
+     "@types/react": "~19.1.10",
+diff --git a/mobile-billing-return.html b/mobile-billing-return.html
+index 5c5f7cd..637d4c9 100644
+--- a/mobile-billing-return.html
++++ b/mobile-billing-return.html
+@@ -4,6 +4,7 @@
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+   <meta name="robots" content="noindex">
++  <meta name="referrer" content="no-referrer">
+   <title>Returning to BaristaMatch</title>
+   <style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px;background:#fff4e8;color:#321708;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:center}.card{width:min(390px,100%);padding:34px 24px;border:1px solid #eadfd5;border-radius:26px;background:#fff;box-shadow:0 18px 50px #32170818}.logo{width:88px;height:88px;object-fit:contain;margin:0 auto 12px}h1{margin:0;font-family:Georgia,serif;font-size:28px}p{margin:10px 0 22px;color:#746a61;line-height:1.5}.button{display:flex;min-height:52px;align-items:center;justify-content:center;border-radius:10px;background:#a9571f;color:#fff;text-decoration:none;font-weight:800}</style>
+   <script defer src="/analytics.js"></script>
+@@ -12,18 +13,28 @@
+   <main class="card">
+     <img class="logo" src="/assets/favicon-transparent-v2.png" alt="">
+     <h1>Returning to BaristaMatch</h1>
+-    <p id="status">Your secure billing session is complete. Opening the app…</p>
++    <p id="status">Opening the app to refresh your subscription status…</p>
+     <a class="button" id="open-app" href="baristamatch://settings?billing=complete">Open BaristaMatch</a>
+   </main>
+   <script>
+     (()=>{
+-      const result=new URLSearchParams(location.search).get('billing');
++      const params=new URLSearchParams(location.search);
++      const result=params.get('billing');
+       const allowed=new Set(['success','canceled','portal']);
+       const value=allowed.has(result)?result:'complete';
+-      const appUrl='baristamatch://settings?billing='+encodeURIComponent(value);
++      const sessionIds=params.getAll('session_id');
++      const sessionId=sessionIds.length===1?sessionIds[0]:'';
++      let appUrl='baristamatch://settings?billing='+encodeURIComponent(value);
++      // A return link only asks the signed-in app to verify this session.
++      if(value==='success'&&/^cs_(?:test_|live_)?[A-Za-z0-9]{1,200}$/.test(sessionId)){
++        appUrl+='&session_id='+encodeURIComponent(sessionId);
++      }
++      // Remove billing identifiers and unrelated query/fragment data before
++      // deferred analytics or subsequent browser navigation reads this URL.
++      try{history.replaceState(null,'',location.pathname)}catch{}
+       document.getElementById('open-app').href=appUrl;
+-      location.replace(appUrl);
+       setTimeout(()=>document.getElementById('status').textContent='Tap below to return to the app.',1200);
++      try{location.replace(appUrl)}catch{}
+     })();
+   </script>
+ </body>

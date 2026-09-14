@@ -1,3 +1,4 @@
+export { ApprovedBottomNav as AppBottomNav } from '../features/approved-dashboard/ApprovedBottomNav';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { dashboardPrism as prism } from '@/lib/dashboardPrism';
@@ -11,7 +12,7 @@ type NavItem = {
   path: string;
 };
 
-export function AppBottomNav({
+export function PreviousAppBottomNav({
   active,
   role = 'barista',
 }: {

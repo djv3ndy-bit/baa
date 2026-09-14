@@ -1,0 +1,14 @@
+--- a/mobile/lib/messaging.ts
++++ b/mobile/lib/messaging.ts
+@@ -9,7 +9,10 @@
+ 
+ export function messageError(error: unknown, fallback = 'Check your connection and try again.') {
+   if (error instanceof TypeError) return 'Connection lost. Check this conversation before trying again.';
+-  return error && typeof error === 'object' && 'message' in error ? String(error.message) : fallback;
++  const message = error && typeof error === 'object' && 'message' in error ? String(error.message).trim() : '';
++  if (/^(?:50[0234]\b|(?:error:\s*)?(?:bad gateway|gateway timeout|internal server error|service unavailable)\b)|<(?:!doctype|html|body)\b/i.test(message)) return fallback;
++  if (/^(?:offline|network request failed|failed to fetch)$/i.test(message)) return 'You appear to be offline. Check your connection and try again.';
++  return message || fallback;
+ }
+ 
+ export async function withMessageDeadline<T>(operation: PromiseLike<T>, milliseconds = 20000): Promise<T> {

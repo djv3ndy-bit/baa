@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 8+ already trusts this public root; retain platform trust and validation defaults. -->
+<network-security-config />

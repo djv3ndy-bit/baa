@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+
+group = 'com.baristajobmatch.network'
+version = '1.0.0'
+
+android {
+  namespace 'com.baristajobmatch.network'
+  compileSdk rootProject.ext.compileSdkVersion
+  defaultConfig {
+    minSdk rootProject.ext.minSdkVersion
+    targetSdk rootProject.ext.targetSdkVersion
+  }
+}

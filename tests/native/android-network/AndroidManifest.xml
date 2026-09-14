@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.baristajobmatch.tlschecks">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
+  <instrumentation android:name="com.baristajobmatch.tlschecks.TlsChecks" android:targetPackage="com.baristajobmatch.app" android:label="Public TLS verification" />
+  <application android:label="BaristaMatch TLS checks" />
+</manifest>

@@ -29,7 +29,7 @@ function harness(file, options = {}) {
     async authenticatedApi(path, body, method, expected) { await api.requireAccountSession(expected); requests.push({ path, body, method, expected }); return options.api ? options.api(path, expected) : path === '/billing-status' ? { plan: 'free', status: 'active', connectedToBilling: false } : { success: true }; },
     async updateAccountPassword(expected, password) { await api.requireAccountSession(expected); passwordCalls.push({ expected, password }); if (options.password) await options.password(); },
   };
-  const native = { StyleSheet: { create: value => value }, Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async () => {}, openSettings: async () => {} } };
+  const native = { Platform: { OS: 'ios', select: values => values.ios ?? values.default }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value }, Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async () => {}, openSettings: async () => {} } };
   for (const name of ['View', 'Text', 'Pressable', 'SafeAreaView', 'ScrollView', 'TextInput', 'ActivityIndicator']) native[name] = name;
   const jsx = (type, props) => ({ type, props: props || {} }), modules = new Map();
   function load(file) {
@@ -41,7 +41,10 @@ function harness(file, options = {}) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react-native') return native;
-      if (name === 'expo-router') return { router: { replace: route => routes.push(route), push: route => routes.push(route), back: () => routes.push('back') }, useFocusEffect: callback => { focusCallback = callback; } };
+      // These existing account tests exercise the preserved route with native purchases disabled.
+      if (name.endsWith('/ExpoSubscriptionEntry')) return { nativeSubscriptionScreenEnabled: false, default: () => { throw new Error('Native purchase route must not render while disabled'); } };
+      if (name === '@/modules/baristamatch-storefront') return { getStorefrontCountryCode: async () => null };
+      if (name === 'expo-router') return { useLocalSearchParams: () => ({}), router: { replace: route => routes.push(route), push: route => routes.push(route), back: () => routes.push('back') }, useFocusEffect: callback => { focusCallback = callback; } };
       if (name === 'expo-web-browser') return { openBrowserAsync: async () => {} };
       if (name === '@react-native-async-storage/async-storage') return { getItem: async () => current?.user ? JSON.stringify({ user: current.user }) : null, multiRemove: async keys => cleared.push(keys) };
       if (name.endsWith('/supabase') || name === './supabase') return { supabase: { auth }, AUTH_STORAGE_KEY: 'test-auth', withAuthStorageLock: operation => operation() };
@@ -49,7 +52,7 @@ function harness(file, options = {}) {
       if (name.endsWith('/api')) return api;
       if (name.endsWith('/pushNotifications')) return { registerForPhoneNotifications: async () => ({ status: 'enabled' }), unregisterThisDeviceNotifications: async () => {} };
       if (name.startsWith('@/')) return load(`mobile/${name.slice(2)}`);
-      if (name.startsWith('./')) return load(resolve(dirname(file), name));
+      if (name.startsWith('./') || name.startsWith('../')) return load(resolve(dirname(file), name));
       throw new Error(`Unexpected native dependency ${name}`);
     }
     const output = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;

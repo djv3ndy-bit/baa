@@ -10,6 +10,8 @@
     "test:database": "node --test tests/database/*.test.mjs"
   },
   "dependencies": {
+    "@apple/app-store-server-library": "3.1.0",
+    "google-auth-library": "11.0.2",
     "stripe": "22.4.0"
   }
 }
