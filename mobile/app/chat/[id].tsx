@@ -21,7 +21,7 @@ export default function Chat() {
       { text: 'Report conversation', onPress: chooseReportReason },
       { text: 'Block account', style: 'destructive', onPress: confirmBlock },
       { text: 'Cancel', style: 'cancel' },
-    ]);
+    ], { cancelable: true });
   }
 
   function chooseReportReason() {
@@ -29,7 +29,7 @@ export default function Chat() {
       { text: 'Harassment or threats', onPress: () => submitReport('harassment') },
       { text: 'Spam or scam', onPress: () => submitReport('spam_or_scam') },
       { text: 'Cancel', style: 'cancel' },
-    ]);
+    ], { cancelable: true });
   }
 
   async function submitReport(reason: ReportReason) {
@@ -47,7 +47,7 @@ export default function Chat() {
     Alert.alert('Block this account?', 'You will no longer see each other or be able to exchange messages.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Block', style: 'destructive', onPress: performBlock },
-    ]);
+    ], { cancelable: true });
   }
 
   async function performBlock() {

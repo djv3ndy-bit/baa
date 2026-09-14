@@ -1,0 +1,701 @@
+diff --git a/mobile/app/_layout.tsx b/mobile/app/_layout.tsx
+--- a/mobile/app/_layout.tsx
++++ b/mobile/app/_layout.tsx
+@@ -7,8 +7,15 @@
+ import { listenForPhoneNotifications, registerForPhoneNotifications } from '@/lib/pushNotifications';
+ import { supabase } from '@/lib/supabase';
+ import { authenticatedApi } from '@/lib/api';
++import { AppEnvironmentGate } from '@/features/review-mode/AppEnvironmentGate';
++import { ReviewModeBanner, ReviewModeEntry } from '@/features/review-mode/ReviewModeControls';
++import { getAppEnvironment } from '@/features/review-mode/environment';
+ 
+ export default function RootLayout() {
++  return <AppEnvironmentGate><ReadyRootLayout /></AppEnvironmentGate>;
++}
++
++function ReadyRootLayout() {
+   const pathname=usePathname();
+   const isLogin = pathname === '/login';
+   useEffect(() => {
+@@ -27,11 +34,13 @@
+   },[pathname]);
+   return (
+     <AppErrorBoundary>
+-      <StatusBar style={isLogin ? 'light' : 'dark'} />
++      <StatusBar style={isLogin && !getAppEnvironment().review ? 'light' : 'dark'} />
+       {/* Android 16 is edge-to-edge. RN's per-screen SafeAreaView is iOS-only.
+           Expo Router supplies the safe-area provider. The login screen handles its own photo-header insets on both platforms. */}
+-      <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
++      <SafeAreaView style={{ flex: 1 }} edges={getAppEnvironment().review ? ['top', 'right', 'bottom', 'left'] : Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
++        <ReviewModeBanner />
+         <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
++        {isLogin && <ReviewModeEntry />}
+       </SafeAreaView>
+     </AppErrorBoundary>
+   );
+diff --git a/mobile/app/login.tsx b/mobile/app/login.tsx
+--- a/mobile/app/login.tsx
++++ b/mobile/app/login.tsx
+@@ -5,6 +5,8 @@
+ import * as WebBrowser from 'expo-web-browser';
+ import { supabase } from '@/lib/supabase';
+ import { completeMobileAuth, getCurrentContext } from '@/lib/session';
++import ReviewLogin from '@/features/review-mode/ReviewLogin';
++import { getAppEnvironment } from '@/features/review-mode/environment';
+ import { LOGIN_LAYOUT_METRICS, resolveLoginLayout } from '@/lib/loginLayout';
+ 
+ const oauthAppCallback = 'baristamatch://auth/callback';
+@@ -18,6 +20,10 @@
+ }
+ 
+ export default function LoginScreen() {
++  return getAppEnvironment().review ? <ReviewLogin /> : <OriginalLoginScreen />;
++}
++
++function OriginalLoginScreen() {
+   const { width, height } = useWindowDimensions();
+   const insets = useSafeAreaInsets();
+   const [keyboardVisible, setKeyboardVisible] = useState(false);
+diff --git a/mobile/lib/api.ts b/mobile/lib/api.ts
+--- a/mobile/lib/api.ts
++++ b/mobile/lib/api.ts
+@@ -1,7 +1,6 @@
+-import { AUTH_API_BASE, SUPABASE_PUBLIC_KEY, supabase } from './supabase';
++import { APP_API_BASE, AUTH_API_BASE, SUPABASE_PUBLIC_KEY, supabase } from './supabase';
+ import { requestJson } from './request';
+ 
+-const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.baristajobmatch.com/api').replace(/\/$/, '');
+ 
+ export async function requireAccountSession(expectedUserId?: string) {
+   const { data: { session }, error } = await supabase.auth.getSession();
+@@ -13,7 +12,7 @@
+ 
+ export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST', expectedUserId?: string): Promise<T> {
+   const session = await requireAccountSession(expectedUserId);
+-  return requestJson<T>(`${API_BASE}${path}`, {
++  return requestJson<T>(`${APP_API_BASE}${path}`, {
+     method,
+     headers: {
+       Authorization: `Bearer ${session.access_token}`,
+diff --git a/mobile/lib/supabase.ts b/mobile/lib/supabase.ts
+--- a/mobile/lib/supabase.ts
++++ b/mobile/lib/supabase.ts
+@@ -3,38 +3,50 @@
+ import { AppState, Platform } from 'react-native';
+ import { fetchWithTimeout } from './request';
+ import { createLockedAuthStorage } from './authStorage';
++import { initializeAppEnvironment } from '../features/review-mode/environment';
+ 
+-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
++export let AUTH_API_BASE: string;
++export let SUPABASE_PUBLIC_KEY: string;
++export let AUTH_STORAGE_KEY: string;
++export let APP_API_BASE: string;
++export let supabase: ReturnType<typeof createAppClient>;
++const authStorage = createLockedAuthStorage(AsyncStorage);
++export const withAuthStorageLock = authStorage.runExclusive;
++let initialization: Promise<void> | undefined;
+ 
+-if (!supabaseUrl || !supabaseKey) {
+-  throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
++/** Root startup waits for the saved mode before creating any account client. */
++export function initializeSupabaseEnvironment(): Promise<void> {
++  if (!initialization) {
++    initialization = initializeAppEnvironment().then(environment => {
++      const supabaseUrl = environment.supabaseUrl;
++      const supabaseKey = environment.publishableKey;
++      AUTH_API_BASE = `${supabaseUrl.replace(/\/$/, '')}/auth/v1`;
++      SUPABASE_PUBLIC_KEY = supabaseKey;
++      APP_API_BASE = environment.apiBase;
++      // Preserve Supabase's existing project-specific key, including deletion cleanup.
++      AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
++      supabase = createAppClient(supabaseUrl, supabaseKey);
++      if (Platform.OS !== 'web') {
++        AppState.addEventListener('change', (state) => {
++          if (state === 'active') supabase.auth.startAutoRefresh();
++          else supabase.auth.stopAutoRefresh();
++        });
++      }
++    }).catch(error => { initialization = undefined; throw error; });
++  }
++  return initialization;
+ }
+ 
+-export const AUTH_API_BASE = `${supabaseUrl.replace(/\/$/, '')}/auth/v1`;
+-export const SUPABASE_PUBLIC_KEY = supabaseKey;
+-
+-// Explicitly preserve Supabase's default key so deletion can clear local auth
+-// even when the now-deleted user's remote sign-out request fails.
+-export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+-const authStorage = createLockedAuthStorage(AsyncStorage);
+-export const withAuthStorageLock = authStorage.runExclusive;
+-
+-export const supabase = createClient(supabaseUrl, supabaseKey, {
+-  global: { fetch: fetchWithTimeout },
+-  auth: {
+-    lock: processLock,
+-    storage: authStorage.storage,
+-    storageKey: AUTH_STORAGE_KEY,
+-    autoRefreshToken: true,
+-    persistSession: true,
+-    detectSessionInUrl: false,
+-  },
+-});
+-
+-if (Platform.OS !== 'web') {
+-  AppState.addEventListener('change', (state) => {
+-    if (state === 'active') supabase.auth.startAutoRefresh();
+-    else supabase.auth.stopAutoRefresh();
++function createAppClient(supabaseUrl: string, supabaseKey: string) {
++  return createClient(supabaseUrl, supabaseKey, {
++    global: { fetch: fetchWithTimeout },
++    auth: {
++      lock: processLock,
++      storage: authStorage.storage,
++      storageKey: AUTH_STORAGE_KEY,
++      autoRefreshToken: true,
++      persistSession: true,
++      detectSessionInUrl: false,
++    },
+   });
+ }
+diff --git a/mobile/features/native-subscription/ExpoSubscriptionEntry.tsx b/mobile/features/native-subscription/ExpoSubscriptionEntry.tsx
+--- a/mobile/features/native-subscription/ExpoSubscriptionEntry.tsx
++++ b/mobile/features/native-subscription/ExpoSubscriptionEntry.tsx
+@@ -3,6 +3,8 @@
+ import { ExpoStoreGateway, type NativePurchase, type NativePurchaseApi } from './expoStoreGateway';
+ import { approvedStorePlan } from './storeCatalog';
+ import type { StorePurchase } from './purchaseCoordinator';
++import { getAppEnvironment } from '../review-mode/environment';
++import { sandboxOnlyStore } from '../review-mode/reviewPurchaseGuard';
+ 
+ // This flag controls presentation only. The server independently enforces the
+ // saved café role, billing environment, product, access and checkout reservation.
+@@ -14,7 +16,7 @@
+   // Load the native module only for a configured store and a verified café.
+   // Its exact 5.5.1 API is checked in review/validation against SDK declarations.
+   const sdk = require('expo-iap') as NativePurchaseApi<NativePurchase>;
+-  return new ExpoStoreGateway(sdk, plan, onUnfinished, undefined, undefined,
++  return new ExpoStoreGateway(getAppEnvironment().review ? sandboxOnlyStore(sdk) : sdk, plan, onUnfinished, undefined, undefined,
+     process.env.EXPO_PUBLIC_BILLING_DIAGNOSTICS === 'true'
+       ? event => console.info(`[BaristaMatch Store] ${event}`) : undefined);
+ }
+diff --git a/launch-check.js b/launch-check.js
+--- a/launch-check.js
++++ b/launch-check.js
+@@ -198,7 +198,9 @@
+ const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
+ if(!/pathname:\s*'\/post-job'/.test(mobileJobs)||!/update\(\{\s*active:\s*!job.active/.test(mobileJobs))throw new Error('Mobile job management is incomplete');
+ const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
+-if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API cannot target a Stripe-enabled preview deployment');
++const mobileEnvironment=fs.readFileSync('mobile/features/review-mode/environment.ts','utf8');
++const mobileClient=fs.readFileSync('mobile/lib/supabase.ts','utf8');
++if(!mobileEnvironment.includes('EXPO_PUBLIC_API_BASE_URL') || !mobileClient.includes('APP_API_BASE = environment.apiBase') || !mobileApi.includes('`${APP_API_BASE}${path}`')) throw new Error('Mobile API must use the account environment selected at startup');
+ 
+ // Café pricing synchronization. Historical SQL migrations may retain old trial
+ // language, but every current customer-facing surface must use this offer.
+diff --git a/mobile/app/review-mode.tsx b/mobile/app/review-mode.tsx
+new file mode 100644
+--- /dev/null
++++ b/mobile/app/review-mode.tsx
+@@ -0,0 +1,49 @@
++import { useRef, useState } from 'react';
++import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
++import { router } from 'expo-router';
++import { supabase } from '@/lib/supabase';
++import { canReturnToLive, getAppEnvironment, reviewRestartRequired, switchAppMode } from '@/features/review-mode/environment';
++
++export default function ReviewModeScreen() {
++  const review = getAppEnvironment().review;
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState('');
++  const request = useRef(false);
++  async function changeMode() {
++    if (request.current) return;
++    request.current = true; setBusy(true); setError('');
++    try {
++      await switchAppMode(review ? 'configured' : 'review', async () => {
++        const { data, error: sessionError } = await supabase.auth.getSession();
++        if (sessionError) throw sessionError;
++        return !data.session;
++      });
++      setError('Close and reopen BaristaMatch to finish changing app mode.');
++    } catch (error) {
++      setError(reviewRestartRequired() ? 'Close and reopen BaristaMatch to finish changing app mode.' : error instanceof Error ? error.message : 'The app mode could not be changed. Please try again.');
++    } finally { request.current = false; setBusy(false); }
++  }
++  return <ScrollView contentContainerStyle={styles.page}>
++    <Text accessibilityRole="header" style={styles.heading}>{review ? 'You are in test mode' : 'App review and testing'}</Text>
++    <Text style={styles.copy}>Test mode connects to dedicated review accounts and isolated test data. It does not change live accounts or subscriptions. Use only the test credentials supplied for review.</Text>
++    <Text style={styles.copy}>Sign out of your current account in Settings before changing modes. The app restarts to keep the two sessions separate.</Text>
++    <Text style={styles.copy}>Apple test purchases require a Sandbox installation on iOS 16 or later. Changing app mode does not change your Apple purchase account.</Text>
++    {review && !canReturnToLive() && <Text style={styles.copy}>This build is for testing only. Live accounts are available in the regular app.</Text>}
++    {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
++    {(!review || canReturnToLive()) && <Pressable accessibilityRole="button" disabled={busy || reviewRestartRequired()} accessibilityState={{ disabled: busy || reviewRestartRequired(), busy }} onPress={changeMode} style={styles.button}>
++      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{review ? 'Exit test mode and restart' : 'Enter test mode and restart'}</Text>}
++    </Pressable>}
++    <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/settings')} style={styles.secondary}><Text style={styles.link}>Open Settings to sign out</Text></Pressable>
++    <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.replace('/')} style={styles.secondary}><Text style={styles.link}>Back to BaristaMatch</Text></Pressable>
++  </ScrollView>;
++}
++const styles = StyleSheet.create({
++  page: { flexGrow: 1, justifyContent: 'center', backgroundColor: '#fff9f3', padding: 24, gap: 16 },
++  heading: { color: '#321708', fontSize: 30, fontWeight: '700' },
++  copy: { color: '#746a61', fontSize: 17, lineHeight: 25 },
++  error: { color: '#8c291f', fontSize: 17 },
++  button: { padding: 16, minHeight: 52, alignItems: 'center', borderRadius: 12, backgroundColor: '#a95820' },
++  buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
++  secondary: { padding: 12, minHeight: 44, alignItems: 'center' },
++  link: { color: '#7b3d16', fontSize: 17, fontWeight: '700', textAlign: 'center' },
++});
+diff --git a/mobile/features/review-mode/ReviewModeControls.tsx b/mobile/features/review-mode/ReviewModeControls.tsx
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/ReviewModeControls.tsx
+@@ -0,0 +1,26 @@
++import { Pressable, StyleSheet, Text, View } from 'react-native';
++import { router } from 'expo-router';
++import { useSafeAreaInsets } from 'react-native-safe-area-context';
++import { getAppEnvironment } from './environment';
++
++export function ReviewModeBanner() {
++  if (!getAppEnvironment().review) return null;
++  return <View style={styles.banner}>
++    <Text style={styles.copy}>Test mode · Isolated accounts</Text>
++    <Pressable accessibilityRole="button" accessibilityLabel="Test mode information and exit" onPress={() => router.push('/review-mode')} style={styles.info}><Text style={styles.link}>Info / Exit</Text></Pressable>
++  </View>;
++}
++
++export function ReviewModeEntry() {
++  const insets = useSafeAreaInsets();
++  if (getAppEnvironment().review) return null;
++  return <Pressable accessibilityRole="button" onPress={() => router.push('/review-mode')} style={[styles.entry, { top: insets.top + 4 }]}><Text style={styles.entryText}>App review</Text></Pressable>;
++}
++const styles = StyleSheet.create({
++  banner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', backgroundColor: '#f9e7cf', paddingHorizontal: 16 },
++  copy: { fontSize: 14, fontWeight: '700', color: '#321708', flexShrink: 1, paddingVertical: 10 },
++  info: { minHeight: 44, justifyContent: 'center', padding: 10 },
++  link: { fontSize: 14, fontWeight: '700', color: '#7b3d16' },
++  entry: { position: 'absolute', right: 16, minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 22, backgroundColor: '#321708cc' },
++  entryText: { color: '#fff9f3', fontSize: 14, fontWeight: '700' },
++});
+diff --git a/mobile/features/review-mode/ReviewLogin.tsx b/mobile/features/review-mode/ReviewLogin.tsx
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/ReviewLogin.tsx
+@@ -0,0 +1,78 @@
++import { useEffect, useRef, useState, useCallback } from 'react';
++import { ActivityIndicator, Keyboard, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
++import { router, useFocusEffect } from 'expo-router';
++import { supabase } from '@/lib/supabase';
++import { getCurrentContext } from '@/lib/session';
++import { ConversationKeyboardView, ConversationTextInput } from '@/components/ConversationKeyboardView';
++
++export default function ReviewLogin() {
++  const [email, setEmail] = useState('');
++  const [password, setPassword] = useState('');
++  const [error, setError] = useState('');
++  const [busy, setBusy] = useState(false);
++  const request = useRef(false);
++  const mounted = useRef(true);
++  const scroll = useRef<ScrollView>(null);
++  const positions = useRef({ email: 0, password: 0 });
++  const focused = useRef<'email' | 'password' | null>(null);
++  const revealField = () => {
++    const field = focused.current;
++    if (field) scroll.current?.scrollTo({ y: Math.max(0, positions.current[field] - 16), animated: false });
++  };
++  useEffect(() => {
++    const shown = Keyboard.addListener('keyboardDidShow', () => requestAnimationFrame(revealField));
++    return () => shown.remove();
++  }, []);
++  const focus = (field: 'email' | 'password') => { focused.current = field; requestAnimationFrame(revealField); };
++  const fieldLayout = (field: 'email' | 'password', y: number) => {
++    positions.current[field] = y;
++    if (focused.current === field) requestAnimationFrame(revealField);
++  };
++  useFocusEffect(useCallback(() => { mounted.current = true; return () => { mounted.current = false; }; }, []));
++  async function signIn() {
++    if (request.current) return;
++    Keyboard.dismiss();
++    if (!email.trim() || !password) { setError('Enter your test-account email and password.'); return; }
++    request.current = true; setBusy(true); setError('');
++    try {
++      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password });
++      if (authError || !data.user) throw new Error('Sign-in was not confirmed.');
++      const context = await getCurrentContext();
++      if (!context.role || context.user?.id !== data.user.id) throw new Error('The test profile is unavailable.');
++      if (mounted.current) router.replace('/home');
++    } catch {
++      if (mounted.current) setError('Test sign-in could not finish. Check the test credentials and your connection, then try again.');
++    } finally {
++      request.current = false;
++      if (mounted.current) setBusy(false);
++    }
++  }
++  return <ConversationKeyboardView style={styles.page}>
++    <ScrollView ref={scroll} onLayout={revealField} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
++      <Text accessibilityRole="header" style={styles.heading}>App review sign-in</Text>
++      <Text style={styles.copy}>Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.</Text>
++      <Text style={styles.label}>Test-account email</Text>
++      <ConversationTextInput onFocus={() => focus('email')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('email', event.nativeEvent.layout.y)} testID="review-email-input" accessibilityLabel="Test-account email" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="username" style={styles.input} />
++      <Text style={styles.label}>Test-account password</Text>
++      <ConversationTextInput onFocus={() => focus('password')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('password', event.nativeEvent.layout.y)} testID="review-password-input" accessibilityLabel="Test-account password" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry textContentType="password" returnKeyType="done" onSubmitEditing={signIn} style={styles.input} />
++      {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
++      <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
++        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in to test account</Text>}
++      </Pressable>
++      <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>
++    </ScrollView>
++  </ConversationKeyboardView>;
++}
++const styles = StyleSheet.create({
++  page: { flex: 1, backgroundColor: '#fff9f3' },
++  content: { flexGrow: 1, justifyContent: 'center', padding: 24, width: '100%', maxWidth: 560, alignSelf: 'center' },
++  heading: { fontSize: 30, fontWeight: '700', color: '#321708', marginBottom: 12 },
++  copy: { fontSize: 17, lineHeight: 25, color: '#746a61', marginBottom: 20 },
++  label: { fontSize: 17, fontWeight: '700', color: '#321708', marginBottom: 8 },
++  input: { minHeight: 52, padding: 14, borderWidth: 1, borderColor: '#d7cabc', borderRadius: 12, backgroundColor: '#fff', fontSize: 18, color: '#321708', marginBottom: 18 },
++  error: { color: '#8c291f', fontSize: 16, marginBottom: 16 },
++  button: { backgroundColor: '#a95820', minHeight: 52, padding: 15, borderRadius: 12, alignItems: 'center' },
++  buttonText: { color: '#fff', fontWeight: '700', fontSize: 17 },
++  secondary: { minHeight: 48, padding: 14, alignItems: 'center' },
++  link: { fontSize: 16, fontWeight: '700', color: '#7b3d16', textAlign: 'center' },
++});
+diff --git a/mobile/features/review-mode/environment.ts b/mobile/features/review-mode/environment.ts
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/environment.ts
+@@ -0,0 +1,31 @@
++import AsyncStorage from '@react-native-async-storage/async-storage';
++import { reloadAppAsync } from 'expo';
++import { createEnvironmentController, type AppEnvironment } from './environmentController';
++
++// Public client configuration only. Authorization remains in each environment's backend.
++const reviewEnvironment: AppEnvironment = {
++  review: true,
++  supabaseUrl: 'https://iqtpsxxlpncaeabbcxht.supabase.co',
++  publishableKey: 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x',
++  apiBase: 'https://testing.baristajobmatch.com/api',
++};
++const configuredUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
++const configured: AppEnvironment = {
++  review: configuredUrl.replace(/\/$/, '') === reviewEnvironment.supabaseUrl,
++  supabaseUrl: configuredUrl,
++  publishableKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
++  apiBase: (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.baristajobmatch.com/api').replace(/\/$/, ''),
++};
++if (configured.review && configured.apiBase !== reviewEnvironment.apiBase) {
++  throw new Error('The test database must use the isolated test API.');
++}
++if (!configured.review && configured.apiBase === reviewEnvironment.apiBase) {
++  throw new Error('The isolated test API must use the test database.');
++}
++const controller = createEnvironmentController(AsyncStorage, configured, reviewEnvironment);
++export const initializeAppEnvironment = controller.initialize;
++export const getAppEnvironment = controller.get;
++export const canReturnToLive = controller.canReturnToLive;
++export const reviewRestartRequired = controller.restartRequired;
++export const switchAppMode = (target: 'review' | 'configured', signedOut: () => Promise<boolean>) =>
++  controller.switchMode(target, signedOut, () => reloadAppAsync('BaristaMatch account environment changed'));
+diff --git a/mobile/features/review-mode/environmentController.ts b/mobile/features/review-mode/environmentController.ts
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/environmentController.ts
+@@ -0,0 +1,69 @@
++export type AppEnvironment = Readonly<{
++  review: boolean;
++  supabaseUrl: string;
++  publishableKey: string;
++  apiBase: string;
++}>;
++
++type Storage = {
++  getItem(key: string): Promise<string | null>;
++  setItem(key: string, value: string): Promise<void>;
++};
++export const REVIEW_MODE_KEY = 'baristamatch_review_mode_v1';
++
++/** A process keeps one immutable environment. Switching takes effect only after a reload. */
++export function createEnvironmentController(storage: Storage, configured: AppEnvironment, review: AppEnvironment, timeoutMs = 5000) {
++  let current: AppEnvironment | undefined;
++  let opening: Promise<AppEnvironment> | undefined;
++  let switching = false;
++  let restartRequired = false;
++
++  async function bounded<T>(work: Promise<T>): Promise<T> {
++    let timer: ReturnType<typeof setTimeout>;
++    try {
++      return await Promise.race([work, new Promise<never>((_, reject) => {
++        timer = setTimeout(() => reject(new Error('The saved app mode could not be confirmed. Please try again.')), timeoutMs);
++      })]);
++    } finally { clearTimeout(timer!); }
++  }
++
++  function get() {
++    if (!current) throw new Error('Your app session is still opening. Please try again.');
++    return current;
++  }
++
++  function initialize(): Promise<AppEnvironment> {
++    if (current) return Promise.resolve(current);
++    if (!opening) {
++      opening = (async () => {
++        const saved = await bounded(storage.getItem(REVIEW_MODE_KEY));
++        if (saved !== null && saved !== 'review' && saved !== 'configured') {
++          throw new Error('Your saved app mode could not be read. Please contact support.');
++        }
++        const selected = saved === 'review' ? review : configured;
++        if (!selected.supabaseUrl || !selected.publishableKey || !selected.apiBase) {
++          throw new Error('The app connection is not configured. Please contact support.');
++        }
++        current = Object.freeze({ ...selected });
++        return current;
++      })().catch(error => { opening = undefined; throw error; });
++    }
++    return opening;
++  }
++
++  async function switchMode(target: 'review' | 'configured', signedOut: () => Promise<boolean>, reload: () => Promise<void>) {
++    const active = get();
++    if (switching || restartRequired) throw new Error('The app is already restarting. Close and reopen it to continue.');
++    if (target === 'configured' && configured.review) throw new Error('This test build has no live account connection.');
++    if ((target === 'review') === active.review) return;
++    switching = true;
++    try {
++      if (!await bounded(signedOut())) throw new Error('Sign out in Settings before changing app mode.');
++      await bounded(storage.setItem(REVIEW_MODE_KEY, target));
++      restartRequired = true;
++      await reload();
++    } finally { switching = false; }
++  }
++
++  return { initialize, get, switchMode, canReturnToLive: () => !configured.review, restartRequired: () => restartRequired };
++}
+diff --git a/mobile/features/review-mode/AppEnvironmentGate.tsx b/mobile/features/review-mode/AppEnvironmentGate.tsx
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/AppEnvironmentGate.tsx
+@@ -0,0 +1,31 @@
++import { useEffect, useState, type PropsWithChildren } from 'react';
++import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
++import { initializeSupabaseEnvironment } from '@/lib/supabase';
++
++export function AppEnvironmentGate({ children }: PropsWithChildren) {
++  const [ready, setReady] = useState(false);
++  const [failed, setFailed] = useState(false);
++  const [attempt, setAttempt] = useState(0);
++  useEffect(() => {
++    let active = true;
++    setFailed(false);
++    const timer = setTimeout(() => { if (active) setFailed(true); }, 8000);
++    void initializeSupabaseEnvironment().then(() => {
++      if (active) setReady(true);
++    }).catch(() => { if (active) setFailed(true); }).finally(() => clearTimeout(timer));
++    return () => { active = false; clearTimeout(timer); };
++  }, [attempt]);
++  if (ready) return children;
++  return <View style={styles.page}>
++    {failed ? <>
++      <Text style={styles.text}>Your saved app session could not be opened. Please try again.</Text>
++      <Pressable accessibilityRole="button" onPress={() => setAttempt(value => value + 1)} style={styles.button}><Text style={styles.buttonText}>Try again</Text></Pressable>
++    </> : <><ActivityIndicator color="#a95820" /><Text style={styles.text}>Opening BaristaMatch…</Text></>}
++  </View>;
++}
++const styles = StyleSheet.create({
++  page: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff9f3', padding: 24, gap: 16 },
++  text: { color: '#321708', fontSize: 17, textAlign: 'center' },
++  button: { padding: 16, borderRadius: 12, backgroundColor: '#a95820' },
++  buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
++});
+diff --git a/mobile/features/review-mode/reviewPurchaseGuard.ts b/mobile/features/review-mode/reviewPurchaseGuard.ts
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/review-mode/reviewPurchaseGuard.ts
+@@ -0,0 +1,27 @@
++import type { NativePurchase, NativePurchaseApi } from '../native-subscription/expoStoreGateway';
++import { storeResponse } from '../native-subscription/storeTimeout';
++
++type ReviewStoreApi<P extends NativePurchase> = NativePurchaseApi<P> & {
++  getAppTransactionIOS?: () => Promise<{ environment: string; bundleId: string } | null>;
++};
++
++/** A UI mode cannot turn a live Apple checkout into Sandbox. Fail closed before opening it. */
++export function sandboxOnlyStore<P extends NativePurchase>(sdk: ReviewStoreApi<P>): NativePurchaseApi<P> {
++  async function requireSandbox() {
++    const transaction = await storeResponse(sdk.getAppTransactionIOS ? sdk.getAppTransactionIOS() : Promise.resolve(null));
++    if (transaction?.environment !== 'Sandbox' || transaction.bundleId !== 'com.baristajobmatch.app') {
++      throw new Error('Test purchases require an Apple Sandbox installation.');
++    }
++  }
++  return {
++    ...sdk,
++    async initConnection() {
++      const connected = await sdk.initConnection();
++      if (connected === false) return false;
++      try { await requireSandbox(); return connected; }
++      catch (error) { await sdk.endConnection().catch(() => {}); throw error; }
++    },
++    async requestPurchase(input) { await requireSandbox(); return sdk.requestPurchase(input); },
++    async restorePurchases() { await requireSandbox(); return sdk.restorePurchases(); },
++  };
++}
+diff --git a/tests/approved-update/review-mode-isolation.test.mjs b/tests/approved-update/review-mode-isolation.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/approved-update/review-mode-isolation.test.mjs
+@@ -0,0 +1,153 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import vm from 'node:vm';
++import ts from '../../mobile/node_modules/typescript/lib/typescript.js';
++
++function load(path, mocks = {}, env = {}) {
++  const module = { exports: {} };
++  const source = readFileSync(new URL(`../../mobile/${path}`, import.meta.url), 'utf8');
++  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
++  vm.runInNewContext(code, { module, exports: module.exports, URL, setTimeout, clearTimeout, process: { env }, require(name) {
++    if (!Object.hasOwn(mocks, name)) throw new Error(`Unexpected dependency ${name}`);
++    return mocks[name];
++  } });
++  return module.exports;
++}
++const policy = load('features/review-mode/environmentController.ts');
++const live = { review: false, supabaseUrl: 'https://live.example.invalid', publishableKey: 'live-public', apiBase: 'https://live-api.example.invalid/api' };
++const review = { review: true, supabaseUrl: 'https://test.example.invalid', publishableKey: 'test-public', apiBase: 'https://test-api.example.invalid/api' };
++function harness(saved = null, configured = live, timeout = 30) {
++  const writes = [];
++  const storage = { getItem: async () => saved, setItem: async (key, value) => { writes.push([key, value]); saved = value; } };
++  return { storage, writes, controller: policy.createEnvironmentController(storage, configured, review, timeout), saved: () => saved };
++}
++test('first launch keeps the configured live environment and performs no storage writes', async () => {
++  const h = harness(); assert.throws(() => h.controller.get(), /still opening/);
++  const selected = await h.controller.initialize(); assert.equal(selected.supabaseUrl, live.supabaseUrl); assert.equal(selected.review, false); assert.deepEqual(h.writes, []);
++});
++test('a saved review session initializes only the review environment and remains immutable', async () => {
++  const h = harness('review'); const first = await h.controller.initialize();
++  assert.equal(first.apiBase, review.apiBase); assert.equal(first.publishableKey, review.publishableKey);
++  assert.throws(() => { first.apiBase = live.apiBase; });
++  assert.equal(await h.controller.initialize(), first);
++});
++test('switching requires sign-out and cannot mix the running client with the next environment', async () => {
++  const h = harness(); await h.controller.initialize(); let reloads = 0;
++  await assert.rejects(h.controller.switchMode('review', async () => false, async () => { reloads++; }), /Sign out/);
++  assert.equal(reloads, 0); assert.deepEqual(h.writes, []);
++  await h.controller.switchMode('review', async () => true, async () => { reloads++; });
++  assert.equal(h.controller.get().review, false); assert.equal(h.saved(), 'review'); assert.equal(reloads, 1);
++  const restarted = policy.createEnvironmentController(h.storage, live, review);
++  assert.equal((await restarted.initialize()).review, true);
++});
++test('returning to live requires test-account sign-out and only takes effect on restart', async () => {
++  const h = harness('review'); await h.controller.initialize();
++  await assert.rejects(h.controller.switchMode('configured', async () => false, async () => {}), /Sign out/);
++  await h.controller.switchMode('configured', async () => true, async () => {});
++  assert.equal(h.controller.get().review, true);
++  assert.equal((await policy.createEnvironmentController(h.storage, live, review).initialize()).review, false);
++});
++test('repeated switching taps cannot duplicate the restart or storage write', async () => {
++  const h = harness(); await h.controller.initialize(); let finish, reloads = 0;
++  const first = h.controller.switchMode('review', () => new Promise(resolve => { finish = resolve; }), async () => { reloads++; });
++  await assert.rejects(h.controller.switchMode('review', async () => true, async () => { reloads++; }), /already restarting/);
++  finish(true); await first;
++  await assert.rejects(h.controller.switchMode('review', async () => true, async () => { reloads++; }), /already restarting/);
++  assert.equal(h.writes.length, 1); assert.equal(reloads, 1);
++});
++test('storage failure never falls back to a live client from a requested review session', async () => {
++  let fail = true;
++  const storage = { getItem: async () => { if (fail) throw new Error('read failed'); return 'review'; }, setItem: async () => {} };
++  const c = policy.createEnvironmentController(storage, live, review);
++  await assert.rejects(c.initialize(), /read failed/); assert.throws(c.get, /still opening/);
++  fail = false; assert.equal((await c.initialize()).review, true);
++});
++test('a stalled storage read times out without creating a live environment', async () => {
++  const c = policy.createEnvironmentController({ getItem: () => new Promise(() => {}), setItem: async () => {} }, live, review, 5);
++  await assert.rejects(c.initialize(), /could not be confirmed/); assert.throws(c.get, /still opening/);
++});
++test('invalid mode values are rejected instead of silently choosing live', async () => {
++  for (const value of ['production', 'https://attacker.invalid', '{}']) await assert.rejects(harness(value).controller.initialize(), /saved app mode/);
++});
++test('a failed mode save does not trigger a restart', async () => {
++  let reloads = 0;
++  const h = harness(); h.storage.setItem = async () => { throw new Error('write failed'); };
++  await h.controller.initialize(); await assert.rejects(h.controller.switchMode('review', async () => true, async () => { reloads++; }), /write failed/);
++  assert.equal(reloads, 0); assert.equal(h.controller.get().review, false); assert.equal(h.controller.restartRequired(), false);
++});
++test('reload failure leaves the current environment fixed and preserves the explicit next-start choice', async () => {
++  const h = harness(); await h.controller.initialize();
++  await assert.rejects(h.controller.switchMode('review', async () => true, async () => { throw new Error('restart failed'); }), /restart failed/);
++  assert.equal(h.saved(), 'review'); assert.equal(h.controller.get().review, false); assert.equal(h.controller.restartRequired(), true);
++});
++test('existing test-only builds cannot switch to a nonexistent live connection', async () => {
++  const h = harness(null, review); assert.equal((await h.controller.initialize()).review, true);
++  assert.equal(h.controller.canReturnToLive(), false);
++  await assert.rejects(h.controller.switchMode('configured', async () => true, async () => {}), /no live account connection/);
++});
++
++function clientHarness(environment) {
++  const created = [], states = [];
++  const client = { auth: { startAutoRefresh() {}, stopAutoRefresh() {} } };
++  const module = load('lib/supabase.ts', {
++    '@react-native-async-storage/async-storage': { default: {} },
++    '@supabase/supabase-js': { createClient: (...args) => { created.push(args); return client; }, processLock: 'original-lock' },
++    'react-native': { Platform: { OS: 'ios' }, AppState: { addEventListener: (...args) => states.push(args) } },
++    './request': { fetchWithTimeout: 'original-transport' },
++    './authStorage': { createLockedAuthStorage: () => ({ storage: 'locked-storage', runExclusive: operation => operation() }) },
++    '../features/review-mode/environment': { initializeAppEnvironment: async () => environment },
++  });
++  return { module, created, states, client };
++}
++for (const env of [live, review]) test(`client startup binds all services and auth storage to ${env.review ? 'review' : 'live'}`, async () => {
++  const h = clientHarness(env); assert.equal(h.created.length, 0); assert.equal(h.module.supabase, undefined);
++  await Promise.all([h.module.initializeSupabaseEnvironment(), h.module.initializeSupabaseEnvironment()]);
++  assert.equal(h.created.length, 1); assert.equal(h.states.length, 1); assert.equal(h.created[0][0], env.supabaseUrl);
++  assert.equal(h.module.APP_API_BASE, env.apiBase); assert.equal(h.module.AUTH_API_BASE, `${env.supabaseUrl}/auth/v1`);
++  assert.equal(h.module.AUTH_STORAGE_KEY, `sb-${env.review ? 'test' : 'live'}-auth-token`);
++  assert.equal(h.created[0][2].auth.autoRefreshToken, true); assert.equal(h.created[0][2].auth.persistSession, true); assert.equal(h.created[0][2].auth.detectSessionInUrl, false);
++});
++test('API and password requests use the same selected environment and captured session', async () => {
++  for (const env of [live, review]) {
++    const h = clientHarness(env); await h.module.initializeSupabaseEnvironment();
++    h.client.auth.getSession = async () => ({ data: { session: { access_token: `${env.review}-token`, user: { id: 'dedicated-account' } } } });
++    const calls = [];
++    const api = load('lib/api.ts', { './supabase': h.module, './request': { requestJson: async (...args) => calls.push(args) } });
++    await api.authenticatedApi('/native-billing', {}, 'GET', 'dedicated-account');
++    await api.updateAccountPassword('dedicated-account', 'test-only-placeholder');
++    assert.equal(calls[0][0], `${env.apiBase}/native-billing`); assert.equal(calls[1][0], `${env.supabaseUrl}/auth/v1/user`);
++    assert.equal(calls[1][1].headers.apikey, env.publishableKey);
++  }
++});
++
++const { sandboxOnlyStore } = load('features/review-mode/reviewPurchaseGuard.ts', { '../native-subscription/storeTimeout': { storeResponse: promise => promise } });
++function storeHarness(transaction) {
++  const calls = [];
++  let connected = false;
++  const sdk = {
++    initConnection: async () => { calls.push('connect'); connected = true; return true; },
++    endConnection: async () => { calls.push('disconnect'); connected = false; },
++    getAppTransactionIOS: async () => { assert.equal(connected, true); return typeof transaction === 'function' ? transaction() : transaction; },
++    requestPurchase: async () => { calls.push('purchase'); return 'requested'; },
++    restorePurchases: async () => { calls.push('restore'); },
++  };
++  return { sdk, calls, store: sandboxOnlyStore(sdk) };
++}
++test('confirmed Apple Sandbox installation can request and restore a test purchase', async () => {
++  const h = storeHarness({ environment: 'Sandbox', bundleId: 'com.baristajobmatch.app' });
++  await h.store.initConnection(); assert.equal(await h.store.requestPurchase({}), 'requested'); await h.store.restorePurchases();
++  assert.deepEqual(h.calls, ['connect', 'purchase', 'restore']);
++});
++for (const transaction of [null, { environment: 'Production', bundleId: 'com.baristajobmatch.app' }, { environment: 'Sandbox', bundleId: 'com.other.app' }, { environment: 'Xcode', bundleId: 'com.baristajobmatch.app' }]) test(`unconfirmed or wrong Apple installation cannot start test checkout: ${JSON.stringify(transaction)}`, async () => {
++  const h = storeHarness(transaction); await assert.rejects(h.store.initConnection(), /Sandbox installation/);
++  assert.deepEqual(h.calls, ['connect', 'disconnect']);
++});
++test('Apple environment is rechecked before purchase after a successful connection', async () => {
++  let environment = 'Sandbox';
++  const h = storeHarness(() => ({ environment, bundleId: 'com.baristajobmatch.app' }));
++  await h.store.initConnection(); environment = 'Production';
++  await assert.rejects(h.store.requestPurchase({}), /Sandbox installation/);
++  await assert.rejects(h.store.restorePurchases(), /Sandbox installation/);
++  assert.deepEqual(h.calls, ['connect']);
++});

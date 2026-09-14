@@ -198,7 +198,9 @@ for(const token of ['grant insert (user_id, complimentary_access)','grant update
 const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
 if(!/pathname:\s*'\/post-job'/.test(mobileJobs)||!/update\(\{\s*active:\s*!job.active/.test(mobileJobs))throw new Error('Mobile job management is incomplete');
 const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
-if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API cannot target a Stripe-enabled preview deployment');
+const mobileEnvironment=fs.readFileSync('mobile/features/review-mode/environment.ts','utf8');
+const mobileClient=fs.readFileSync('mobile/lib/supabase.ts','utf8');
+if(!mobileEnvironment.includes('EXPO_PUBLIC_API_BASE_URL') || !mobileClient.includes('APP_API_BASE = environment.apiBase') || !mobileApi.includes('`${APP_API_BASE}${path}`')) throw new Error('Mobile API must use the account environment selected at startup');
 
 // Café pricing synchronization. Historical SQL migrations may retain old trial
 // language, but every current customer-facing surface must use this offer.

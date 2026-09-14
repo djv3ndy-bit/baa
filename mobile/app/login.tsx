@@ -5,6 +5,8 @@ import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
 import { completeMobileAuth, getCurrentContext } from '@/lib/session';
+import ReviewLogin from '@/features/review-mode/ReviewLogin';
+import { getAppEnvironment } from '@/features/review-mode/environment';
 import { LOGIN_LAYOUT_METRICS, resolveLoginLayout } from '@/lib/loginLayout';
 
 const oauthAppCallback = 'baristamatch://auth/callback';
@@ -18,6 +20,10 @@ function Text(props: TextProps) {
 }
 
 export default function LoginScreen() {
+  return getAppEnvironment().review ? <ReviewLogin /> : <OriginalLoginScreen />;
+}
+
+function OriginalLoginScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [keyboardVisible, setKeyboardVisible] = useState(false);

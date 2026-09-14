@@ -7,8 +7,15 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { listenForPhoneNotifications, registerForPhoneNotifications } from '@/lib/pushNotifications';
 import { supabase } from '@/lib/supabase';
 import { authenticatedApi } from '@/lib/api';
+import { AppEnvironmentGate } from '@/features/review-mode/AppEnvironmentGate';
+import { ReviewModeBanner, ReviewModeEntry } from '@/features/review-mode/ReviewModeControls';
+import { getAppEnvironment } from '@/features/review-mode/environment';
 
 export default function RootLayout() {
+  return <AppEnvironmentGate><ReadyRootLayout /></AppEnvironmentGate>;
+}
+
+function ReadyRootLayout() {
   const pathname=usePathname();
   const isLogin = pathname === '/login';
   useEffect(() => {
@@ -27,11 +34,13 @@ export default function RootLayout() {
   },[pathname]);
   return (
     <AppErrorBoundary>
-      <StatusBar style={isLogin ? 'light' : 'dark'} />
+      <StatusBar style={isLogin && !getAppEnvironment().review ? 'light' : 'dark'} />
       {/* Android 16 is edge-to-edge. RN's per-screen SafeAreaView is iOS-only.
           Expo Router supplies the safe-area provider. The login screen handles its own photo-header insets on both platforms. */}
-      <SafeAreaView style={{ flex: 1 }} edges={Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
+      <SafeAreaView style={{ flex: 1 }} edges={getAppEnvironment().review ? ['top', 'right', 'bottom', 'left'] : Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
+        <ReviewModeBanner />
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+        {isLogin && <ReviewModeEntry />}
       </SafeAreaView>
     </AppErrorBoundary>
   );

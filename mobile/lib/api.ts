@@ -1,7 +1,6 @@
-import { AUTH_API_BASE, SUPABASE_PUBLIC_KEY, supabase } from './supabase';
+import { APP_API_BASE, AUTH_API_BASE, SUPABASE_PUBLIC_KEY, supabase } from './supabase';
 import { requestJson } from './request';
 
-const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.baristajobmatch.com/api').replace(/\/$/, '');
 
 export async function requireAccountSession(expectedUserId?: string) {
   const { data: { session }, error } = await supabase.auth.getSession();
@@ -13,7 +12,7 @@ export async function requireAccountSession(expectedUserId?: string) {
 
 export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST', expectedUserId?: string): Promise<T> {
   const session = await requireAccountSession(expectedUserId);
-  return requestJson<T>(`${API_BASE}${path}`, {
+  return requestJson<T>(`${APP_API_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${session.access_token}`,
