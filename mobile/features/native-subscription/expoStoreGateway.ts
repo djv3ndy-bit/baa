@@ -161,7 +161,9 @@ export class ExpoStoreGateway<P extends NativePurchase> {
     let purchase: StorePurchase;
     try { purchase = this.proof(value); } catch { this.interrupted = true; this.clearWaiter()?.settle({ kind: 'pending' }); return; }
     const binding = value.appAccountToken || value.obfuscatedAccountIdAndroid;
-    if (this.waiter && binding && binding !== this.waiter.binding) {
+    if (this.waiter && binding && (this.plan.provider === 'apple'
+      ? binding.toLowerCase() !== this.waiter.binding.toLowerCase()
+      : binding !== this.waiter.binding)) {
       // A prior account's transaction is not the result of this account's buy.
       this.recover(purchase); return;
     }
