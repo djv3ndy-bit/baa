@@ -4,7 +4,7 @@ export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
     res.setHeader('Cache-Control','no-store');
     try {
       const action=req.query?.action || 'status';
-      if(!['status','prepare','start','cancel'].includes(action))return res.status(404).json({error:'Billing route not found.'});
+      if(!['status','prepare','resume','start','cancel'].includes(action))return res.status(404).json({error:'Billing route not found.'});
       const method=action==='status'?'GET':'POST';
       if(req.method!==method){res.setHeader('Allow',method);return res.status(405).json({error:'Method not allowed.'});}
       const user=await authenticateCafe(req);
@@ -17,6 +17,7 @@ export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
       if(typeof body==='string'){if(Buffer.byteLength(body)>4096)return res.status(413).json({error:'Purchase request is too large.'});try{body=JSON.parse(body);}catch{return res.status(400).json({error:'Purchase request is invalid.'});}}
       if(!body || typeof body!=='object' || Array.isArray(body) || Buffer.byteLength(JSON.stringify(body))>4096)return res.status(400).json({error:'Purchase request is invalid.'});
       const result=action==='prepare'?await service.prepare(account(user),body)
+        :action==='resume'?await service.resume(account(user),body,await websiteStatus(req))
         :action==='start'?await service.start(account(user),body.attemptId)
         :await service.cancel(account(user),body.attemptId,body.reason);
       return res.status(200).json(result);

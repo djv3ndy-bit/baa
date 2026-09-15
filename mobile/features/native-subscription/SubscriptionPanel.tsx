@@ -30,6 +30,7 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
     : subscription?.provider && subscription.canManage ? [subscription.provider] : [];
   const end = subscription?.status === 'grace' ? subscription.gracePeriodEnd : subscription?.currentPeriodEnd;
   const subscribed = subscription?.access === 'pro';
+  const canResume = !!product && product.provider === 'apple' && subscription?.access === 'free' && subscription.status === 'pending' && subscription.canResumeAppleCheckout === true && !props.error;
   const canBuy = !!product && !!subscription && !props.error && !purchaseIsBlocked(subscription);
   const periodEnd = end && Number.isFinite(Date.parse(end))
     ? new Date(end).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
@@ -50,6 +51,7 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
         {subscription?.status === 'payment_required' ? <Text style={s.notice}>Your subscription needs payment attention. Open management before purchasing again.</Text> : null}
         <View style={s.benefits}>{benefits.map(benefit => <View style={s.benefit} key={benefit}><Icon name="checkmark-circle-outline" color={t.accent} size={21} /><Text style={s.benefitText}>{benefit}</Text></View>)}</View>
         {canBuy ? <><Action primary label={busy ? 'Checking purchase…' : `Subscribe for ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>Renews automatically each month unless canceled in your {product!.provider === 'apple' ? 'Apple' : 'Google Play'} subscription settings. The store confirms the price and terms before you purchase.</Text></>
+          : canResume ? <><Text style={s.notice}>Apple has not confirmed this checkout. Continue to check existing purchases first. Use the same Apple Account you used when starting it.</Text><Action primary label={busy ? 'Checking purchase…' : `Continue Apple checkout · ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>If no completed purchase is found, Apple may ask you to confirm the monthly subscription again. It renews automatically unless canceled in Apple subscription settings.</Text></>
           : subscription?.status === 'pending' ? <Text style={s.notice}>A purchase is pending. Restore purchases to check for a completed purchase. Contact support if it remains pending.</Text>
             : !subscription?.canManage ? <Text style={s.notice}>Purchases will be available after your account and store pricing are confirmed.</Text> : null}
         {providers.map(provider => <View style={s.management} key={provider}><Text style={s.copy}>Review your {providerName(provider)} subscription and its renewal settings.</Text><Action label={`Manage ${providerName(provider)} subscription`} onPress={() => props.onManage(provider)} disabled={busy} /></View>)}

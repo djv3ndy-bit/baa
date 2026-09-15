@@ -8,6 +8,7 @@ export type VerifiedSubscription = {
   provider: BillingProvider | null;
   canPurchase: boolean;
   canManage: boolean;
+  canResumeAppleCheckout?: boolean;
   status: 'free' | 'active' | 'grace' | 'pending' | 'expired' | 'revoked' | 'payment_required';
   currentPeriodEnd: string | null;
   autoRenews: boolean;
@@ -29,6 +30,7 @@ export type PurchaseDependencies = {
   // Server returns an opaque attempt and account binding, never a customer ID
   // supplied by a caller. Store products must belong to the approved plan.
   preflight: (accountId: string, product: StoreProduct) => Promise<{ attemptId: string; accountBinding: string }>;
+  resumePreflight?: (accountId: string, product: StoreProduct) => Promise<{ attemptId: string; accountBinding: string }>;
   purchase: (product: StoreProduct, accountBinding: string) => Promise<PurchaseResult>;
   restore: () => Promise<StorePurchase[]>;
   verify: (accountId: string, purchase: StorePurchase, attemptId?: string) => Promise<VerifiedSubscription>;
@@ -109,6 +111,39 @@ export class PurchaseCoordinator {
       if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
       const result = await this.deps.purchase(product, attempt.accountBinding);
       if (result.kind !== 'purchased') return { kind: result.kind };
+      return await this.reconcile(account.id, result.purchase, attempt.attemptId);
+    } catch { return { kind: 'failed' }; }
+    finally { this.busy = false; }
+  }
+
+  async resume(product: StoreProduct): Promise<PurchaseOutcome> {
+    if (this.busy) return { kind: 'busy' };
+    this.busy = true;
+    try {
+      const account = await this.deps.account();
+      if (!account || account.role !== 'cafe_owner_manager') return { kind: 'account_changed' };
+      if (product.provider !== 'apple' || !this.deps.resumePreflight) return { kind: 'failed' };
+      if (this.pending) {
+        if (this.pending.accountId !== account.id) return { kind: 'account_changed' };
+        return await this.reconcile(account.id, this.pending.purchase, this.pending.attemptId);
+      }
+      // A completed purchase is restored and verified before another store
+      // sheet may open. Empty restoration never cancels the reservation.
+      const purchases = await this.deps.restore();
+      for (const purchase of purchases) {
+        if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
+        const result = await this.reconcile(account.id, purchase);
+        if (result.kind !== 'verified') return result;
+      }
+      const status = checkedStatus(await this.deps.status(account.id), account.id);
+      if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
+      if (status.canResumeAppleCheckout !== true || status.access !== 'free' || status.status !== 'pending') {
+        return { kind: 'blocked', subscription: status };
+      }
+      const attempt = await this.deps.resumePreflight(account.id, product);
+      if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
+      const result = await this.deps.purchase(product, attempt.accountBinding);
+      if (result.kind !== 'purchased') return { kind: 'pending' };
       return await this.reconcile(account.id, result.purchase, attempt.attemptId);
     } catch { return { kind: 'failed' }; }
     finally { this.busy = false; }

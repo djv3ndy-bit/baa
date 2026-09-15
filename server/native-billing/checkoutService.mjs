@@ -14,7 +14,10 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       await repository.settleVerifiedCheckout(account.id,environment);
       const [native,checkoutPending]=await Promise.all([repository.summary(account.id,environment),repository.checkoutPending(account.id,environment)]);
       const status=combinedAccountStatus({account,website,native,environment,checkoutPending});
-      return {...status,canPurchase:enabled && status.canPurchase};
+      const recovery = enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
+        && !website.billingPaused && repository.recoverAppleCheckout
+        ? await repository.recoverAppleCheckout(account.id,environment) : null;
+      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery};
     },
     async prepare(account,request) {
       accountCheck(account);
@@ -33,6 +36,19 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
         try { await repository.cancelCheckout(account.id,environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
         throw error;
       }
+    },
+    async resume(account,request,website) {
+      accountCheck(account);
+      requireValue(enabled,'NOT_ENABLED');
+      requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
+      await ready();
+      requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
+      // Reuse the original Apple reservation. Never release it or allocate a
+      // second checkout while the first store result is uncertain.
+      const attempt=await repository.recoverAppleCheckout(account.id,environment);
+      requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
+      requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
+      return attempt;
     },
     async start(account,attemptId) {
       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');

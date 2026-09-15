@@ -22,6 +22,9 @@ export function nativeBillingRepository(adminRows) {
     cancelCheckout(userId, environment, attemptId, beforeLaunch) {
       return rpc('native_checkout_cancel', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_before_launch: beforeLaunch });
     },
+    recoverAppleCheckout(userId, environment) {
+      return rpc('native_checkout_recover_apple', { p_user_id: userId, p_environment: environment });
+    },
     checkoutPending(userId, environment) {
       return rpc('native_checkout_pending', { p_user_id: userId, p_environment: environment });
     },

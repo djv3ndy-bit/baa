@@ -91,7 +91,7 @@ export class SubscriptionController {
         await this.deps.store.connect();
         // Listen for unfinished purchases even when this account already has
         // access. Loading the screen must not prompt an App Store restore.
-        if (purchaseIsBlocked(subscription)) return;
+        if (purchaseIsBlocked(subscription) && subscription.canResumeAppleCheckout !== true) return;
         const product = await this.deps.store.product();
         if (await this.accountIsCurrent()) this.publish({ product });
       } catch (cause) {
@@ -127,8 +127,10 @@ export class SubscriptionController {
   }
   async buy() {
     return this.run(async () => {
-      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error || purchaseIsBlocked(this.state.subscription)) return;
-      const result = await this.coordinator.buy(this.state.product);
+      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error) return;
+      const resume = this.state.subscription.canResumeAppleCheckout === true && this.state.product.provider === 'apple';
+      if (purchaseIsBlocked(this.state.subscription) && !resume) return;
+      const result = resume ? await this.coordinator.resume(this.state.product) : await this.coordinator.buy(this.state.product);
       await this.accept(result);
       // Refresh on cancellation, pending, and failure too. Never infer success.
       await this.refreshOutcome(result);

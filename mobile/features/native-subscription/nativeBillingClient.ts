@@ -4,6 +4,7 @@ export type BillingTransport = (path: string, body: Record<string, unknown>, met
 export type PurchaseStore = {
   country(): Promise<string>;
   buy(product: StoreProduct, accountBinding: string): Promise<PurchaseResult>;
+  resume?(product: StoreProduct, accountBinding: string): Promise<PurchaseResult>;
   restore(): Promise<StorePurchase[]>;
   finish(purchase: StorePurchase): Promise<void>;
 };
@@ -27,13 +28,14 @@ export function checkedSubscription(value: unknown, accountId: string): Verified
     !item || !['apple', 'google', 'stripe'].includes(item.provider) || !['free', 'pro'].includes(item.access) || typeof item.canManage !== 'boolean'))) {
     throw new Error('Subscription confirmation is unavailable.');
   }
+  if (row.canResumeAppleCheckout !== undefined && typeof row.canResumeAppleCheckout !== 'boolean') throw new Error('Subscription confirmation is unavailable.');
   return row as VerifiedSubscription;
 }
 
 /** The caller supplies the existing authenticatedApi transport. Its expected
  * account check stays in force on every request, including verification. */
 export function nativePurchaseDependencies({ account, call, store }: { account: AccountReader; call: BillingTransport; store: PurchaseStore }): PurchaseDependencies {
-  let prepared: { accountId: string; attemptId: string; binding: string; productId: string } | null = null;
+  let prepared: { accountId: string; attemptId: string; binding: string; productId: string; recovery?: boolean } | null = null;
   const requireAccount = async (expected?: string) => {
     const current = await account();
     if (!current || current.role !== 'cafe_owner_manager' || (expected && current.id !== expected)) throw new Error('Please review the signed-in café account.');
@@ -56,6 +58,16 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
       prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id };
       return { attemptId: response.attemptId, accountBinding: response.accountBinding };
     },
+    async resumePreflight(accountId, product) {
+      await requireAccount(accountId);
+      if (product.provider !== 'apple' || !store.resume) throw new Error('Apple checkout recovery is unavailable.');
+      const storefront = await store.country();
+      const response = record(await call('/native-billing?action=resume', { provider: product.provider, productId: product.id, storefront }, 'POST', accountId));
+      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuid.test(response.attemptId) || !uuid.test(response.accountBinding)) throw new Error('Purchase recovery could not be confirmed.');
+      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id, recovery: true };
+      return { attemptId: response.attemptId, accountBinding: response.accountBinding };
+    },
     async purchase(product, binding) {
       const attempt = prepared;
       if (!attempt || attempt.productId !== product.id || attempt.binding !== binding) throw new Error('Please reload the subscription before purchasing.');
@@ -63,10 +75,14 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
       // A lost launch response may mean the reservation has started. Never
       // retry it or ask the store to charge unless the start is confirmed.
       try {
-        const started = record(await call('/native-billing?action=start', { attemptId: attempt.attemptId }, 'POST', attempt.accountId));
+        const started = attempt.recovery ? { started: true }
+          : record(await call('/native-billing?action=start', { attemptId: attempt.attemptId }, 'POST', attempt.accountId));
         if (started.started !== true) return { kind: 'pending' };
         await requireAccount(attempt.accountId);
-        const result = await store.buy(product, binding);
+        const result = attempt.recovery ? await store.resume!(product, binding) : await store.buy(product, binding);
+        // Closing a resumed sheet does not prove an earlier uncertain request
+        // was canceled. Retain its reservation and cross-provider protection.
+        if (result.kind === 'cancelled' && attempt.recovery) return { kind: 'pending' };
         if (result.kind === 'cancelled') {
           const cancelled = record(await call('/native-billing?action=cancel', { attemptId: attempt.attemptId, reason: 'user-cancelled' }, 'POST', attempt.accountId));
           if (cancelled.cancelled !== true) return { kind: 'pending' };

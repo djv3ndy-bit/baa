@@ -1,0 +1,524 @@
+--- a/mobile/features/native-subscription/SubscriptionPanel.tsx
++++ b/mobile/features/native-subscription/SubscriptionPanel.tsx
+@@ -30,6 +30,7 @@
+     : subscription?.provider && subscription.canManage ? [subscription.provider] : [];
+   const end = subscription?.status === 'grace' ? subscription.gracePeriodEnd : subscription?.currentPeriodEnd;
+   const subscribed = subscription?.access === 'pro';
++  const canResume = !!product && product.provider === 'apple' && subscription?.access === 'free' && subscription.status === 'pending' && subscription.canResumeAppleCheckout === true && !props.error;
+   const canBuy = !!product && !!subscription && !props.error && !purchaseIsBlocked(subscription);
+   const periodEnd = end && Number.isFinite(Date.parse(end))
+     ? new Date(end).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+@@ -50,6 +51,7 @@
+         {subscription?.status === 'payment_required' ? <Text style={s.notice}>Your subscription needs payment attention. Open management before purchasing again.</Text> : null}
+         <View style={s.benefits}>{benefits.map(benefit => <View style={s.benefit} key={benefit}><Icon name="checkmark-circle-outline" color={t.accent} size={21} /><Text style={s.benefitText}>{benefit}</Text></View>)}</View>
+         {canBuy ? <><Action primary label={busy ? 'Checking purchase…' : `Subscribe for ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>Renews automatically each month unless canceled in your {product!.provider === 'apple' ? 'Apple' : 'Google Play'} subscription settings. The store confirms the price and terms before you purchase.</Text></>
++          : canResume ? <><Text style={s.notice}>Apple has not confirmed this checkout. Continue to check existing purchases first. Use the same Apple Account you used when starting it.</Text><Action primary label={busy ? 'Checking purchase…' : `Continue Apple checkout · ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>If no completed purchase is found, Apple may ask you to confirm the monthly subscription again. It renews automatically unless canceled in Apple subscription settings.</Text></>
+           : subscription?.status === 'pending' ? <Text style={s.notice}>A purchase is pending. Restore purchases to check for a completed purchase. Contact support if it remains pending.</Text>
+             : !subscription?.canManage ? <Text style={s.notice}>Purchases will be available after your account and store pricing are confirmed.</Text> : null}
+         {providers.map(provider => <View style={s.management} key={provider}><Text style={s.copy}>Review your {providerName(provider)} subscription and its renewal settings.</Text><Action label={`Manage ${providerName(provider)} subscription`} onPress={() => props.onManage(provider)} disabled={busy} /></View>)}
+--- a/mobile/features/native-subscription/expoStoreGateway.ts
++++ b/mobile/features/native-subscription/expoStoreGateway.ts
+@@ -97,6 +97,8 @@
+   return { product: { id: plan.id, provider: plan.provider, displayPrice, currency, period: 'month' }, offerToken };
+ }
+
++// Retain the lock across screen recreation until the actual SDK call settles.
++const activeStoreRequests = new Map<string, object>();
+ export class ExpoStoreGateway<P extends NativePurchase> {
+   private connection: Promise<void> | null = null;
+   private listeners: { remove(): void }[] = [];
+@@ -105,6 +107,7 @@
+   private selected: Selection | null = null;
+   private waiter: { productId: string; binding: string; settle: (result: PurchaseResult) => void; reject: () => void } | null = null;
+   private interrupted = false;
++  private requestRunning = false;
+   private disposed = false;
+   private timer: ReturnType<typeof setTimeout> | undefined;
+   constructor(private api: NativePurchaseApi<P>, private plan: ApprovedStorePlan, private onUnfinished: (purchase: StorePurchase) => void, private waitMs = 120_000, private restoreWaitMs = 120_000, private diagnostic?: (event: StoreDiagnosticEvent) => void) {}
+@@ -181,14 +184,21 @@
+     this.interrupted = true;
+     waiter.settle({ kind: 'pending' });
+   }
++  async resume(product: StoreProduct, accountBinding: string): Promise<PurchaseResult> {
++    if (this.plan.provider !== 'apple' || activeStoreRequests.has(`${this.plan.provider}:${this.plan.id}`) || this.disposed || this.requestRunning || this.waiter || this.restoring) return { kind: 'pending' };
++    // Explicit user recovery only. The server keeps the original reservation;
++    // the coordinator has already restored and verified any available purchase.
++    this.interrupted = false;
++    return this.buy(product, accountBinding);
++  }
+   async buy(product: StoreProduct, accountBinding: string): Promise<PurchaseResult> {
+     await this.connect();
+-    if (this.waiter || this.interrupted || this.restoring) return { kind: 'pending' };
++    if (activeStoreRequests.has(`${this.plan.provider}:${this.plan.id}`) || this.waiter || this.interrupted || this.restoring) return { kind: 'pending' };
+     // Recheck immediately before opening checkout: the store account can
+     // change after the price was loaded. Restore/manage never use this gate.
+     await this.checkStorefront();
+     if (this.disposed) throw new Error('Store connection closed');
+-    if (this.waiter || this.interrupted || this.restoring) return { kind: 'pending' };
++    if (activeStoreRequests.has(`${this.plan.provider}:${this.plan.id}`) || this.waiter || this.interrupted || this.restoring) return { kind: 'pending' };
+     if (!this.selected || product.id !== this.selected.product.id || product.provider !== this.plan.provider || product.displayPrice !== this.selected.product.displayPrice) throw new Error('Review the current store price');
+     if (this.plan.provider === 'apple' ? !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(accountBinding) : !/^[A-Za-z0-9_-]{1,64}$/.test(accountBinding)) throw new Error('Purchase account unavailable');
+     return new Promise<PurchaseResult>((resolve, reject) => {
+@@ -214,11 +224,19 @@
+           return this.api.requestPurchase({ type: 'subs', request });
+         }
+       };
++      this.requestRunning = true;
++      const requestKey = `${this.plan.provider}:${this.plan.id}`;
++      activeStoreRequests.set(requestKey, waiter);
+       void requestPurchase().then(result => {
+         // Some iOS SDK versions also return a transaction; the event path is
+         // authoritative, and processing both is safe with server idempotency.
+         if (result && !this.disposed) for (const purchase of Array.isArray(result) ? result : [result]) this.updated(purchase as P);
+-      }).catch(error => this.failed({ code: typeof error?.code === 'string' ? error.code : 'interrupted', productId: product.id }));
++      }).catch(error => {
++        if (this.waiter === waiter) this.failed({ code: typeof error?.code === 'string' ? error.code : 'interrupted', productId: product.id });
++      }).finally(() => {
++        this.requestRunning = false;
++        if (activeStoreRequests.get(requestKey) === waiter) activeStoreRequests.delete(requestKey);
++      });
+     });
+   }
+   async restore(): Promise<StorePurchase[]> {
+--- a/mobile/features/native-subscription/nativeBillingClient.ts
++++ b/mobile/features/native-subscription/nativeBillingClient.ts
+@@ -4,6 +4,7 @@
+ export type PurchaseStore = {
+   country(): Promise<string>;
+   buy(product: StoreProduct, accountBinding: string): Promise<PurchaseResult>;
++  resume?(product: StoreProduct, accountBinding: string): Promise<PurchaseResult>;
+   restore(): Promise<StorePurchase[]>;
+   finish(purchase: StorePurchase): Promise<void>;
+ };
+@@ -27,13 +28,14 @@
+     !item || !['apple', 'google', 'stripe'].includes(item.provider) || !['free', 'pro'].includes(item.access) || typeof item.canManage !== 'boolean'))) {
+     throw new Error('Subscription confirmation is unavailable.');
+   }
++  if (row.canResumeAppleCheckout !== undefined && typeof row.canResumeAppleCheckout !== 'boolean') throw new Error('Subscription confirmation is unavailable.');
+   return row as VerifiedSubscription;
+ }
+
+ /** The caller supplies the existing authenticatedApi transport. Its expected
+  * account check stays in force on every request, including verification. */
+ export function nativePurchaseDependencies({ account, call, store }: { account: AccountReader; call: BillingTransport; store: PurchaseStore }): PurchaseDependencies {
+-  let prepared: { accountId: string; attemptId: string; binding: string; productId: string } | null = null;
++  let prepared: { accountId: string; attemptId: string; binding: string; productId: string; recovery?: boolean } | null = null;
+   const requireAccount = async (expected?: string) => {
+     const current = await account();
+     if (!current || current.role !== 'cafe_owner_manager' || (expected && current.id !== expected)) throw new Error('Please review the signed-in café account.');
+@@ -56,6 +58,16 @@
+       prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id };
+       return { attemptId: response.attemptId, accountBinding: response.accountBinding };
+     },
++    async resumePreflight(accountId, product) {
++      await requireAccount(accountId);
++      if (product.provider !== 'apple' || !store.resume) throw new Error('Apple checkout recovery is unavailable.');
++      const storefront = await store.country();
++      const response = record(await call('/native-billing?action=resume', { provider: product.provider, productId: product.id, storefront }, 'POST', accountId));
++      const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
++      if (!uuid.test(response.attemptId) || !uuid.test(response.accountBinding)) throw new Error('Purchase recovery could not be confirmed.');
++      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id, recovery: true };
++      return { attemptId: response.attemptId, accountBinding: response.accountBinding };
++    },
+     async purchase(product, binding) {
+       const attempt = prepared;
+       if (!attempt || attempt.productId !== product.id || attempt.binding !== binding) throw new Error('Please reload the subscription before purchasing.');
+@@ -63,10 +75,14 @@
+       // A lost launch response may mean the reservation has started. Never
+       // retry it or ask the store to charge unless the start is confirmed.
+       try {
+-        const started = record(await call('/native-billing?action=start', { attemptId: attempt.attemptId }, 'POST', attempt.accountId));
++        const started = attempt.recovery ? { started: true }
++          : record(await call('/native-billing?action=start', { attemptId: attempt.attemptId }, 'POST', attempt.accountId));
+         if (started.started !== true) return { kind: 'pending' };
+         await requireAccount(attempt.accountId);
+-        const result = await store.buy(product, binding);
++        const result = attempt.recovery ? await store.resume!(product, binding) : await store.buy(product, binding);
++        // Closing a resumed sheet does not prove an earlier uncertain request
++        // was canceled. Retain its reservation and cross-provider protection.
++        if (result.kind === 'cancelled' && attempt.recovery) return { kind: 'pending' };
+         if (result.kind === 'cancelled') {
+           const cancelled = record(await call('/native-billing?action=cancel', { attemptId: attempt.attemptId, reason: 'user-cancelled' }, 'POST', attempt.accountId));
+           if (cancelled.cancelled !== true) return { kind: 'pending' };
+--- a/mobile/features/native-subscription/purchaseCoordinator.ts
++++ b/mobile/features/native-subscription/purchaseCoordinator.ts
+@@ -8,6 +8,7 @@
+   provider: BillingProvider | null;
+   canPurchase: boolean;
+   canManage: boolean;
++  canResumeAppleCheckout?: boolean;
+   status: 'free' | 'active' | 'grace' | 'pending' | 'expired' | 'revoked' | 'payment_required';
+   currentPeriodEnd: string | null;
+   autoRenews: boolean;
+@@ -29,6 +30,7 @@
+   // Server returns an opaque attempt and account binding, never a customer ID
+   // supplied by a caller. Store products must belong to the approved plan.
+   preflight: (accountId: string, product: StoreProduct) => Promise<{ attemptId: string; accountBinding: string }>;
++  resumePreflight?: (accountId: string, product: StoreProduct) => Promise<{ attemptId: string; accountBinding: string }>;
+   purchase: (product: StoreProduct, accountBinding: string) => Promise<PurchaseResult>;
+   restore: () => Promise<StorePurchase[]>;
+   verify: (accountId: string, purchase: StorePurchase, attemptId?: string) => Promise<VerifiedSubscription>;
+@@ -114,6 +116,39 @@
+     finally { this.busy = false; }
+   }
+
++  async resume(product: StoreProduct): Promise<PurchaseOutcome> {
++    if (this.busy) return { kind: 'busy' };
++    this.busy = true;
++    try {
++      const account = await this.deps.account();
++      if (!account || account.role !== 'cafe_owner_manager') return { kind: 'account_changed' };
++      if (product.provider !== 'apple' || !this.deps.resumePreflight) return { kind: 'failed' };
++      if (this.pending) {
++        if (this.pending.accountId !== account.id) return { kind: 'account_changed' };
++        return await this.reconcile(account.id, this.pending.purchase, this.pending.attemptId);
++      }
++      // A completed purchase is restored and verified before another store
++      // sheet may open. Empty restoration never cancels the reservation.
++      const purchases = await this.deps.restore();
++      for (const purchase of purchases) {
++        if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
++        const result = await this.reconcile(account.id, purchase);
++        if (result.kind !== 'verified') return result;
++      }
++      const status = checkedStatus(await this.deps.status(account.id), account.id);
++      if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
++      if (status.canResumeAppleCheckout !== true || status.access !== 'free' || status.status !== 'pending') {
++        return { kind: 'blocked', subscription: status };
++      }
++      const attempt = await this.deps.resumePreflight(account.id, product);
++      if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
++      const result = await this.deps.purchase(product, attempt.accountBinding);
++      if (result.kind !== 'purchased') return { kind: 'pending' };
++      return await this.reconcile(account.id, result.purchase, attempt.attemptId);
++    } catch { return { kind: 'failed' }; }
++    finally { this.busy = false; }
++  }
++
+   async restore(): Promise<PurchaseOutcome> {
+     if (this.busy) return { kind: 'busy' };
+     this.busy = true;
+--- a/mobile/features/native-subscription/subscriptionController.ts
++++ b/mobile/features/native-subscription/subscriptionController.ts
+@@ -91,7 +91,7 @@
+         await this.deps.store.connect();
+         // Listen for unfinished purchases even when this account already has
+         // access. Loading the screen must not prompt an App Store restore.
+-        if (purchaseIsBlocked(subscription)) return;
++        if (purchaseIsBlocked(subscription) && subscription.canResumeAppleCheckout !== true) return;
+         const product = await this.deps.store.product();
+         if (await this.accountIsCurrent()) this.publish({ product });
+       } catch (cause) {
+@@ -127,8 +127,10 @@
+   }
+   async buy() {
+     return this.run(async () => {
+-      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error || purchaseIsBlocked(this.state.subscription)) return;
+-      const result = await this.coordinator.buy(this.state.product);
++      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error) return;
++      const resume = this.state.subscription.canResumeAppleCheckout === true && this.state.product.provider === 'apple';
++      if (purchaseIsBlocked(this.state.subscription) && !resume) return;
++      const result = resume ? await this.coordinator.resume(this.state.product) : await this.coordinator.buy(this.state.product);
+       await this.accept(result);
+       // Refresh on cancellation, pending, and failure too. Never infer success.
+       await this.refreshOutcome(result);
+--- a/server/native-billing/checkoutHandler.mjs
++++ b/server/native-billing/checkoutHandler.mjs
+@@ -4,7 +4,7 @@
+     res.setHeader('Cache-Control','no-store');
+     try {
+       const action=req.query?.action || 'status';
+-      if(!['status','prepare','start','cancel'].includes(action))return res.status(404).json({error:'Billing route not found.'});
++      if(!['status','prepare','resume','start','cancel'].includes(action))return res.status(404).json({error:'Billing route not found.'});
+       const method=action==='status'?'GET':'POST';
+       if(req.method!==method){res.setHeader('Allow',method);return res.status(405).json({error:'Method not allowed.'});}
+       const user=await authenticateCafe(req);
+@@ -17,6 +17,7 @@
+       if(typeof body==='string'){if(Buffer.byteLength(body)>4096)return res.status(413).json({error:'Purchase request is too large.'});try{body=JSON.parse(body);}catch{return res.status(400).json({error:'Purchase request is invalid.'});}}
+       if(!body || typeof body!=='object' || Array.isArray(body) || Buffer.byteLength(JSON.stringify(body))>4096)return res.status(400).json({error:'Purchase request is invalid.'});
+       const result=action==='prepare'?await service.prepare(account(user),body)
++        :action==='resume'?await service.resume(account(user),body,await websiteStatus(req))
+         :action==='start'?await service.start(account(user),body.attemptId)
+         :await service.cancel(account(user),body.attemptId,body.reason);
+       return res.status(200).json(result);
+--- a/server/native-billing/checkoutService.mjs
++++ b/server/native-billing/checkoutService.mjs
+@@ -14,7 +14,10 @@
+       await repository.settleVerifiedCheckout(account.id,environment);
+       const [native,checkoutPending]=await Promise.all([repository.summary(account.id,environment),repository.checkoutPending(account.id,environment)]);
+       const status=combinedAccountStatus({account,website,native,environment,checkoutPending});
+-      return {...status,canPurchase:enabled && status.canPurchase};
++      const recovery = enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
++        && !website.billingPaused && repository.recoverAppleCheckout
++        ? await repository.recoverAppleCheckout(account.id,environment) : null;
++      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery};
+     },
+     async prepare(account,request) {
+       accountCheck(account);
+@@ -33,6 +36,19 @@
+         try { await repository.cancelCheckout(account.id,environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
+         throw error;
+       }
++    },
++    async resume(account,request,website) {
++      accountCheck(account);
++      requireValue(enabled,'NOT_ENABLED');
++      requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
++      await ready();
++      requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
++      // Reuse the original Apple reservation. Never release it or allocate a
++      // second checkout while the first store result is uncertain.
++      const attempt=await repository.recoverAppleCheckout(account.id,environment);
++      requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
++      requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
++      return attempt;
+     },
+     async start(account,attemptId) {
+       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
+--- a/server/native-billing/repository.mjs
++++ b/server/native-billing/repository.mjs
+@@ -21,6 +21,9 @@
+     },
+     cancelCheckout(userId, environment, attemptId, beforeLaunch) {
+       return rpc('native_checkout_cancel', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_before_launch: beforeLaunch });
++    },
++    recoverAppleCheckout(userId, environment) {
++      return rpc('native_checkout_recover_apple', { p_user_id: userId, p_environment: environment });
+     },
+     checkoutPending(userId, environment) {
+       return rpc('native_checkout_pending', { p_user_id: userId, p_environment: environment });
+--- a/launch-check.js
++++ b/launch-check.js
+@@ -230,7 +230,7 @@
+ if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
+ for(const file of ['terms.html','privacy.html']){
+   const source=fs.readFileSync(file,'utf8');
+-  const effectiveDate=file==='privacy.html'?'Effective September 6, 2026':'Effective September 2, 2026';
++  const effectiveDate=file==='privacy.html'?'Effective September 6, 2026':'Effective September 15, 2026';
+   if(!source.includes('BaristaMatch LLC')||!source.includes(effectiveDate))throw new Error(`${file}: LLC operator or effective date is missing`);
+ }
+
+--- /dev/null
++++ b/server/native-billing/sql/recover_apple_checkout.sql
+@@ -0,0 +1,25 @@
++-- Additive recovery query. It does not release, expire, replace or create any
++-- checkout, subscription, customer or entitlement. Apply after coordination.
++create function public.native_checkout_recover_apple(p_user_id uuid,p_environment text) returns jsonb
++language plpgsql security definer set search_path=pg_catalog,private as $$
++declare existing public.cafe_subscriptions%rowtype; result jsonb;
++begin
++  if not exists(select 1 from private.native_billing_configuration where environment=p_environment)
++    or not exists(select 1 from public.profiles where id=p_user_id and role='cafe_owner_manager' and suspended_at is null) then return null; end if;
++  -- Serialize the eligibility check with the existing website checkout lock.
++  select * into existing from public.cafe_subscriptions where user_id=p_user_id for update;
++  if not found then return null; end if;
++  if existing.stripe_checkout_attempt_id is not null
++    or (existing.stripe_checkout_claim_id is not null and existing.stripe_checkout_claim_expires_at>now())
++    or (existing.stripe_subscription_id is not null and existing.status in ('active','trialing','past_due','unpaid','incomplete','paused'))
++    or exists(select 1 from private.native_billing_subscriptions where user_id=p_user_id and environment=p_environment
++      and superseded_by is null and revision>0 and (status in ('pending','payment_required')
++        or (status in ('active','grace') and (auto_renews or current_period_end>now() or grace_period_end>now())))) then return null; end if;
++  select jsonb_build_object('attemptId',a.id,'accountBinding',b.store_binding) into result
++    from private.native_checkout_attempts a join private.native_billing_accounts b on b.user_id=a.user_id
++    where a.user_id=p_user_id and a.environment=p_environment and a.provider='apple' and a.state='started';
++  return result;
++end;
++$$;
++revoke all on function public.native_checkout_recover_apple(uuid,text) from public,anon,authenticated;
++grant execute on function public.native_checkout_recover_apple(uuid,text) to service_role;
+--- /dev/null
++++ b/tests/approved-update/apple-checkout-resume.test.mjs
+@@ -0,0 +1,116 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import {loadTypescript,plain} from './load-typescript.mjs';
++import {nativeCheckoutService} from '../../server/native-billing/checkoutService.mjs';
++const {nativePurchaseDependencies,checkedSubscription}=loadTypescript('mobile/features/native-subscription/nativeBillingClient.ts');
++const {PurchaseCoordinator}=loadTypescript('mobile/features/native-subscription/purchaseCoordinator.ts');
++const {ExpoStoreGateway}=loadTypescript('mobile/features/native-subscription/expoStoreGateway.ts',{'./storeTimeout':loadTypescript('mobile/features/native-subscription/storeTimeout.ts')});
++const account={id:'cafe-a',role:'cafe_owner_manager'},id='10000000-0000-4000-8000-000000000001',binding='20000000-0000-4000-8000-000000000001';
++const product={id:'actual.monthly',provider:'apple',displayPrice:'$9.99',currency:'USD',period:'month'};
++const purchase={id:'tx',productId:product.id,provider:'apple',proof:'synthetic-proof'};
++const pending={accountId:account.id,verified:true,provider:null,access:'free',status:'pending',canManage:false,canPurchase:false,canResumeAppleCheckout:true,autoRenews:false,currentPeriodEnd:null};
++const paid={...pending,provider:'apple',access:'pro',status:'active',canManage:true,canResumeAppleCheckout:false};
++const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
++function harness({restore=[],result={kind:'purchased',purchase},status=pending,restoredStatus=paid,transport,readAccount}={}) {
++ const calls=[];let confirmed=false;
++ const call=async(path,body,method,accountId)=>{
++  calls.push([path,body,method,accountId]);
++  if(transport){const value=await transport(path,body);if(value!==undefined)return value;}
++  if(path.endsWith('status'))return confirmed?restoredStatus:status;
++  if(path.endsWith('resume'))return {attemptId:id,accountBinding:binding};
++  if(path==='/native-purchases'){confirmed=true;return {accountId:account.id,verified:true,purchase:{provider:'apple',status:'active'}};}
++  throw Error('No prepare/start/cancel route may be called during recovery');
++ };
++ const store={country:async()=> 'USA',buy:async()=>{throw Error('Must reuse Apple checkout');},resume:async(...args)=>{calls.push(['store-resume',...args]);return result;},restore:async()=>{calls.push(['restore']);return typeof restore==='function'?restore():restore;},finish:async()=>calls.push(['finish'])};
++ const deps=nativePurchaseDependencies({account:readAccount||(async()=>account),call,store});return {deps,calls,store,coordinator:new PurchaseCoordinator(deps)};
++}
++test('recovery restores first and verifies a fresh purchase using the original account binding without a new reservation',async()=>{
++ const h=harness(),result=await h.coordinator.resume(product);assert.equal(result.kind,'verified');assert.equal(result.subscription.access,'pro');
++ assert.deepEqual(h.calls.map(x=>x[0]),['restore','/native-billing?action=status','/native-billing?action=resume','store-resume','/native-purchases','/native-billing?action=status','finish']);
++ assert.equal(h.calls.find(x=>x[0]==='store-resume')[2],binding);
++ for(const row of h.calls.filter(row=>row[0].startsWith('/')))assert.equal(row[3],account.id);
++});
++test('an existing purchase is verified and restored instead of reopening checkout',async()=>{
++ const h=harness({restore:[purchase]});const result=await h.coordinator.resume(product);
++ assert.equal(result.subscription.access,'pro');assert.ok(h.calls.some(x=>x[0]==='finish'));assert.ok(!h.calls.some(x=>x[0]==='store-resume'));
++});
++test('canceling a resumed sheet or receiving pending keeps the original reservation protected',async()=>{
++ for(const kind of ['cancelled','pending']){const h=harness({result:{kind}});assert.equal((await h.coordinator.resume(product)).kind,'pending');assert.ok(!h.calls.some(x=>/prepare|start|cancel/.test(x[0])));}
++});
++test('lost recovery authorization never opens the store or cancels the original checkout',async()=>{
++ const h=harness({transport:async path=>{if(path.endsWith('resume'))throw Error('offline');}});
++ assert.equal((await h.coordinator.resume(product)).kind,'failed');assert.ok(!h.calls.some(x=>x[0]==='store-resume'));
++});
++test('active Stripe access, billing retry and absent recovery permission block store recovery',async()=>{
++ for(const status of [{...paid,provider:'stripe'},{...pending,status:'payment_required'},{...pending,canResumeAppleCheckout:false}]){
++ const h=harness({status});assert.equal((await h.coordinator.resume(product)).kind,'blocked');assert.ok(!h.calls.some(x=>x[0]==='store-resume'));
++ }
++});
++test('an empty restore alone does not resume or release a checkout',async()=>{
++ const h=harness();const result=await h.coordinator.restore();assert.equal(result.subscription.status,'pending');assert.ok(!h.calls.some(x=>/resume|cancel|prepare/.test(x[0])));
++});
++test('repeat recovery taps share the controller lock and open at most one sheet',async()=>{
++ let release;const h=harness({restore:()=>new Promise(resolve=>{release=resolve;})});
++ const first=h.coordinator.resume(product);await flush();assert.equal((await h.coordinator.resume(product)).kind,'busy');release([]);await first;
++ assert.equal(h.calls.filter(x=>x[0]==='store-resume').length,1);
++});
++test('account switching after restoration prevents recovery for the old café',async()=>{
++ let switched=false;const h=harness({restore:()=>{switched=true;return [];},readAccount:async()=>switched?{id:'other',role:'cafe_owner_manager'}:account});
++ assert.equal((await h.coordinator.resume(product)).kind,'failed');assert.ok(!h.calls.some(x=>x[0]==='store-resume'));
++});
++test('baristas and Google purchases cannot use Apple recovery',async()=>{
++ const h=harness({readAccount:async()=>({id:'b',role:'barista'})});assert.equal((await h.coordinator.resume(product)).kind,'account_changed');assert.equal(h.calls.length,0);
++ const other=harness();assert.equal((await other.coordinator.resume({...product,provider:'google'})).kind,'failed');assert.equal(other.calls.length,0);
++});
++test('an unverified restored purchase blocks retry and is never finished',async()=>{
++ const h=harness({restore:[purchase],transport:async path=>{if(path==='/native-purchases')throw Error('verification unavailable');}});
++ assert.equal((await h.coordinator.resume(product)).kind,'verification_pending');assert.ok(!h.calls.some(x=>['store-resume','finish'].includes(x[0])));
++});
++test('malformed recovery permissions cannot reach the UI',()=>{assert.throws(()=>checkedSubscription({...pending,canResumeAppleCheckout:'yes'},account.id));});
++
++function server({attempt={attemptId:id,accountBinding:binding},inspect=async()=>true,enabled=true}={}){
++ const calls=[],repository={recoverAppleCheckout:async(...args)=>{calls.push(['recover',...args]);return attempt;}};
++ const service=nativeCheckoutService({repository,environment:'Sandbox',productId:product.id,enabled,ready:async()=>calls.push(['ready']),inspectWebsiteBilling:inspect});
++ return {service,calls};
++}
++const request={provider:'apple',productId:product.id,storefront:'USA'};
++test('server recovery only reads the original reservation and rechecks existing website billing',async()=>{
++ const h=server();assert.deepEqual(await h.service.resume(account,request,{plan:'free',billingPaused:false}),{attemptId:id,accountBinding:binding});assert.deepEqual(h.calls,[['ready'],['recover',account.id,'Sandbox']]);
++});
++test('server recovery rejects invalid role, storefront, product, disabled billing and missing reservations',async()=>{
++ for(const [a,r] of [[{...account,role:'barista'},request],[{...account,suspendedAt:'now'},request],[account,{...request,provider:'google'}],[account,{...request,storefront:'GBR'}],[account,{...request,productId:'other'}]])await assert.rejects(server().service.resume(a,r,{plan:'free',billingPaused:false}));
++ await assert.rejects(server({enabled:false}).service.resume(account,request,{plan:'free',billingPaused:false}));await assert.rejects(server({attempt:null}).service.resume(account,request,{plan:'free',billingPaused:false}));
++});
++test('server errors and existing web subscriptions never release the native reservation',async()=>{
++ for(const inspect of [async()=>false,async()=>{throw Error('provider unavailable');}])await assert.rejects(server({inspect}).service.resume(account,request,{plan:'free',billingPaused:false}));
++});
++
++function storeHarness({never=false}={}) {
++ let update,error,rejectRequest,calls=0;
++ const plan={id:product.id,provider:'apple',storefront:'US',prices:{USD:9.99}};
++ const p={id:product.id,platform:'ios',type:'subs',currency:'USD',price:9.99,displayPrice:'$9.99',subscriptionPeriodNumberIOS:'1',subscriptionPeriodUnitIOS:'month'};
++ const api={initConnection:async()=>true,endConnection:async()=>{},getStorefront:async()=> 'USA',fetchProducts:async()=>[p],purchaseUpdatedListener:fn=>{update=fn;return{remove(){}};},purchaseErrorListener:fn=>{error=fn;return{remove(){}};},getAvailablePurchases:async()=>[],restorePurchases:async()=>{},requestPurchase:async()=>{calls++;if(calls===1){if(never)return new Promise((_,reject)=>{rejectRequest=reject;});throw Object.assign(Error('Store rejected'),{code:'unknown',productId:product.id});}return {id:'tx',productId:product.id,store:'apple',purchaseState:'purchased',purchaseToken:'synthetic-proof',appAccountToken:binding.toUpperCase()};}};
++ const recovered=[],gateway=new ExpoStoreGateway(api,plan,p=>recovered.push(p),10,10);
++ return {gateway,calls:()=>calls,reject:()=>rejectRequest(Object.assign(Error('late rejection'),{code:'unknown'})),recovered};
++}
++test('captured Apple unknown error remains pending until explicit recovery reuses the same product and binding',async()=>{
++ const h=storeHarness();const p=await h.gateway.product();assert.equal((await h.gateway.buy(p,binding)).kind,'pending');await flush();
++ assert.equal((await h.gateway.buy(p,binding)).kind,'pending');assert.equal(h.calls(),1);
++ await h.gateway.restore();await flush();assert.equal((await h.gateway.resume(p,binding)).kind,'purchased');assert.equal(h.calls(),2);await h.gateway.dispose();
++});
++test('a UI timeout cannot open another checkout while the original native request is still running',async()=>{
++ const h=storeHarness({never:true});const p=await h.gateway.product();assert.equal((await h.gateway.buy(p,binding)).kind,'pending');
++ await h.gateway.restore();assert.equal((await h.gateway.resume(p,binding)).kind,'pending');assert.equal(h.calls(),1);
++ h.reject();await flush();assert.equal((await h.gateway.resume(p,binding)).kind,'purchased');await h.gateway.dispose();
++});
++test('billing pause or a website Pro plan denies recovery even with a retained Apple reservation',async()=>{
++ for(const website of [undefined,{plan:'free',billingPaused:true},{plan:'pro',billingPaused:false}]){
++ const h=server();await assert.rejects(h.service.resume(account,request,website));assert.ok(!h.calls.some(x=>x[0]==='recover'));
++ }
++});
++test('recreating the screen cannot resume while its earlier native request is still open',async()=>{
++ const original=storeHarness({never:true});const p=await original.gateway.product();await original.gateway.buy(p,binding);await original.gateway.dispose();
++ const reopened=storeHarness();await reopened.gateway.product();assert.equal((await reopened.gateway.resume(p,binding)).kind,'pending');assert.equal(reopened.calls(),0);
++ original.reject();await flush();assert.equal((await reopened.gateway.resume(p,binding)).kind,'pending');assert.equal(reopened.calls(),1);
++ await reopened.gateway.dispose();
++});
+--- /dev/null
++++ b/tests/database/apple-checkout-recovery.test.mjs
+@@ -0,0 +1,74 @@
++import { before, after, beforeEach, test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { PGlite } from '@electric-sql/pglite';
++const cafe='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002',barista='00000000-0000-4000-8000-000000000003';
++const first='10000000-0000-4000-8000-000000000001',second='10000000-0000-4000-8000-000000000002';
++let db;
++const scalar=async(sql,params=[])=>Object.values((await db.query(sql,params)).rows[0])[0];
++const file=path=>readFileSync(new URL(`../../${path}`,import.meta.url),'utf8');
++before(async()=>{
++ db=new PGlite();await db.exec(`
++ create role anon;create role authenticated;create role service_role bypassrls;
++ create table public.profiles(id uuid primary key,role text,suspended_at timestamptz);
++ create table public.cafe_subscriptions(user_id uuid primary key,stripe_customer_id text,stripe_subscription_id text,status text,current_period_end timestamptz,cancel_at_period_end boolean default false,updated_at timestamptz default now());
++ create table public.stripe_webhook_events(event_id text primary key,event_type text,processed_at timestamptz default now());
++ create table public.subscription_payments(cafe_user_id uuid,provider text,provider_payment_id text primary key,amount_cents integer,currency text,status text,paid_at timestamptz);
++ insert into public.profiles values('${cafe}','cafe_owner_manager',null),('${other}','cafe_owner_manager',null),('${barista}','barista',null);
++ insert into public.cafe_subscriptions(user_id,status) values('${cafe}','free'),('${other}','free');`);
++ await db.exec(file('supabase/migrations/20260908090000_harden_stripe_runtime_coordination.sql'));
++ await db.exec(file('supabase/migrations/20260909044749_bind_checkout_attempt_ui_mode.sql'));
++ await db.exec(file('review/native-billing-ledger.sql'));
++ await db.exec(file('review/native-checkout-coordination.sql'));
++ await db.exec(file('server/native-billing/sql/recover_apple_checkout.sql'));
++});
++beforeEach(async()=>{await db.exec(`reset role;truncate private.native_checkout_attempts,private.native_billing_subscriptions;update public.cafe_subscriptions set stripe_customer_id=null,stripe_subscription_id=null,status='free',stripe_checkout_claim_id=null,stripe_checkout_claim_expires_at=null,stripe_checkout_claim_kind=null,stripe_checkout_attempt_id=null,stripe_checkout_channel=null,stripe_checkout_ui_mode=null;update public.profiles set suspended_at=null;`)});
++after(async()=>db?.close());
++const claim=(id=first,user=cafe,provider='apple')=>scalar("select public.native_checkout_claim($1,$2,'Production',$3)",[user,provider,id]);
++const start=(id=first,user=cafe)=>scalar("select public.native_checkout_start($1,'Production',$2)",[user,id]);
++const cancel=(id=first,beforeLaunch=false,user=cafe)=>scalar("select public.native_checkout_cancel($1,'Production',$2,$3)",[user,id,beforeLaunch]);
++const pending=()=>scalar("select public.native_checkout_pending($1,'Production')",[cafe]);
++const web=()=>scalar("select public.claim_stripe_checkout($1,$2,$3,'web','embedded')",[cafe,second,second]);
++async function paid(status='active',end='2099-01-01T00:00:00Z',renews=true){
++ const binding=await scalar('select public.native_billing_account($1)',[cafe]);
++ return scalar("select public.native_billing_apply($1,$2,'apple','Production','original','test.monthly','transaction',$3,$4,null,$5,0)",[cafe,binding,status,end,renews]);
++}
++const recover=(user=cafe,environment='Production')=>scalar('select public.native_checkout_recover_apple($1,$2)',[user,environment]);
++test('Apple recovery returns the same started reservation and leaves website checkout locked',async()=>{
++ const original=await claim();await start();const before=await db.query('select * from private.native_checkout_attempts');
++ for(let i=0;i<3;i++)assert.deepEqual(await recover(),original);
++ assert.deepEqual(await db.query('select * from private.native_checkout_attempts'),before);
++ assert.equal(await web(),null);assert.equal(await claim(second),null);assert.equal(await pending(),true);
++});
++test('recovery cannot create a purchase or reopen a canceled or unused reservation',async()=>{
++ assert.equal(await recover(),null);await claim();assert.equal(await recover(),null);await start();await cancel();assert.equal(await recover(),null);
++});
++test('recovery is scoped to an active café, Apple and the configured environment',async()=>{
++ await claim();await start();assert.equal(await recover(other),null);assert.equal(await recover(barista),null);assert.equal(await recover(cafe,'Sandbox'),null);
++ await db.query('update public.profiles set suspended_at=now() where id=$1',[cafe]);assert.equal(await recover(),null);
++ await db.query('update public.profiles set suspended_at=null where id=$1',[cafe]);await db.exec("update private.native_checkout_attempts set provider='google'");assert.equal(await recover(),null);
++});
++test('active and unresolved native subscriptions block recovery before another store request',async()=>{
++ await claim();await start();
++ for(const state of ['active','grace','pending','payment_required']){
++ await db.exec('truncate private.native_billing_subscriptions');await paid(state);assert.equal(await recover(),null);
++ }
++});
++test('a completed native subscription settles recovery and keeps cross-provider protection',async()=>{
++ await claim();await start();await paid();await scalar("select public.native_checkout_settle_verified($1,'Production')",[cafe]);assert.equal(await recover(),null);assert.equal(await web(),null);
++});
++test('an expired non-renewing record can be reconciled without releasing the original checkout',async()=>{
++ await claim();await start();await paid('expired','2001-01-01T00:00:00Z',false);assert.ok(await recover());assert.equal(await pending(),true);assert.equal(await web(),null);
++});
++test('existing Stripe subscriptions and sessions prevent a resumed Apple checkout',async()=>{
++ await claim();await start();
++ for(const state of ['active','trialing','past_due','unpaid','incomplete','paused']){
++ await db.query("update public.cafe_subscriptions set stripe_subscription_id='sub_existing',status=$1 where user_id=$2",[state,cafe]);assert.equal(await recover(),null);
++ }
++ await db.query("update public.cafe_subscriptions set stripe_subscription_id=null,status='free',stripe_checkout_attempt_id=$1 where user_id=$2",[second,cafe]);assert.equal(await recover(),null);
++});
++test('anonymous and authenticated clients cannot retrieve private checkout identities',async()=>{
++ await claim();await start();
++ for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(recover(),/permission denied/);await db.exec('reset role');}
++ await db.exec('set role service_role');assert.ok(await recover());await db.exec('reset role');
++});
