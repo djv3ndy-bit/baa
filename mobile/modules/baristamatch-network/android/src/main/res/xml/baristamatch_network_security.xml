@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <!-- Android 7 can lack ISRG Root X1. Keep the additional public root scoped to our API hosts. -->
+  <domain-config cleartextTrafficPermitted="false">
+    <domain includeSubdomains="false">baristajobmatch.com</domain>
+    <domain includeSubdomains="false">www.baristajobmatch.com</domain>
+    <domain includeSubdomains="false">testing.baristajobmatch.com</domain>
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="@raw/baristamatch_isrg_root_x1" />
+    </trust-anchors>
+  </domain-config>
+</network-security-config>

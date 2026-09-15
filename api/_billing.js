@@ -171,7 +171,10 @@ export async function authenticatedCafe(req) {
   const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   const auth = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: process.env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${token}` } });
-  if (!auth.ok) return null;
+  if (!auth.ok) {
+    if (auth.status === 429 || auth.status >= 500) throw new Error("Account verification is temporarily unavailable.");
+    return null;
+  }
   const user = await auth.json();
   const profiles = await adminRows(`profiles?id=eq.${encodeURIComponent(user.id)}&select=role,cafe_name,display_name,suspended_at&limit=1`);
   return profiles[0]?.role === "cafe_owner_manager" ? { ...user, profile: profiles[0] } : null;

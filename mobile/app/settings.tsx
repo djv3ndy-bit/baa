@@ -1,7 +1,11 @@
+import { NativeSubscriptionSummary } from '../features/native-subscription/NativeSubscriptionSummary';
+import { nativeSubscriptionScreenEnabled } from '../features/native-subscription/ExpoSubscriptionEntry';
+import type { VerifiedSubscription } from '../features/native-subscription/purchaseCoordinator';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
   Linking,
   Pressable,
   SafeAreaView,
@@ -11,7 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_STORAGE_KEY, withAuthStorageLock, supabase } from "@/lib/supabase";
@@ -19,24 +23,40 @@ import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } fro
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
+import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
 
 type BillingStatus = {
+  nativeStatus?: VerifiedSubscription;
   status: string;
   plan: "free" | "pro";
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   connectedToBilling: boolean;
-  canManageBilling: boolean;
   billingPaused: boolean;
+  canManageBilling?: boolean;
 };
 
+function canManage(billing: BillingStatus | null) {
+  return billing?.canManageBilling ?? Boolean(billing?.connectedToBilling && ['active', 'trialing', 'past_due', 'unpaid', 'incomplete'].includes(billing.status));
+}
+
 export default function Settings() {
+  const returnParams = useLocalSearchParams<{ billing?: string; session_id?: string }>();
+  const returnResult = typeof returnParams.billing === 'string' ? returnParams.billing : undefined;
+  const returnSessionId = typeof returnParams.session_id === 'string' ? returnParams.session_id : undefined;
+  const returnOwner = useRef<{ key: string; accountId: string | null; invalidated: boolean }>({ key: '', accountId: null, invalidated: false });
   const actionBusy = useRef(false);
   const active = useRef(false);
   const generation = useRef(0);
   const account = useRef<string | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const returnKey = JSON.stringify([returnResult, returnSessionId]);
+  if (returnOwner.current.key !== returnKey) returnOwner.current = { key: returnKey, accountId: null, invalidated: false };
+  if (accountId && !returnOwner.current.invalidated) {
+    if (!returnOwner.current.accountId) returnOwner.current.accountId = accountId;
+    else if (returnOwner.current.accountId !== accountId) returnOwner.current.invalidated = true;
+  }
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [email, setEmail] = useState('');
@@ -96,8 +116,23 @@ export default function Settings() {
     return () => { active.current = false; ++generation.current; };
   }, [load]));
   useEffect(() => {
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active' && active.current) void load();
+    });
+    return () => listener.remove();
+  }, [load]);
+  const acceptConfirmedBilling = useCallback((expectedUserId: string, result: BillingStatus) => {
+    if (active.current && account.current === expectedUserId) {
+      ++generation.current;
+      setBilling(result);
+      setBillingError('');
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && account.current && session?.user.id !== account.current)) {
+        returnOwner.current.invalidated = true;
         ++generation.current;
         account.current = null;
         setAccountId(null);
@@ -124,11 +159,12 @@ export default function Settings() {
     try {
       await requireAccountSession(expectedUserId);
       if (!active.current || account.current !== expectedUserId) return;
-      if (!billing.canManageBilling) return router.push('/subscription');
+      if (nativeSubscriptionScreenEnabled || !canManage(billing)) return router.push('/subscription');
       const result = await authenticatedApi<{ url: string }>('/create-portal-session', { channel: 'mobile' }, 'POST', expectedUserId);
       await requireAccountSession(expectedUserId);
       if (!active.current || account.current !== expectedUserId) return;
-      if (!result.url || new URL(result.url).origin !== 'https://billing.stripe.com') throw new Error('The billing link is unavailable. Please try again.');
+      const billingUrl = new URL(result.url);
+      if (billingUrl.origin !== 'https://billing.stripe.com' || billingUrl.username || billingUrl.password) throw new Error('The billing link is unavailable. Please try again.');
       await WebBrowser.openBrowserAsync(result.url);
       await load();
     } catch (error) {
@@ -183,7 +219,7 @@ export default function Settings() {
     if (!expectedUserId || actionBusy.current || loading) return;
     Alert.alert(
       'Delete your account?',
-      'This permanently removes your profile, jobs, matches, messages, and uploaded media. If this account has an active Pro subscription, deletion cancels it immediately. This cannot be undone.',
+      'This permanently removes your profile, jobs, matches, messages, and uploaded media. Website subscriptions are canceled immediately. Apple or Google Play subscriptions must be managed separately in your store subscription settings. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Continue', style: 'destructive', onPress: () => confirmAccountDeletion(expectedUserId) },
@@ -194,7 +230,7 @@ export default function Settings() {
     if (account.current !== expectedUserId) return Alert.alert('Account changed', 'Please review the signed-in account before deleting.');
     Alert.alert(
       'Final confirmation',
-      'Delete your BaristaMatch account now? Any active Pro subscription will be canceled immediately; deletion does not issue a refund. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
+      'Delete your BaristaMatch account now? Website subscriptions will be canceled immediately; deletion does not issue a refund. Deleting your account does not cancel Apple or Google Play subscriptions. Cancel those in your store subscription settings to stop renewal. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
       [
         { text: 'Keep my account', style: 'cancel' },
         { text: 'Delete permanently', style: 'destructive', onPress: () => { void deleteAccount(expectedUserId); } },
@@ -249,8 +285,9 @@ export default function Settings() {
         <Text style={s.title}>Account Settings</Text>
         <View style={s.headerSpacer} />
       </View>
-      <ScrollView contentContainerStyle={s.wrap}>
+      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={s.wrap}>
         {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading ? 'Loading your account…' : email} />}
+        {role === 'cafe_owner_manager' && accountId && returnResult && !returnOwner.current.invalidated && returnOwner.current.accountId === accountId ? <CheckoutReturnStatus key={accountId} accountId={accountId} result={returnResult} sessionId={returnSessionId} onBilling={acceptConfirmedBilling} /> : null}
         {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling || loading} onPress={manageSubscription} /> : null}
         <View style={s.card}>
           <Text style={s.cardTitle}>Notifications</Text>
@@ -369,8 +406,9 @@ export default function Settings() {
             <View style={s.dangerZone}>
               <Text style={s.dangerTitle}>Delete my account</Text>
               <Text style={s.copy}>
-                Permanently removes your profile, jobs, matches, messages, and uploaded media. Any active Pro subscription is canceled immediately. This cannot be undone.
+                Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
               </Text>
+              {role === "cafe_owner_manager" && nativeSubscriptionScreenEnabled ? <Pressable accessibilityRole="button" disabled={disabled} style={s.secondary} onPress={() => router.push('/subscription')}><Text style={s.secondaryText}>Review subscriptions before deletion</Text></Pressable> : null}
               <Pressable
                 accessibilityRole="button"
                 disabled={disabled}
@@ -388,21 +426,35 @@ export default function Settings() {
   );
 }
 
+function CheckoutReturnStatus({ accountId, result, sessionId, onBilling }: { accountId: string; result: string; sessionId?: string; onBilling: (accountId: string, billing: BillingStatus) => void }) {
+  const checkout = useWebsiteCheckout(accountId, { billing: result, sessionId });
+  useEffect(() => {
+    if (checkout.billing) onBilling(accountId, checkout.billing);
+  }, [accountId, checkout.billing, onBilling]);
+  return <View style={s.card}>
+    <Text style={s.cardTitle}>Subscription update</Text>
+    <Text accessibilityLiveRegion="polite" style={[s.copy, checkout.error ? s.errorText : undefined]}>{checkout.error || checkout.notice || (checkout.loading ? 'Checking your subscription…' : 'Your latest subscription status is shown below.')}</Text>
+    <Pressable accessibilityRole="button" disabled={checkout.loading} style={[s.secondary, checkout.loading && s.disabled]} onPress={() => { void checkout.refresh(); }}><Text style={s.secondaryText}>{checkout.loading ? 'Checking…' : 'Check subscription status'}</Text></Pressable>
+  </View>;
+}
+
 function SubscriptionCard({ billing, error, opening, onPress }: { billing: BillingStatus | null; error: string; opening: boolean; onPress: () => void }) {
-  const paying = billing?.plan === "pro" && billing.connectedToBilling;
-  const needsPayment = Boolean(billing?.connectedToBilling && ["past_due", "unpaid", "incomplete"].includes(billing.status));
+  if (billing?.nativeStatus) return <NativeSubscriptionSummary subscription={billing.nativeStatus} error={error} opening={opening} onPress={onPress} />;
+  const paying = billing?.plan === "pro" && billing.connectedToBilling && ['active', 'trialing'].includes(billing.status);
+  const paymentAttention = canManage(billing) && !paying;
   const date = billing?.currentPeriodEnd ? new Date(billing.currentPeriodEnd).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }) : "";
   const statusLabel = String(billing?.status || "").replaceAll("_", " ").replace(/\b\w/g, character => character.toUpperCase());
   let detail = "Checking your café plan…";
   if (error) detail = error;
+  else if (paymentAttention) detail = "Your subscription payment needs attention. Open management to check or update your payment method.";
   else if (paying && billing?.cancelAtPeriodEnd && date) detail = `Canceled · Pro access ends ${date}`;
   else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
-  else if (needsPayment) detail = "Payment needs attention. Update your payment method.";
+  else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
   else if (billing) detail = "Your first job, matches, and interview messaging are included. A second job requires Pro.";
-  const action = error ? "Retry subscription status" : billing?.canManageBilling ? "Manage subscription" : "View Free and Pro plans";
+  const action = error ? "Retry subscription status" : canManage(billing) ? "Manage subscription" : "View Free and Pro plans";
   return <View style={s.card}>
-    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : needsPayment ? `Pro · ${statusLabel || "Payment issue"}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
+    <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : paymentAttention ? `Payment needs attention · ${statusLabel}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
     <Pressable accessibilityRole="button" disabled={(!billing && !error) || opening} onPress={onPress} style={[s.secondary, ((!billing && !error) || opening) && s.disabled]}><Text style={s.secondaryText}>{opening ? "Opening…" : action}</Text></Pressable>
   </View>;
 }

@@ -1,0 +1,88 @@
+{
+  "reactNativeVersion": "0.81.5",
+  "files": [
+    {
+      "path": "ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp",
+      "beforeSha256": "1205e21ce3ebab04a95035c45bf5c0a16e739ff5f64def6701f86b02de90055e",
+      "afterSha256": "100b88a3e5b15809d59294ed1740a01b3e5c6fd551b3460c334ef5f3241f5793",
+      "edits": [
+        {
+          "before": "\nvoid YogaLayoutableShadowNode::configureYogaTree(\n    float pointScaleFactor,\n    YGErrata defaultErrata,\n    bool swapLeftAndRight) {\n  ensureUnsealed();\n",
+          "after": "\nvoid YogaLayoutableShadowNode::configureYogaTree(\n    float pointScaleFactor,\n    Float fontSizeMultiplier,\n    YGErrata defaultErrata,\n    bool swapLeftAndRight) {\n  ensureUnsealed();\n"
+        },
+        {
+          "before": "  YGErrata errata = resolveErrata(defaultErrata);\n  YGConfigSetErrata(&yogaConfig_, errata);\n  YGConfigSetPointScaleFactor(&yogaConfig_, pointScaleFactor);\n\n  // TODO: `swapLeftAndRight` modified backing props and cannot be undone\n  if (swapLeftAndRight) {\n",
+          "after": "  YGErrata errata = resolveErrata(defaultErrata);\n  YGConfigSetErrata(&yogaConfig_, errata);\n  YGConfigSetPointScaleFactor(&yogaConfig_, pointScaleFactor);\n  // Backport of upstream 45904c866882f136edde55df2fe453327057d387:\n  // invalidate measurement for stale nodes reused by a later React commit.\n  if (ReactNativeFeatureFlags::enableFontScaleChangesUpdatingLayout() &&\n      getTraits().check(ShadowNodeTraits::Trait::MeasurableYogaNode) &&\n      !floatEquality(getLayoutMetrics().fontSizeMultiplier, fontSizeMultiplier)) {\n    yogaNode_.markDirtyAndPropagate();\n  }\n\n  // TODO: `swapLeftAndRight` modified backing props and cannot be undone\n  if (swapLeftAndRight) {\n"
+        },
+        {
+          "before": "\n    if (child.yogaTreeHasBeenConfigured_ &&\n        childLayoutMetrics.pointScaleFactor == pointScaleFactor &&\n        childLayoutMetrics.wasLeftAndRightSwapped == swapLeftAndRight &&\n        childErrata == child.resolveErrata(errata)) {\n      continue;\n",
+          "after": "\n    if (child.yogaTreeHasBeenConfigured_ &&\n        childLayoutMetrics.pointScaleFactor == pointScaleFactor &&\n        floatEquality(childLayoutMetrics.fontSizeMultiplier, fontSizeMultiplier) &&\n        childLayoutMetrics.wasLeftAndRightSwapped == swapLeftAndRight &&\n        childErrata == child.resolveErrata(errata)) {\n      continue;\n"
+        },
+        {
+          "before": "    if (doesOwn(child)) {\n      auto& mutableChild = const_cast<YogaLayoutableShadowNode&>(child);\n      mutableChild.configureYogaTree(\n          pointScaleFactor, child.resolveErrata(errata), swapLeftAndRight);\n    } else {\n      cloneChildInPlace(i).configureYogaTree(\n          pointScaleFactor, errata, swapLeftAndRight);\n    }\n  }\n}\n",
+          "after": "    if (doesOwn(child)) {\n      auto& mutableChild = const_cast<YogaLayoutableShadowNode&>(child);\n      mutableChild.configureYogaTree(\n          pointScaleFactor, fontSizeMultiplier, child.resolveErrata(errata), swapLeftAndRight);\n    } else {\n      cloneChildInPlace(i).configureYogaTree(\n          pointScaleFactor, fontSizeMultiplier, errata, swapLeftAndRight);\n    }\n  }\n}\n"
+        },
+        {
+          "before": "    TraceSection s2(\"YogaLayoutableShadowNode::configureYogaTree\");\n    configureYogaTree(\n        layoutContext.pointScaleFactor,\n        YGErrataAll /*defaultErrata*/,\n        swapLeftAndRight);\n  }\n",
+          "after": "    TraceSection s2(\"YogaLayoutableShadowNode::configureYogaTree\");\n    configureYogaTree(\n        layoutContext.pointScaleFactor,\n        layoutContext.fontSizeMultiplier,\n        YGErrataAll /*defaultErrata*/,\n        swapLeftAndRight);\n  }\n"
+        },
+        {
+          "before": "  if (yogaNode_.getHasNewLayout()) {\n    auto layoutMetrics = layoutMetricsFromYogaNode(yogaNode_);\n    layoutMetrics.pointScaleFactor = layoutContext.pointScaleFactor;\n    layoutMetrics.wasLeftAndRightSwapped = swapLeftAndRight;\n    setLayoutMetrics(layoutMetrics);\n    yogaNode_.setHasNewLayout(false);\n",
+          "after": "  if (yogaNode_.getHasNewLayout()) {\n    auto layoutMetrics = layoutMetricsFromYogaNode(yogaNode_);\n    layoutMetrics.pointScaleFactor = layoutContext.pointScaleFactor;\n    layoutMetrics.fontSizeMultiplier = layoutContext.fontSizeMultiplier;\n    layoutMetrics.wasLeftAndRightSwapped = swapLeftAndRight;\n    setLayoutMetrics(layoutMetrics);\n    yogaNode_.setHasNewLayout(false);\n"
+        },
+        {
+          "before": "\n      auto newLayoutMetrics = layoutMetricsFromYogaNode(*childYogaNode);\n      newLayoutMetrics.pointScaleFactor = layoutContext.pointScaleFactor;\n      newLayoutMetrics.wasLeftAndRightSwapped =\n          layoutContext.swapLeftAndRightInRTL &&\n          newLayoutMetrics.layoutDirection == LayoutDirection::RightToLeft;\n",
+          "after": "\n      auto newLayoutMetrics = layoutMetricsFromYogaNode(*childYogaNode);\n      newLayoutMetrics.pointScaleFactor = layoutContext.pointScaleFactor;\n      newLayoutMetrics.fontSizeMultiplier = layoutContext.fontSizeMultiplier;\n      newLayoutMetrics.wasLeftAndRightSwapped =\n          layoutContext.swapLeftAndRightInRTL &&\n          newLayoutMetrics.layoutDirection == LayoutDirection::RightToLeft;\n"
+        }
+      ]
+    },
+    {
+      "path": "ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.h",
+      "beforeSha256": "c9575424f0a81a6d69bdc81c76b4c9545bd3ca944d0f53c6876fe614180b75b2",
+      "afterSha256": "c08470296bea39983418adc31b18f393c144ee2c7fbe1acb3493eab9852b80dc",
+      "edits": [
+        {
+          "before": "   */\n  void configureYogaTree(\n      float pointScaleFactor,\n      YGErrata defaultErrata,\n      bool swapLeftAndRight);\n\n",
+          "after": "   */\n  void configureYogaTree(\n      float pointScaleFactor,\n      Float fontSizeMultiplier,\n      YGErrata defaultErrata,\n      bool swapLeftAndRight);\n\n"
+        }
+      ]
+    },
+    {
+      "path": "ReactCommon/react/renderer/core/LayoutMetrics.h",
+      "beforeSha256": "8e38c2f9b8c37ae56f4fc37da065df1292e275f50b01e7b76bf249aa79be0bb0",
+      "afterSha256": "28f044f408cf82b4164ee3997f89b6c1018e4c922a363dbf6ffbd1ff5dc0b853",
+      "edits": [
+        {
+          "before": "  bool wasLeftAndRightSwapped{false};\n  // Pixel density. Number of device pixels per density-independent pixel.\n  Float pointScaleFactor{1.0};\n  // How much the children of the node actually overflow in each direction.\n  // Positive values indicate that children are overflowing outside of the node.\n  // Negative values indicate that children are clipped inside the node\n",
+          "after": "  bool wasLeftAndRightSwapped{false};\n  // Pixel density. Number of device pixels per density-independent pixel.\n  Float pointScaleFactor{1.0};\n  // Surface font scale used for this measurement (upstream 45904c8668).\n  Float fontSizeMultiplier{1.0};\n  // How much the children of the node actually overflow in each direction.\n  // Positive values indicate that children are overflowing outside of the node.\n  // Negative values indicate that children are clipped inside the node\n"
+        },
+        {
+          "before": "        layoutMetrics.displayType,\n        layoutMetrics.layoutDirection,\n        layoutMetrics.pointScaleFactor,\n        layoutMetrics.overflowInset);\n  }\n};\n",
+          "after": "        layoutMetrics.displayType,\n        layoutMetrics.layoutDirection,\n        layoutMetrics.pointScaleFactor,\n        layoutMetrics.fontSizeMultiplier,\n        layoutMetrics.overflowInset);\n  }\n};\n"
+        }
+      ]
+    },
+    {
+      "path": "ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt",
+      "beforeSha256": "8dfeb7636ad6cb4154f41d247c9843fdc524630c7ff0d9207d95eeb994fc008c",
+      "afterSha256": "6f0ea9b927358bf03f14034de4ca9e6beeb8556a41a48fbe62a114c6a1dd9396",
+      "edits": [
+        {
+          "before": "\n  override fun enableFixForParentTagDuringReparenting(): Boolean = false\n\n  override fun enableFontScaleChangesUpdatingLayout(): Boolean = false\n\n  override fun enableIOSTextBaselineOffsetPerLine(): Boolean = false\n\n",
+          "after": "\n  override fun enableFixForParentTagDuringReparenting(): Boolean = false\n\n  override fun enableFontScaleChangesUpdatingLayout(): Boolean = true\n\n  override fun enableIOSTextBaselineOffsetPerLine(): Boolean = false\n\n"
+        }
+      ]
+    },
+    {
+      "path": "ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostImpl.kt",
+      "beforeSha256": "f52b5b13c2f4ed9a672ff56d9857e30226a81def18521a700a42e4fa0992aa43",
+      "afterSha256": "ad6d7ba8e1db7b794683df22dc7d23c420cdaf66fb2ba23f9299ca6759ea1c66",
+      "edits": [
+        {
+          "before": "    if (currentReactContext != null) {\n      if (ReactNativeFeatureFlags.enableFontScaleChangesUpdatingLayout()) {\n        DisplayMetricsHolder.initDisplayMetrics(currentReactContext)\n      }\n\n      val appearanceModule = currentReactContext.getNativeModule(AppearanceModule::class.java)\n",
+          "after": "    if (currentReactContext != null) {\n      if (ReactNativeFeatureFlags.enableFontScaleChangesUpdatingLayout()) {\n        DisplayMetricsHolder.initDisplayMetrics(currentReactContext)\n\n        synchronized(attachedSurfaces) {\n          attachedSurfaces.forEach { surface -> surface.view?.requestLayout() }\n        }\n      }\n\n      val appearanceModule = currentReactContext.getNativeModule(AppearanceModule::class.java)\n"
+        }
+      ]
+    }
+  ]
+}

@@ -9,11 +9,13 @@ export function useCafeAccess() {
   const focused = useRef(false);
   const account = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const check = useCallback(async () => {
     if (!focused.current) return;
     const run = ++revision.current;
     setReady(false);
+    setAccountId(null);
     setError('');
     try {
       const context = await getCurrentContext();
@@ -22,6 +24,7 @@ export function useCafeAccess() {
       if (!context.role) return router.replace({ pathname: '/signup', params: { complete: '1' } });
       if (context.role !== 'cafe_owner_manager') return router.replace('/home');
       account.current = context.user.id;
+      setAccountId(context.user.id);
       setReady(true);
     } catch (cause) {
       if (run === revision.current) setError(cause instanceof Error ? cause.message : 'Could not verify your café account. Please try again.');
@@ -30,13 +33,14 @@ export function useCafeAccess() {
   useFocusEffect(useCallback(() => {
     focused.current = true;
     void check();
-    return () => { focused.current = false; ++revision.current; account.current = null; setReady(false); };
+    return () => { focused.current = false; ++revision.current; account.current = null; setAccountId(null); setReady(false); };
   }, [check]));
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && session?.user.id !== account.current)) {
         ++revision.current;
         account.current = null;
+        setAccountId(null);
         setReady(false);
         // Leave the auth callback before reading the profile/session again.
         setTimeout(() => { void check(); }, 0);
@@ -44,5 +48,5 @@ export function useCafeAccess() {
     });
     return () => subscription.unsubscribe();
   }, [check]);
-  return { ready, error, retry: check };
+  return { ready, accountId, error, retry: check };
 }

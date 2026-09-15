@@ -1,0 +1,11 @@
+--- a/mobile/app/settings.tsx
++++ b/mobile/app/settings.tsx
+@@ -445,7 +445,7 @@
+   else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
+   else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
+   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
+-  else if (billing) detail = "Your first job and first hire are included. No upcoming charge.";
++  else if (billing) detail = "Your first job, matches, and interview messaging are included. A second job requires Pro.";
+   const action = error ? "Retry subscription status" : canManage(billing) ? "Manage subscription" : "View Free and Pro plans";
+   return <View style={s.card}>
+     <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : paymentAttention ? `Payment needs attention · ${statusLabel}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>

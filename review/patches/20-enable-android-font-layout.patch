@@ -1,0 +1,12 @@
+--- a/mobile/app.json
++++ b/mobile/app.json
+@@ -60,7 +60,8 @@
+           "defaultChannel": "baristamatch-alerts"
+         }
+       ],
+-      "expo-iap"
++      "expo-iap",
++      "./plugins/with-android-font-layout.cjs"
+     ],
+     "experiments": {
+       "typedRoutes": true

@@ -45,6 +45,20 @@
         "image": "ubuntu-24.04-jdk-17-ndk-r27b",
         "buildType": "app-bundle"
       }
+    },
+    "payment-review": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "preview",
+      "channel": "payment-review",
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://testing.baristajobmatch.com/api",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://iqtpsxxlpncaeabbcxht.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      }
     }
   },
   "submit": {

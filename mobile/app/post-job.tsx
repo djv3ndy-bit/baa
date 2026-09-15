@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ConversationKeyboardView } from '@/components/ConversationKeyboardView';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { authenticatedApi } from '@/lib/api';
@@ -56,7 +57,7 @@ export default function PostJobScreen() {
     finally { action.current = false; setPublishing(false); }
   }
   if (loadingJob) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#321708"/><Text style={styles.loadingText}>Loading job…</Text></View></SafeAreaView>;
-  return <SafeAreaView style={styles.safe}><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <SafeAreaView style={styles.safe}><ConversationKeyboardView style={styles.flex}>
     <View style={styles.header}><Pressable disabled={publishing} accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton} onPress={() => router.back()}><Text allowFontScaling={false} style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>{editing ? 'Edit job' : 'Post a job'}</Text><View style={styles.headerSpacer}/></View>
     <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
       {loadError ? <><Text accessibilityRole="alert" style={styles.subtitle}>{loadError}</Text><Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Retry loading job</Text></Pressable></> : <>
@@ -74,7 +75,7 @@ export default function PostJobScreen() {
       <Field label="Description" value={form.description} onValueChange={value => update('description', value)} placeholder="Describe the role, team, and what success looks like." editable={!publishing} multiline/>
       <Pressable accessibilityRole="button" disabled={publishing} onPress={() => void publish()} style={[styles.primary, publishing && styles.disabled]}><Text style={styles.primaryText}>{publishing ? 'Saving…' : editing ? 'Save changes' : 'Publish job'}</Text></Pressable>
       </>}
-    </ScrollView></KeyboardAvoidingView></SafeAreaView>;
+    </ScrollView></ConversationKeyboardView></SafeAreaView>;
 }
 
 function Field({ label, value, onValueChange, placeholder, multiline = false, ...props }: { label: string; value: string; onValueChange: (value: string) => void; placeholder: string; multiline?: boolean } & Omit<TextInputProps, 'value' | 'onChangeText' | 'placeholder' | 'multiline'>) {

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { blockUser, reportUser } from '@/lib/safety';
 import { useConversation } from '@/lib/useConversation';
+import { ConversationKeyboardView, ConversationTextInput } from '@/components/ConversationKeyboardView';
 
 type ReportReason = 'harassment' | 'spam_or_scam';
 
@@ -20,7 +21,7 @@ export default function Chat() {
       { text: 'Report conversation', onPress: chooseReportReason },
       { text: 'Block account', style: 'destructive', onPress: confirmBlock },
       { text: 'Cancel', style: 'cancel' },
-    ]);
+    ], { cancelable: true });
   }
 
   function chooseReportReason() {
@@ -28,7 +29,7 @@ export default function Chat() {
       { text: 'Harassment or threats', onPress: () => submitReport('harassment') },
       { text: 'Spam or scam', onPress: () => submitReport('spam_or_scam') },
       { text: 'Cancel', style: 'cancel' },
-    ]);
+    ], { cancelable: true });
   }
 
   async function submitReport(reason: ReportReason) {
@@ -46,7 +47,7 @@ export default function Chat() {
     Alert.alert('Block this account?', 'You will no longer see each other or be able to exchange messages.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Block', style: 'destructive', onPress: performBlock },
-    ]);
+    ], { cancelable: true });
   }
 
   async function performBlock() {
@@ -62,7 +63,7 @@ export default function Chat() {
   if (loading) return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
   return (
     <SafeAreaView style={s.safe}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ConversationKeyboardView style={{ flex: 1 }}>
         <View style={s.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.back()} style={s.back}><Text allowFontScaling={false} style={s.backText}>‹</Text></Pressable>
           <View style={s.avatar}><Text>☕</Text></View>
@@ -79,10 +80,10 @@ export default function Chat() {
           )) : !error && ready ? <View style={s.empty}><Text style={{ fontSize: 38 }}>👋</Text><Text style={s.emptyText}>Say hello and start the conversation.</Text></View> : null}
         </ScrollView>
         {ready ? <View style={s.compose}>
-          <TextInput accessibilityLabel="Message" value={body} onChangeText={setBody} placeholder="Message…" multiline maxLength={2000} style={s.input} placeholderTextColor="#9b8d84" />
-          <Pressable accessibilityRole="button" accessibilityLabel={sending ? "Sending message" : "Send message"} disabled={sending || !body.trim()} onPress={send} style={[s.send, (sending || !body.trim()) && { opacity: .5 }]}><Text style={s.sendText}>↑</Text></Pressable>
+          <ConversationTextInput accessibilityLabel="Message" value={body} onChangeText={setBody} placeholder="Message…" multiline maxLength={2000} style={s.input} placeholderTextColor="#9b8d84" />
+          <Pressable accessibilityRole="button" accessibilityLabel={sending ? "Sending message" : "Send message"} disabled={sending || !body.trim()} onPress={send} style={[s.send, (sending || !body.trim()) && { opacity: .5 }]}><Text allowFontScaling={false} style={s.sendText}>↑</Text></Pressable>
         </View> : null}
-      </KeyboardAvoidingView>
+      </ConversationKeyboardView>
     </SafeAreaView>
   );
 }

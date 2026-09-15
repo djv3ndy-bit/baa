@@ -1,0 +1,15 @@
+# This repository is public. Keep private device captures, credentials-adjacent
+# diagnostics, and detailed owner review material on the local workstation.
+# The required database fixtures, approved patches, and public release status
+# remain available to contributors and automated checks.
+*
+!.gitignore
+!current-review-status.md
+!native-billing-ledger.sql
+!native-checkout-coordination.sql
+!native-job-access.sql
+!patches/
+!patches/*.patch
+
+# Superseded proposal retained locally; the approved patch20 is separate.
+/patches/20-android-font-dependency-backport.patch

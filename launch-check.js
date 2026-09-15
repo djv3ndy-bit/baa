@@ -169,7 +169,7 @@ for(const token of ['suspended_at=is.null','stripeBillingAttempted','restoreDele
 if(deleteAccount.indexOf('rpc/claim_stripe_deletion')>deleteAccount.indexOf('suspended_at=is.null'))throw new Error('Account deletion must own the billing lease before changing profile visibility');
 const deletionFailureHandler=deleteAccount.slice(deleteAccount.lastIndexOf('} catch (error) {'));
 if(deletionFailureHandler.indexOf('if (restoreDeletionLock)')>deletionFailureHandler.indexOf('if (releaseDeletionBillingClaim)'))throw new Error('Account deletion must restore its lock before handing off the billing lease');
-for(const source of [dashboard,mobileSettings])if(!source.includes('active Pro subscription')||(!source.includes('cancels it immediately')&&!source.includes('canceled immediately')))throw new Error('Account deletion must disclose immediate Pro subscription cancellation');
+for(const source of [dashboard,mobileSettings])if(!source.includes('Website subscriptions')||!(/cancel(?:s it|ed)? immediately/.test(source))||!source.includes('does not cancel Apple or Google Play subscriptions')||!source.includes('does not issue a refund'))throw new Error('Account deletion must disclose immediate website cancellation, separate store cancellation, and no automatic refund');
 const safetyMigration='supabase/migrations/20260831090000_add_member_safety_controls.sql';
 if(!fs.existsSync(safetyMigration)) throw new Error('Mobile safety controls migration is missing');
 const safetySql=fs.readFileSync(safetyMigration,'utf8');
@@ -198,7 +198,9 @@ for(const token of ['grant insert (user_id, complimentary_access)','grant update
 const mobileJobs=fs.readFileSync('mobile/app/jobs.tsx','utf8');
 if(!/pathname:\s*'\/post-job'/.test(mobileJobs)||!/update\(\{\s*active:\s*!job.active/.test(mobileJobs))throw new Error('Mobile job management is incomplete');
 const mobileApi=fs.readFileSync('mobile/lib/api.ts','utf8');
-if(!mobileApi.includes('EXPO_PUBLIC_API_BASE_URL')) throw new Error('Mobile API cannot target a Stripe-enabled preview deployment');
+const mobileEnvironment=fs.readFileSync('mobile/features/review-mode/environment.ts','utf8');
+const mobileClient=fs.readFileSync('mobile/lib/supabase.ts','utf8');
+if(!mobileEnvironment.includes('EXPO_PUBLIC_API_BASE_URL') || !mobileClient.includes('APP_API_BASE = environment.apiBase') || !mobileApi.includes('`${APP_API_BASE}${path}`')) throw new Error('Mobile API must use the account environment selected at startup');
 
 // Café pricing synchronization. Historical SQL migrations may retain old trial
 // language, but every current customer-facing surface must use this offer.
@@ -228,7 +230,7 @@ if(!mobileSubscription.includes('useCafeAccess')||!mobileSubscription.includes('
 if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
 for(const file of ['terms.html','privacy.html']){
   const source=fs.readFileSync(file,'utf8');
-  const effectiveDate=file==='privacy.html'?'Effective September 6, 2026':'Effective September 2, 2026';
+  const effectiveDate='Effective September 15, 2026';
   if(!source.includes('BaristaMatch LLC')||!source.includes(effectiveDate))throw new Error(`${file}: LLC operator or effective date is missing`);
 }
 

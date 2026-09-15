@@ -1,0 +1,20 @@
+--- a/mobile/app/settings.tsx
++++ b/mobile/app/settings.tsx
+@@ -215,7 +215,7 @@
+     if (!expectedUserId || actionBusy.current || loading) return;
+     Alert.alert(
+       'Delete your account?',
+-      'This permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.',
++      'This permanently removes your profile, jobs, matches, messages, and uploaded media. If this account has an active Pro subscription, deletion cancels it immediately. This cannot be undone.',
+       [
+         { text: 'Cancel', style: 'cancel' },
+         { text: 'Continue', style: 'destructive', onPress: () => confirmAccountDeletion(expectedUserId) },
+@@ -226,7 +226,7 @@
+     if (account.current !== expectedUserId) return Alert.alert('Account changed', 'Please review the signed-in account before deleting.');
+     Alert.alert(
+       'Final confirmation',
+-      'Delete your BaristaMatch account now? Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
++      'Delete your BaristaMatch account now? Any active Pro subscription will be canceled immediately; deletion does not issue a refund. Limited records may be retained as described in the Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after deletion.',
+       [
+         { text: 'Keep my account', style: 'cancel' },
+         { text: 'Delete permanently', style: 'destructive', onPress: () => { void deleteAccount(expectedUserId); } },

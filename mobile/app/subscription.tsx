@@ -1,3 +1,4 @@
+import ExpoSubscriptionEntry, { nativeSubscriptionScreenEnabled } from '../features/native-subscription/ExpoSubscriptionEntry';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -21,6 +22,10 @@ const proBenefits = [
 ];
 
 export default function SubscriptionScreen() {
+  return nativeSubscriptionScreenEnabled ? <ExpoSubscriptionEntry /> : <PreservedSubscriptionScreen />;
+}
+
+function PreservedSubscriptionScreen() {
   const access = useCafeAccess();
   if (!access.ready) return <CafeAccessCheck error={access.error} retry={access.retry} appearance="prism" />;
 
