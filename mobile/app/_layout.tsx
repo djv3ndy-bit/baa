@@ -37,7 +37,7 @@ function ReadyRootLayout() {
       <StatusBar style={isLogin && !getAppEnvironment().review ? 'light' : 'dark'} />
       {/* Android 16 is edge-to-edge. RN's per-screen SafeAreaView is iOS-only.
           Expo Router supplies the safe-area provider. The login screen handles its own photo-header insets on both platforms. */}
-      <SafeAreaView style={{ flex: 1 }} edges={getAppEnvironment().review ? ['top', 'right', 'bottom', 'left'] : Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
+      <SafeAreaView style={{ flex: 1 }} edges={getAppEnvironment().review || pathname === '/review-mode' ? ['top', 'right', 'bottom', 'left'] : Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
         <ReviewModeBanner />
         <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
         {isLogin && <ReviewModeEntry />}
