@@ -1,3 +1,4 @@
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useRef, useState } from "react";
 import {
@@ -114,11 +115,13 @@ function formatOpeningHours(value: OpenHours) {
   return formatted || value._legacy || "";
 }
 
-export default function Profile() {
+function Profile() {
+  const memory = useSectionMemory<{ profile: any; role: AppRole; userId: string }>('profile');
+  const loaded = useRef(!!memory.initial);
   const [loading, setLoading] = useState(true),
     [editing, setEditing] = useState(false),
-    [profile, setProfile] = useState<any>({}),
-    [role, setRole] = useState<AppRole>("barista"),
+    [profile, setProfile] = useState<any>(memory.initial?.profile ?? {}),
+    [role, setRole] = useState<AppRole>(memory.initial?.role ?? "barista"),
     [saving, setSaving] = useState(false),
     [locationCity, setLocationCity] = useState(""),
     [openHours, setOpenHours] = useState<OpenHours>({}),
@@ -128,8 +131,8 @@ export default function Profile() {
     [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
     [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<any>({});
-  const accountId = useRef<string | null>(null);
+  const [savedProfile, setSavedProfile] = useState<any>(memory.initial?.profile ?? {});
+  const accountId = useRef<string | null>(memory.initial?.userId ?? null);
   const saveInProgress = useRef(false);
   const active = useRef(false);
   const generation = useRef(0);
@@ -138,7 +141,7 @@ export default function Profile() {
     const version = ++generation.current;
     void load(version);
     return () => { active.current = false; generation.current += 1; };
-  }, []));
+  }, [memory]));
   function restoreDraft(saved: any) {
     setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: floridaCityFromLocation(saved.preferred_city) });
     setLocationCity(floridaCityFromLocation(saved.location));
@@ -152,7 +155,7 @@ export default function Profile() {
     setLoading(true); setLoadError(false); setEditing(false);
     try {
     const { user, profile: p, role: r } = await getCurrentContext();
-    if (!active.current || generation.current !== version) return;
+    if (!active.current || generation.current !== version || !memory.current()) return;
     if (!user) return router.replace("/login");
     if (!r) return router.replace({ pathname: "/signup", params: { complete: "1" } });
     const demographicsResult = r === "barista"
@@ -161,14 +164,17 @@ export default function Profile() {
     const { data: demographics, error: demographicsError } = demographicsResult;
     if (demographicsError) throw demographicsError;
     await requireCurrentUser(user.id);
-    if (!active.current || generation.current !== version) return;
+    if (!active.current || generation.current !== version || !memory.current()) return;
     const saved = { ...p, ...demographics };
+    memory.save(user.id, r, { profile: saved, role: r, userId: user.id });
+    if (!memory.current()) return;
+    loaded.current = true;
     accountId.current = user.id;
     setSavedProfile(saved);
     restoreDraft(saved);
     setRole(r);
     } catch {
-      if (active.current && generation.current === version) setLoadError(true);
+      if (active.current && generation.current === version && memory.current()) { memory.forget(); setLoadError(true); }
     } finally {
       if (active.current && generation.current === version) setLoading(false);
     }
@@ -294,7 +300,7 @@ export default function Profile() {
     if (saveInProgress.current || !editing || !accountId.current) return;
     const userId = accountId.current;
     const version = generation.current;
-    const stillCurrent = () => active.current && generation.current === version;
+    const stillCurrent = () => active.current && generation.current === version && memory.current();
     const assertCurrent = async () => {
       if (!stillCurrent()) throw new Error("The profile editor was closed. Reopen it to continue.");
       await requireCurrentUser(userId);
@@ -331,6 +337,8 @@ export default function Profile() {
       const saved = await persistProfileUpdate(supabase, userId, role, payload, demographics, assertCurrent);
       if (!stillCurrent()) return;
       const confirmed = { ...saved, ...(role === "barista" ? demographics : {}) };
+      memory.save(userId, role, { profile: confirmed, role, userId });
+      if (!memory.current()) return;
       setSavedProfile(confirmed);
       restoreDraft(confirmed);
       setEditing(false);
@@ -347,7 +355,7 @@ export default function Profile() {
     <Pressable accessibilityRole="button" onPress={() => void load()} style={s.primary}><Text style={s.primaryText}>Try again</Text></Pressable>
     <Pressable accessibilityRole="button" onPress={() => router.replace("/login")}><Text style={s.sub}>Return to login</Text></Pressable>
   </View></SafeAreaView>;
-  if (loading)
+  if (loading && !loaded.current)
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.center}>
@@ -1036,3 +1044,5 @@ const s = StyleSheet.create({
   },
   infoValue: { fontSize: 14, lineHeight: 21, color: prism.ink, marginTop: 5 },
 });
+
+export default withSectionMemory(Profile);

@@ -38,6 +38,7 @@ function sourceLoader({ client = clientFor(() => ({ data: [] })).client, api = a
       if (name.endsWith('/supabase') || name === './supabase') return { supabase: client };
       if (name.endsWith('/api') || name === './api') return { authenticatedApi: api };
       if (name.endsWith('/session') || name === './session') return { getCurrentContext: context };
+    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
       if (name.endsWith('/AppBottomNav')) return { AppBottomNav: () => null };
       // Preserve form children while native keyboard layout is tested on devices.
       if (name.endsWith('/ConversationKeyboardView')) return { ConversationKeyboardView: 'KeyboardAvoidingView' };

@@ -68,6 +68,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     return nested.exports;
   }
   const require = (name, fromFile = file) => {
+    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return native;

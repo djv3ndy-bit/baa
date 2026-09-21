@@ -1,0 +1,869 @@
+diff --git a/mobile/features/review-mode/AppEnvironmentGate.tsx b/mobile/features/review-mode/AppEnvironmentGate.tsx
+--- a/mobile/features/review-mode/AppEnvironmentGate.tsx
++++ b/mobile/features/review-mode/AppEnvironmentGate.tsx
+@@ -1,6 +1,7 @@
+ import { useEffect, useState, type PropsWithChildren } from 'react';
+ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+-import { initializeSupabaseEnvironment } from '@/lib/supabase';
++import { initializeSectionMemory } from '@/features/section-memory/session';
++import { initializeSupabaseEnvironment, supabase, AUTH_STORAGE_KEY } from '@/lib/supabase';
+ 
+ export function AppEnvironmentGate({ children }: PropsWithChildren) {
+   const [ready, setReady] = useState(false);
+@@ -11,6 +12,8 @@
+     setFailed(false);
+     const timer = setTimeout(() => { if (active) setFailed(true); }, 8000);
+     void initializeSupabaseEnvironment().then(() => {
++      // Display memory must never delay login or prevent authentication recovery.
++      void initializeSectionMemory(supabase, AUTH_STORAGE_KEY);
+       if (active) setReady(true);
+     }).catch(() => { if (active) setFailed(true); }).finally(() => clearTimeout(timer));
+     return () => { active = false; clearTimeout(timer); };
+diff --git a/mobile/features/approved-dashboard/ApprovedHomeScreen.tsx b/mobile/features/approved-dashboard/ApprovedHomeScreen.tsx
+--- a/mobile/features/approved-dashboard/ApprovedHomeScreen.tsx
++++ b/mobile/features/approved-dashboard/ApprovedHomeScreen.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { useCallback, useRef, useState } from 'react';
+ import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
+ import { SafeAreaView } from 'react-native-safe-area-context';
+@@ -10,24 +11,28 @@
+ import { Action } from './DashboardPrimitives';
+ import { dashboardTheme as t } from './theme';
+ 
+-export default function ApprovedHomeScreen() {
+-  const [data, setData] = useState<DashboardData | null>(null);
++function ApprovedHomeScreen() {
++  const memory = useSectionMemory<DashboardData>('home');
++  const [data, setData] = useState<DashboardData | null>(memory.initial ?? null);
++  const [refreshing, setRefreshing] = useState(false);
+   const [loading, setLoading] = useState(true), [error, setError] = useState('');
+   const reload = useRef<() => void>(() => {});
+-  const account = useRef<string | null>(null);
++  const account = useRef<string | null>(memory.initial?.accountId ?? null);
+   useFocusEffect(useCallback(() => {
+     let live = true, running = false, revision = 0;
+     let channel: ReturnType<typeof supabase.channel> | undefined;
+-    async function load() {
++    async function load(manual = false) {
+       if (!live || running) return;
+       running = true;
+       const version = ++revision;
+-      setLoading(true);
++      setLoading(true); if (manual) setRefreshing(true);
+       try {
+         const next = await loadDashboard();
+-        if (!live || version !== revision) return;
++        if (!live || version !== revision || !memory.current()) return;
+         if (account.current && account.current !== next.accountId) setData(null);
+         account.current = next.accountId;
++        memory.save(next.accountId, next.role, next);
++        if (!memory.current()) return;
+         setData(next); setError('');
+         if (!channel) {
+           channel = supabase.channel(`approved-home-${next.accountId}`)
+@@ -36,12 +41,12 @@
+             .subscribe();
+         }
+       } catch (cause) {
+-        if (!live || version !== revision) return;
+-        if (cause instanceof DashboardSessionError) { setData(null); router.replace(cause.destination); }
++        if (!live || version !== revision || !memory.current()) return;
++        if (cause instanceof DashboardSessionError) { memory.forget(); setData(null); router.replace(cause.destination); }
+         else setError(safeDashboardError(cause));
+-      } finally { running = false; if (live && version === revision) setLoading(false); }
++      } finally { running = false; if (live && version === revision) { setLoading(false); setRefreshing(false); } }
+     }
+-    reload.current = () => { void load(); };
++    reload.current = () => { void load(true); };
+     void load();
+     const state = AppState.addEventListener('change', value => { if (value === 'active') void load(); });
+     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+@@ -50,13 +55,13 @@
+       }
+     });
+     return () => { live = false; revision++; state.remove(); subscription.unsubscribe(); if (channel) void supabase.removeChannel(channel); reload.current = () => {}; };
+-  }, []));
++  }, [memory]));
+   const navigate = async (destination: Destination) => {
+     if (!account.current) return;
+     try { await requireCurrentUser(account.current); router.navigate(destination as never); }
+-    catch { setData(null); account.current = null; router.replace('/login'); }
++    catch { memory.forget(); setData(null); account.current = null; router.replace('/login'); }
+   };
+-  if (data) return <ApprovedDashboard data={data} error={error} refreshing={loading} onRefresh={() => reload.current()} navigate={destination => { void navigate(destination); }} />;
++  if (data) return <ApprovedDashboard data={data} error={error} refreshing={refreshing} onRefresh={() => reload.current()} navigate={destination => { void navigate(destination); }} />;
+   return <SafeAreaView edges={Platform.OS === 'android' ? [] : ['top', 'left', 'right', 'bottom']} style={s.safe}><View style={s.center}>
+     {loading ? <><ActivityIndicator color={t.accent} size="large" /><Text style={s.copy}>Loading your dashboard…</Text></> : <>
+       <Text accessibilityRole="header" style={s.title}>Your dashboard is unavailable</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text>
+@@ -65,3 +70,5 @@
+   </View></SafeAreaView>;
+ }
+ const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: t.background }, center: { flex: 1, padding: 24, justifyContent: 'center', gap: 16 }, title: { fontSize: 26, fontFamily: t.headingFont, fontWeight: '700', color: t.ink }, copy: { color: t.muted, fontSize: 16, lineHeight: 23 } });
++
++export default withSectionMemory(ApprovedHomeScreen);
+diff --git a/mobile/app/messages.tsx b/mobile/app/messages.tsx
+--- a/mobile/app/messages.tsx
++++ b/mobile/app/messages.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useState } from 'react';
+ import { ActivityIndicator, AppState, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+@@ -7,9 +8,10 @@
+ import { AppBottomNav } from '@/components/AppBottomNav';
+ import { Conversation, LatestMessageRequest, loadConversations, messageError, withMessageDeadline } from '@/lib/messaging';
+ 
+-export default function Messages() {
+-  const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);
+-  const [rows, setRows] = useState<Conversation[]>([]), [role, setRole] = useState<AppRole | null>(null);
++function Messages() {
++  const memory = useSectionMemory<{ rows: Conversation[]; role: AppRole }>('messages');
++  const [loading, setLoading] = useState(!memory.initial), [refreshing, setRefreshing] = useState(false);
++  const [rows, setRows] = useState<Conversation[]>(memory.initial?.rows ?? []), [role, setRole] = useState<AppRole | null>(memory.initial?.role ?? null);
+   const [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
+   useFocusEffect(useCallback(() => {
+     let live = true, userId = '';
+@@ -17,15 +19,16 @@
+     let channel: ReturnType<typeof supabase.channel> | null = null;
+     async function load() {
+       const current = requests.begin();
+-      setRefreshing(true);
+       try {
+         const context = await withMessageDeadline(getCurrentContext());
+-        if (!live || !current()) return;
++        if (!live || !current() || !memory.current()) return;
+         if (!context.user) { router.replace('/login'); return; }
+         if (!context.role) { router.replace('/signup'); return; }
+         userId = context.user.id;
+         const conversations = await loadConversations(supabase, userId, context.role);
+-        if (!live || !current()) return;
++        if (!live || !current() || !memory.current()) return;
++        memory.save(userId, context.role, { rows: conversations, role: context.role });
++        if (!memory.current()) return;
+         setRole(context.role); setRows(conversations); setError('');
+         if (!channel) {
+           channel = supabase.channel(`mobile-inbox-${userId}`)
+@@ -35,7 +38,7 @@
+             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'discovery_messages' }, () => { void load(); })
+             .subscribe();
+         }
+-      } catch (cause) { if (live && current()) setError(messageError(cause, 'Messages could not load. Please try again.')); }
++      } catch (cause) { if (live && current() && memory.current()) { memory.forget(); setError(messageError(cause, 'Messages could not load. Please try again.')); } }
+       finally { if (live && current()) { setLoading(false); setRefreshing(false); } }
+     }
+     void load();
+@@ -46,8 +49,8 @@
+       }
+     });
+     return () => { live = false; requests.invalidate(); subscription.unsubscribe(); appState.remove(); if (channel) void supabase.removeChannel(channel); };
+-  }, [attempt]));
+-  const refresh = () => setAttempt(value => value + 1);
++  }, [attempt, memory]));
++  const refresh = () => { setRefreshing(true); setAttempt(value => value + 1); };
+   const unread = rows.reduce((total, row) => total + row.unread, 0);
+   return <SafeAreaView style={s.safe}>
+     <View style={s.header}><Text style={s.title}>Messages</Text><Text style={s.sub}>{unread ? `${unread} unread ${unread === 1 ? 'message' : 'messages'}` : 'Private conversations with mutual matches'}</Text></View>
+@@ -65,3 +68,5 @@
+   </SafeAreaView>;
+ }
+ const s=StyleSheet.create({notice:{padding:14,backgroundColor:'#fff4e8',borderRadius:12,marginBottom:12},error:{fontSize:13,color:'#84341f',lineHeight:19},retry:{fontSize:14,fontWeight: '700',color:prism.accent,padding:14,textAlign:'center'},unread:{backgroundColor:prism.accent,borderRadius:20,minWidth:25,padding:5,alignItems:'center'},unreadText:{fontSize:11,color:prism.surface,fontWeight: '700'},safe:{flex:1,backgroundColor:prism.background},center:{flex:1,alignItems:'center',justifyContent:'center'},header:{padding:20,paddingBottom:10},title:{fontSize:31,fontWeight: '700',color:prism.ink},sub:{fontSize:14,color:prism.muted,marginTop:4},list:{padding:18,paddingBottom:30},row:{...prismPanel,borderRadius:20,paddingHorizontal:15,marginBottom:10,flexDirection:'row',alignItems:'center',gap:13,backgroundColor:prism.surface,paddingVertical:15},avatar:{width:50,height:50,borderRadius:25,backgroundColor:prism.accentSoft,alignItems:'center',justifyContent:'center'},name:{fontSize:16,fontWeight: '700',color:prism.ink},preview:{fontSize:13,color:prism.muted,marginTop:5},chev:{fontSize:28,color:prism.accent},empty:{alignItems:'center',paddingTop:100},emptyTitle:{fontSize:25,fontWeight: '700',color:prism.ink,marginTop:15},emptyCopy:{fontSize:14,color:prism.muted,marginTop:6,textAlign:'center'}});
++
++export default withSectionMemory(Messages);
+diff --git a/mobile/app/jobs.tsx b/mobile/app/jobs.tsx
+--- a/mobile/app/jobs.tsx
++++ b/mobile/app/jobs.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useRef, useState } from 'react';
+ import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+@@ -7,23 +8,28 @@
+ import { AppBottomNav } from '@/components/AppBottomNav';
+ import { formatJobPay, JOB_FIELDS, loadApplications, MarketJob, readAllRows } from '@/lib/marketplace';
+ 
+-export default function JobsScreen() {
+-  const [loading, setLoading] = useState(true), [jobs, setJobs] = useState<MarketJob[]>([]);
+-  const [counts, setCounts] = useState<Record<string, number>>({}), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+-  const request = useRef(0), action = useRef(false), ownerId = useRef(''), focused = useRef(false);
++function JobsScreen() {
++  const memory = useSectionMemory<{ jobs: MarketJob[]; counts: Record<string, number>; ownerId: string }>('jobs');
++  const loaded = useRef(!!memory.initial);
++  const [loading, setLoading] = useState(true), [jobs, setJobs] = useState<MarketJob[]>(memory.initial?.jobs ?? []);
++  const [counts, setCounts] = useState<Record<string, number>>(memory.initial?.counts ?? {}), [error, setError] = useState(''), [busy, setBusy] = useState(false);
++  const request = useRef(0), action = useRef(false), ownerId = useRef(memory.initial?.ownerId ?? ''), focused = useRef(false);
+   const load = useCallback(async () => {
+     const version = ++request.current; setLoading(true); setError('');
+     try {
+       const { user, role } = await getCurrentContext();
+-      if (version !== request.current) return;
++      if (version !== request.current || !memory.current()) return;
+       if (!user) { router.replace('/login'); return; }
+       if (role !== 'cafe_owner_manager') { router.replace('/home'); return; }
+       const [next, applications] = await Promise.all([readAllRows<MarketJob>(() => supabase.from('jobs').select(JOB_FIELDS).eq('owner_id', user.id).order('created_at', { ascending: false }).order('id')), loadApplications(user.id, role)]);
+-      if (version !== request.current) return;
+-      ownerId.current = user.id; setJobs(next); setCounts(applications.reduce<Record<string, number>>((result, item) => { result[item.job_id] = (result[item.job_id] || 0) + 1; return result; }, {}));
+-    } catch (caught) { if (version === request.current) { setJobs([]); setError(caught instanceof Error ? caught.message : 'Jobs could not load. Please refresh.'); } }
++      if (version !== request.current || !memory.current()) return;
++      const nextCounts = applications.reduce<Record<string, number>>((result, item) => { result[item.job_id] = (result[item.job_id] || 0) + 1; return result; }, {});
++      memory.save(user.id, role, { jobs: next, counts: nextCounts, ownerId: user.id });
++      if (!memory.current()) return;
++      loaded.current = true; ownerId.current = user.id; setJobs(next); setCounts(nextCounts);
++    } catch (caught) { if (version === request.current && memory.current()) { memory.forget(); setJobs([]); setError(caught instanceof Error ? caught.message : 'Jobs could not load. Please refresh.'); } }
+     finally { if (version === request.current) setLoading(false); }
+-  }, []);
++  }, [memory]);
+   useFocusEffect(useCallback(() => { focused.current = true; void load(); return () => { focused.current = false; request.current++; }; }, [load]));
+   async function toggle(job: MarketJob) {
+     if (action.current) return;
+@@ -34,6 +40,7 @@
+       const { data, error: updateError } = await supabase.from('jobs').update({ active: !job.active, updated_at: new Date().toISOString() }).eq('id', job.id).eq('owner_id', user.id).select('id,active').single();
+       if (updateError) throw updateError;
+       if (!data) throw new Error('This job is no longer available.');
++      memory.forget();
+       if (focused.current) setJobs(rows => rows.map(row => row.id === job.id ? { ...row, active: data.active } : row));
+     } catch (caught) { if (focused.current) Alert.alert('Job not updated', caught instanceof Error ? caught.message : 'Please retry.'); }
+     finally { action.current = false; setBusy(false); }
+@@ -41,10 +48,12 @@
+   return <SafeAreaView style={s.safe}>
+     <View style={s.header}><Pressable accessibilityRole="button" accessibilityLabel="Go back" style={s.backButton} onPress={() => router.back()}><Text allowFontScaling={false} style={s.back}>‹</Text></Pressable><View style={s.headerCopy}><Text style={s.title}>Job posts</Text><Text style={s.sub}>Edit, pause, or reopen café roles</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Post a job" style={s.add} onPress={() => router.push('/post-job')}><Text allowFontScaling={false} style={s.addText}>＋</Text></Pressable></View>
+     <ScrollView contentContainerStyle={s.wrap}><Pressable disabled={loading || busy} style={s.secondary} onPress={() => void load()}><Text style={s.secondaryText}>Refresh jobs</Text></Pressable>
+-      {loading ? <ActivityIndicator size="large" color={prism.ink} /> : error ? <Text accessibilityRole="alert" style={s.meta}>{error}</Text> : jobs.length ? jobs.map(job => <View key={job.id} style={s.card}><View style={s.cardTop}><View style={{ flex: 1 }}><Text style={s.jobTitle}>{job.title}</Text><Text style={s.meta}>{job.location || 'Location not added'} · {formatJobPay(job)}</Text><Text style={s.meta}>{job.schedule || 'Schedule not added'}</Text><Text style={s.meta}>{counts[job.id] || 0} applications retained</Text></View><View style={s.status}><Text style={s.statusText}>{job.active ? 'Active' : 'Paused'}</Text></View></View><View style={s.actions}>
+-        <Pressable disabled={busy} style={s.secondary} onPress={() => router.push({ pathname: '/post-job', params: { jobId: job.id } })}><Text style={s.secondaryText}>Edit</Text></Pressable><Pressable disabled={busy} style={s.secondary} onPress={() => job.active ? Alert.alert('Pause this job?', 'Baristas will no longer see the post. Its applications and matches will stay saved.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Pause job', onPress: () => void toggle(job) }]) : void toggle(job)}><Text style={s.secondaryText}>{job.active ? 'Pause job' : 'Reopen job'}</Text></Pressable><Pressable style={s.secondary} onPress={() => router.push('/candidates')}><Text style={s.secondaryText}>Review applicants</Text></Pressable>
++      {loading && !loaded.current ? <ActivityIndicator size="large" color={prism.ink} /> : error ? <Text accessibilityRole="alert" style={s.meta}>{error}</Text> : jobs.length ? jobs.map(job => <View key={job.id} style={s.card}><View style={s.cardTop}><View style={{ flex: 1 }}><Text style={s.jobTitle}>{job.title}</Text><Text style={s.meta}>{job.location || 'Location not added'} · {formatJobPay(job)}</Text><Text style={s.meta}>{job.schedule || 'Schedule not added'}</Text><Text style={s.meta}>{counts[job.id] || 0} applications retained</Text></View><View style={s.status}><Text style={s.statusText}>{job.active ? 'Active' : 'Paused'}</Text></View></View><View style={s.actions}>
++        <Pressable disabled={busy || loading} style={s.secondary} onPress={() => router.push({ pathname: '/post-job', params: { jobId: job.id } })}><Text style={s.secondaryText}>Edit</Text></Pressable><Pressable disabled={busy || loading} style={s.secondary} onPress={() => job.active ? Alert.alert('Pause this job?', 'Baristas will no longer see the post. Its applications and matches will stay saved.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Pause job', onPress: () => void toggle(job) }]) : void toggle(job)}><Text style={s.secondaryText}>{job.active ? 'Pause job' : 'Reopen job'}</Text></Pressable><Pressable style={s.secondary} onPress={() => router.push('/candidates')}><Text style={s.secondaryText}>Review applicants</Text></Pressable>
+       </View></View>) : <View style={s.empty}><Text style={s.emptyTitle}>No jobs yet</Text><Text style={s.meta}>Post your first role to start meeting local baristas.</Text><Pressable style={s.primary} onPress={() => router.push('/post-job')}><Text style={s.primaryText}>Post a job</Text></Pressable></View>}
+     </ScrollView><AppBottomNav active="home" role="cafe_owner_manager" />
+   </SafeAreaView>;
+ }
+ const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: prism.background }, headerCopy: { flex: 1, minWidth: 0 }, backButton: { width: 44, height: 44, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }, header: { minHeight: 72, paddingVertical: 10, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: prism.line, backgroundColor: prism.surface }, back: { fontSize: 36, color: prism.ink }, title: { fontSize: 21, fontWeight: '700', color: prism.ink }, sub: { fontSize: 11, color: prism.muted, marginTop: 2 }, add: { flexShrink: 0, width: 44, height: 44, borderRadius: 14, backgroundColor: prism.accent, alignItems: 'center', justifyContent: 'center' }, addText: { fontSize: 25, color: prism.surface }, wrap: { padding: 18, paddingBottom: 32 }, card: { ...prismPanel, backgroundColor: prism.surface, borderWidth: 1, borderColor: prism.line, borderRadius: 24, padding: 16, marginTop: 14 }, cardTop: { flexDirection: 'row', gap: 10 }, jobTitle: { fontSize: 18, fontWeight: '700', color: prism.ink }, meta: { fontSize: 13, lineHeight: 20, color: prism.muted, marginTop: 6 }, status: { backgroundColor: prism.soft, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' }, statusText: { fontSize: 11, fontWeight: '700', color: '#41713c' }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 14 }, secondary: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: prism.line, borderRadius: 11, paddingHorizontal: 15, paddingVertical: 10, alignSelf: 'flex-start' }, secondaryText: { fontWeight: '700', color: prism.ink }, empty: { alignItems: 'center', paddingVertical: 70, paddingHorizontal: 24 }, emptyTitle: { fontSize: 25, fontWeight: '700', color: prism.ink, marginTop: 15 }, primary: { backgroundColor: prism.accent, borderRadius: 13, paddingHorizontal: 20, paddingVertical: 13, marginTop: 20, minHeight: 44 }, primaryText: { color: prism.surface, fontWeight: '700' } });
++
++export default withSectionMemory(JobsScreen);
+diff --git a/mobile/app/matches.tsx b/mobile/app/matches.tsx
+--- a/mobile/app/matches.tsx
++++ b/mobile/app/matches.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useRef, useState } from 'react';
+ import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+@@ -8,31 +9,38 @@
+ import { loadApplications, MarketMatch, readAllRows, readProfiles } from '@/lib/marketplace';
+ 
+ type MatchRow = { id: string; kind: 'discovery' | 'application'; name: string; detail: string };
+-export default function Matches() {
++function Matches() {
+   const { jobId } = useLocalSearchParams<{ jobId?: string }>();
+-  const [loading, setLoading] = useState(true), [rows, setRows] = useState<MatchRow[]>([]), [role, setRole] = useState<AppRole>('barista'), [error, setError] = useState('');
++  const memory = useSectionMemory<{ rows: MatchRow[]; role: AppRole }>(`matches:${jobId || ''}`);
++  const loaded = useRef(!!memory.initial);
++  const [loading, setLoading] = useState(true), [rows, setRows] = useState<MatchRow[]>(memory.initial?.rows ?? []), [role, setRole] = useState<AppRole>(memory.initial?.role ?? 'barista'), [error, setError] = useState('');
+   const request = useRef(0);
+   const load = useCallback(async () => {
+     const version = ++request.current; setLoading(true); setError('');
+     try {
+       const context = await getCurrentContext();
+-      if (version !== request.current) return;
++      if (version !== request.current || !memory.current()) return;
+       if (!context.user) { router.replace('/login'); return; }
+       if (!context.role || !context.profile) throw new Error('Your account profile could not load. Please refresh.');
+       const id = context.user.id, accountRole = context.role;
+       const [applications, matches] = await Promise.all([loadApplications(id, accountRole), readAllRows<MarketMatch>(() => supabase.from('discovery_matches').select('id,barista_id,cafe_id').or(`barista_id.eq.${id},cafe_id.eq.${id}`).order('created_at', { ascending: false }).order('id'))]);
+       const profiles = await readProfiles([...matches.flatMap(row => [row.barista_id, row.cafe_id]), ...applications.filter(row => row.status === 'matched').map(row => accountRole === 'barista' ? row.job?.owner_id || '' : row.barista_id)].filter(value => value && value !== id));
+-      if (version !== request.current) return;
++      if (version !== request.current || !memory.current()) return;
+       const mutual: MatchRow[] = (jobId ? [] : matches).map(match => { const person = profiles[accountRole === 'barista' ? match.cafe_id : match.barista_id]; return { id: match.id, kind: 'discovery', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: person?.location || 'Mutual profile match' }; });
+       const legacy: MatchRow[] = applications.filter(row => row.status === 'matched' && (!jobId || row.job_id === jobId)).map(row => { const person = profiles[accountRole === 'barista' ? row.job?.owner_id || '' : row.barista_id]; return { id: row.id, kind: 'application', name: person?.cafe_name || person?.display_name || 'Profile currently unavailable', detail: row.job?.title || 'Matched job application' }; });
+-      setRole(accountRole); setRows([...mutual, ...legacy]);
+-    } catch (caught) { if (version === request.current) { setRows([]); setError(caught instanceof Error ? caught.message : 'Matches could not load. Please refresh.'); } }
++      memory.save(id, accountRole, { rows: [...mutual, ...legacy], role: accountRole });
++      if (!memory.current()) return;
++      loaded.current = true; setRole(accountRole); setRows([...mutual, ...legacy]);
++    } catch (caught) { if (version === request.current && memory.current()) { memory.forget(); setRows([]); setError(caught instanceof Error ? caught.message : 'Matches could not load. Please refresh.'); } }
+     finally { if (version === request.current) setLoading(false); }
+-  }, [jobId]);
++  }, [jobId, memory]);
+   useFocusEffect(useCallback(() => { void load(); return () => { request.current++; }; }, [load]));
+   return <SafeAreaView style={s.safe}><View style={s.header}><Text style={s.title}>Matches</Text><Text style={s.sub}>{jobId ? 'Mutual matches for this job' : 'Both sides agreed — start a conversation'}</Text></View><ScrollView contentContainerStyle={s.list}>{jobId ? <Pressable accessibilityRole="button" style={s.refresh} onPress={() => router.replace('/matches')}><Text style={s.name}>View all matches</Text></Pressable> : null}
+     <Pressable disabled={loading} accessibilityRole="button" style={s.refresh} onPress={() => void load()}><Text style={s.name}>Refresh matches</Text></Pressable>
+-    {loading ? <ActivityIndicator size="large" color={prism.ink}/> : error ? <Text accessibilityRole="alert" style={s.emptyCopy}>{error}</Text> : rows.length ? rows.map(row => <Pressable accessibilityRole="button" accessibilityLabel={`Message ${row.name} about ${row.detail}`} key={`${row.kind}-${row.id}`} style={s.row} onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, kind: row.kind } })}><View style={{ flex: 1 }}><Text style={s.name}>{row.name}</Text><Text style={s.meta}>{row.detail} · Matched</Text></View><Text style={s.chev}>›</Text></Pressable>) : <View style={s.empty}><Text style={s.emptyTitle}>No matches yet</Text><Text style={s.emptyCopy}>Review incoming profile interests in Discover, or connect through a job application.</Text><Pressable style={s.refresh} onPress={() => router.push({ pathname: '/discover', params: { tab: 'received' } })}><Text style={s.name}>Review profile interests</Text></Pressable></View>}
++    {loading && !loaded.current ? <ActivityIndicator size="large" color={prism.ink}/> : error ? <Text accessibilityRole="alert" style={s.emptyCopy}>{error}</Text> : rows.length ? rows.map(row => <Pressable accessibilityRole="button" accessibilityLabel={`Message ${row.name} about ${row.detail}`} key={`${row.kind}-${row.id}`} style={s.row} onPress={() => router.push({ pathname: '/chat/[id]', params: { id: row.id, kind: row.kind } })}><View style={{ flex: 1 }}><Text style={s.name}>{row.name}</Text><Text style={s.meta}>{row.detail} · Matched</Text></View><Text style={s.chev}>›</Text></Pressable>) : <View style={s.empty}><Text style={s.emptyTitle}>No matches yet</Text><Text style={s.emptyCopy}>Review incoming profile interests in Discover, or connect through a job application.</Text><Pressable style={s.refresh} onPress={() => router.push({ pathname: '/discover', params: { tab: 'received' } })}><Text style={s.name}>Review profile interests</Text></Pressable></View>}
+   </ScrollView><AppBottomNav active="matches" role={role}/></SafeAreaView>;
+ }
+ const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: prism.background }, header: { padding: 20, paddingBottom: 10 }, title: { fontSize: 31, fontWeight: '700', color: prism.ink }, sub: { fontSize: 14, color: prism.muted, marginTop: 4 }, list: { padding: 18, paddingBottom: 30 }, refresh: { minHeight: 44, padding: 12, borderWidth: 1, borderColor: prism.line, borderRadius: 12, marginBottom: 14, marginTop: 10 }, row: { ...prismPanel, flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: prism.surface, borderWidth: 1, borderColor: prism.line, borderRadius: 22, padding: 15, marginBottom: 10 }, name: { fontSize: 16, fontWeight: '700', color: prism.ink }, meta: { fontSize: 12, color: prism.muted, marginTop: 4 }, chev: { fontSize: 29, color: prism.accent }, empty: { alignItems: 'center', paddingTop: 65 }, emptyTitle: { fontSize: 25, fontWeight: '700', color: prism.ink, marginTop: 15 }, emptyCopy: { fontSize: 14, lineHeight: 20, textAlign: 'center', color: prism.muted, marginTop: 6 } });
++
++function useMatchScope() { return useLocalSearchParams<{ jobId?: string }>().jobId || ''; }
++export default withSectionMemory(Matches, useMatchScope);
+diff --git a/mobile/app/discover.tsx b/mobile/app/discover.tsx
+--- a/mobile/app/discover.tsx
++++ b/mobile/app/discover.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useRef, useState } from 'react';
+ import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+@@ -10,19 +11,21 @@
+ 
+ type Tab = 'browse' | 'received' | 'sent';
+ const emptyData: Marketplace = { jobs: [], candidates: [], applications: [], interests: [], matches: [], profiles: {} };
+-export default function DiscoverScreen() {
++function DiscoverScreen() {
+   const params = useLocalSearchParams<{ tab?: string; jobId?: string }>();
++  const memory = useSectionMemory<{ data: Marketplace; profile: MarketProfile; userId: string; role: AppRole }>(`discover:${params.jobId || ''}`);
++  const loaded = useRef(!!memory.initial);
+   const [loading, setLoading] = useState(true);
+-  const [jobs, setJobs] = useState<MarketJob[]>([]);
+-  const [role, setRole] = useState<AppRole>('barista');
+-  const [candidates, setCandidates] = useState<MarketProfile[]>([]);
+-  const [data, setData] = useState<Marketplace>(emptyData);
+-  const [profile, setProfile] = useState<MarketProfile | null>(null);
+-  const [userId, setUserId] = useState('');
++  const [jobs, setJobs] = useState<MarketJob[]>(memory.initial?.data.jobs ?? []);
++  const [role, setRole] = useState<AppRole>(memory.initial?.role ?? 'barista');
++  const [candidates, setCandidates] = useState<MarketProfile[]>(memory.initial?.data.candidates ?? []);
++  const [data, setData] = useState<Marketplace>(memory.initial?.data ?? emptyData);
++  const [profile, setProfile] = useState<MarketProfile | null>(memory.initial?.profile ?? null);
++  const [userId, setUserId] = useState(memory.initial?.userId ?? '');
+   const [error, setError] = useState('');
+   const [tab, setTab] = useState<Tab>('browse');
+   const [search, setSearch] = useState('');
+-  const [expanded, setExpanded] = useState<string | null>(null);
++  const [expanded, setExpanded] = useState<string | null>(params.jobId && memory.initial?.data.requestedJob ? `job:${memory.initial.data.requestedJob.id}` : null);
+   const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
+   const [busy, setBusy] = useState(false);
+   const request = useRef(0), action = useRef(false), focused = useRef(false);
+@@ -31,16 +34,19 @@
+     setLoading(true); setError('');
+     try {
+       const context = await getCurrentContext();
+-      if (version !== request.current) return;
++      if (version !== request.current || !memory.current()) return;
+       if (!context.user) { router.replace('/login'); return; }
+       if (!context.profile || !context.role) throw new Error('Your account profile could not be loaded. Refresh to try again.');
+       const next = await loadMarketplace(context.user.id, context.role, context.profile, params.jobId);
+-      if (version !== request.current) return;
++      if (version !== request.current || !memory.current()) return;
++      memory.save(context.user.id, context.role, { data: next, profile: context.profile, role: context.role, userId: context.user.id });
++      if (!memory.current()) return;
++      loaded.current = true;
+       setRole(context.role); setUserId(context.user.id); setProfile(context.profile); setData(next); setJobs(next.jobs); setCandidates(next.candidates); if (params.jobId && next.requestedJob) setExpanded(`job:${next.requestedJob.id}`);
+     } catch (caught) {
+-      if (version === request.current) { setError(caught instanceof Error ? caught.message : 'Your results could not load. Please refresh.'); setJobs([]); setCandidates([]); setData(emptyData); }
++      if (version === request.current && memory.current()) { memory.forget(); setError(caught instanceof Error ? caught.message : 'Your results could not load. Please refresh.'); setJobs([]); setCandidates([]); setData(emptyData); }
+     } finally { if (version === request.current) setLoading(false); }
+-  }, [params.jobId]);
++  }, [params.jobId, memory]);
+   useFocusEffect(useCallback(() => { focused.current = true; if (params.tab === 'received' || params.tab === 'sent') setTab(params.tab); else if (params.tab === 'applications') setTab('sent'); void load(); return () => { focused.current = false; request.current++; }; }, [load, params.tab]));
+ 
+   async function respond(targetId: string) {
+@@ -49,6 +55,7 @@
+     action.current = true; setBusy(true);
+     try {
+       const result = await sendDiscoveryInterest(userId, targetId, role);
++      memory.forget();
+       if (focused.current) { await load(); Alert.alert(result.matched ? 'It’s a match!' : 'Interest sent', result.matched ? 'Open Matches to start a conversation.' : 'This profile can now review your interest.'); }
+     } catch (caught) { if (focused.current) Alert.alert('Interest not confirmed', caught instanceof Error ? caught.message : 'Please refresh and retry.'); }
+     finally { action.current = false; setBusy(false); }
+@@ -57,7 +64,7 @@
+     if (action.current) return;
+     if (!profile?.is_discoverable || profile.suspended_at) { Alert.alert('Complete your profile', 'Save every required profile detail before applying.', [{ text: 'Open profile', onPress: () => router.push('/profile') }, { text: 'Cancel', style: 'cancel' }]); return; }
+     action.current = true; setBusy(true);
+-    try { await applyToMarketplaceJob(job.id, userId); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
++    try { await applyToMarketplaceJob(job.id, userId); memory.forget(); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
+     catch (caught) { if (focused.current) Alert.alert('Application not confirmed', caught instanceof Error ? caught.message : 'Please refresh and retry.'); }
+     finally { action.current = false; setBusy(false); }
+   }
+@@ -72,13 +79,13 @@
+       {open ? <View><Detail label="Skills" value={person.skills?.join(' · ')} /><Detail label="Experience" value={person.experience} /><Detail label="Availability" value={person.availability} /><Detail label="Desired pay" value={person.pay_expectation} /><Detail label="Café address" value={person.cafe_address} /><Detail label="Opening hours" value={person.open_hours} /><Detail label="Shop type" value={person.shop_type} /><Detail label="Barista preferences" value={person.barista_preferences?.join(' · ')} />{person.bar_picture_url ? <Image source={{ uri: person.bar_picture_url }} accessibilityLabel="Café coffee bar" style={s.barPhoto} /> : null}{person.video_path ? <Pressable accessibilityRole="button" style={s.secondary} onPress={() => void viewVideo(person.video_path!)}><Text style={s.secondaryText}>Watch coffee showcase</Text></Pressable> : null}</View> : null}
+       {person.cafe_name ? <Text style={s.copy}>Connect with this café overall. Apply to a job separately to track that role.</Text> : null}
+       <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpandedProfile(open ? null : id)}><Text style={s.secondaryText}>{open ? 'Hide profile' : 'View profile'}</Text></Pressable>
+-        <Pressable accessibilityRole="button" disabled={busy || state.disabled} style={[s.primary, (busy || state.disabled) && s.disabled]} onPress={() => respond(id)}><Text style={s.primaryText}>{state.label}</Text></Pressable></View>
++        <Pressable accessibilityRole="button" disabled={busy || loading || state.disabled} style={[s.primary, (busy || loading || state.disabled) && s.disabled]} onPress={() => respond(id)}><Text style={s.primaryText}>{state.label}</Text></Pressable></View>
+     </View>;
+   }
+   function jobCard(job: MarketJob) { const application = data.applications.find(row => row.job_id === job.id), open = expanded === `job:${job.id}`; return <View key={job.id} style={s.card}>
+           <Text style={s.name}>{job.title}</Text><Text style={s.meta}>{job.owner?.cafe_name || 'Café'} · {job.location}</Text><Text style={s.pay}>{formatJobPay(job)}</Text><Text style={s.copy}>{job.schedule || 'Schedule not listed'}</Text>
+           {open ? <><Detail label="Address" value={[job.address_line1, job.address_line2, job.city || job.location, job.state, job.postal_code].filter(Boolean).join(', ')} /><Detail label="About the role" value={job.description || 'Description not added.'} /><Detail label="Required skills" value={job.required_skills?.join(' · ') || 'No specific skills listed'} />{job.owner ? profileCard(job.owner, job.owner_id) : null}</> : <Text numberOfLines={3} style={s.copy}>{job.description}</Text>}
+-          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpanded(open ? null : `job:${job.id}`)}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || !!application} style={[s.primary, (busy || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
++          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpanded(open ? null : `job:${job.id}`)}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || loading || !!application} style={[s.primary, (busy || loading || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
+         </View>; }
+   const query = search.trim().toLowerCase();
+   const visibleJobs = jobs.filter(job => job.id !== data.requestedJob?.id).filter(job => [job.title, job.location, job.owner?.cafe_name, job.description, job.schedule, job.required_skills?.join(' ')].join(' ').toLowerCase().includes(query));
+@@ -90,7 +97,7 @@
+     <View style={s.tabs}>{(['browse', 'received', 'sent'] as Tab[]).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: tab === value }} style={[s.tab, tab === value && s.selectedTab]} onPress={() => setTab(value)}><Text style={s.tabText}>{value === 'browse' ? 'Browse' : value === 'received' ? `Interested in you (${received.length})` : 'Sent & applications'}</Text></Pressable>)}</View>
+     <ScrollView contentContainerStyle={s.list} keyboardShouldPersistTaps="handled">
+       <Pressable accessibilityRole="button" disabled={loading || busy} style={s.secondary} onPress={() => void load()}><Text style={s.secondaryText}>Refresh results</Text></Pressable>
+-      {loading ? <View style={s.empty}><ActivityIndicator size="large" color={prism.ink} /><Text style={s.copy}>Loading your current results…</Text></View> : error ? <View style={s.empty}><Text style={s.name}>Results could not load</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text></View> : tab === 'browse' ? <>
++      {loading && !loaded.current ? <View style={s.empty}><ActivityIndicator size="large" color={prism.ink} /><Text style={s.copy}>Loading your current results…</Text></View> : error ? <View style={s.empty}><Text style={s.name}>Results could not load</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text></View> : tab === 'browse' ? <>
+         {params.jobId && role === 'barista' ? <View><Text style={s.sectionTitle}>Requested job</Text>{data.requestedJob ? jobCard(data.requestedJob) : <Text style={s.copy}>This job is no longer available. It may have been paused or removed.</Text>}</View> : null}
+         <Text style={s.copy}>Matches use the exact saved city or ZIP. Update your profile to change your search area.</Text><Pressable onPress={() => router.push('/profile')} style={s.secondary}><Text style={s.secondaryText}>Update search area</Text></Pressable>
+         <TextInput accessibilityLabel={role === 'barista' ? 'Search jobs' : 'Search baristas'} placeholder={role === 'barista' ? 'Search title, café, skill…' : 'Search name, skill…'} value={search} onChangeText={setSearch} style={s.search} />
+@@ -108,3 +115,6 @@
+ const s = StyleSheet.create({
+   safe: { flex: 1, backgroundColor: prism.background }, header: { padding: 18, gap: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: prism.surface }, headerCopy: { flex: 1, minWidth: 0 }, title: { fontSize: 24, fontWeight: '700', color: prism.ink }, subtitle: { fontSize: 12, marginTop: 4, color: prism.muted }, settings: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, settingsText: { fontSize: 25, color: prism.ink }, tabs: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8 }, tab: { flexGrow: 1, flexBasis: 90, minHeight: 44, padding: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: prism.soft }, selectedTab: { backgroundColor: prism.selected }, tabText: { fontSize: 12, fontWeight: '700', color: prism.ink, textAlign: 'center' }, list: { padding: 18, paddingBottom: 32 }, card: { ...prismPanel, padding: 18, marginTop: 14, borderRadius: 24, backgroundColor: prism.surface, borderWidth: 1, borderColor: prism.line }, name: { fontSize: 20, fontWeight: '700', color: prism.ink }, meta: { fontSize: 13, color: prism.muted, marginTop: 6 }, copy: { fontSize: 14, color: prism.muted, lineHeight: 21, marginTop: 8 }, pay: { fontSize: 17, fontWeight: '700', color: '#287443', marginTop: 10 }, barPhoto: { width: '100%', height: 180, borderRadius: 12, marginVertical: 12 }, photo: { width: 72, height: 72, borderRadius: 16, marginBottom: 12 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }, primary: { minHeight: 44, justifyContent: 'center', borderRadius: 12, padding: 12, backgroundColor: prism.accent }, primaryText: { fontWeight: '700', color: prism.surface, textAlign: 'center' }, secondary: { minHeight: 44, justifyContent: 'center', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: prism.line, alignSelf: 'flex-start' }, secondaryText: { fontWeight: '700', color: prism.ink, textAlign: 'center' }, disabled: { opacity: .5 }, search: { marginTop: 18, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: prism.line, backgroundColor: prism.surface, fontSize: 16, color: prism.ink }, sectionTitle: { fontSize: 20, fontWeight: '700', color: prism.ink, marginTop: 22 }, detail: { marginTop: 12 }, detailLabel: { fontSize: 12, fontWeight: '700', color: prism.ink }, empty: { paddingVertical: 35, alignItems: 'center' },
+ });
++
++function useDiscoverScope() { return useLocalSearchParams<{ jobId?: string }>().jobId || ''; }
++export default withSectionMemory(DiscoverScreen, useDiscoverScope);
+diff --git a/mobile/app/profile.tsx b/mobile/app/profile.tsx
+--- a/mobile/app/profile.tsx
++++ b/mobile/app/profile.tsx
+@@ -1,3 +1,4 @@
++import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
+ import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
+ import { useCallback, useRef, useState } from "react";
+ import {
+@@ -114,11 +115,13 @@
+   return formatted || value._legacy || "";
+ }
+ 
+-export default function Profile() {
++function Profile() {
++  const memory = useSectionMemory<{ profile: any; role: AppRole; userId: string }>('profile');
++  const loaded = useRef(!!memory.initial);
+   const [loading, setLoading] = useState(true),
+     [editing, setEditing] = useState(false),
+-    [profile, setProfile] = useState<any>({}),
+-    [role, setRole] = useState<AppRole>("barista"),
++    [profile, setProfile] = useState<any>(memory.initial?.profile ?? {}),
++    [role, setRole] = useState<AppRole>(memory.initial?.role ?? "barista"),
+     [saving, setSaving] = useState(false),
+     [locationCity, setLocationCity] = useState(""),
+     [openHours, setOpenHours] = useState<OpenHours>({}),
+@@ -128,8 +131,8 @@
+     [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
+     [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
+   const [loadError, setLoadError] = useState(false);
+-  const [savedProfile, setSavedProfile] = useState<any>({});
+-  const accountId = useRef<string | null>(null);
++  const [savedProfile, setSavedProfile] = useState<any>(memory.initial?.profile ?? {});
++  const accountId = useRef<string | null>(memory.initial?.userId ?? null);
+   const saveInProgress = useRef(false);
+   const active = useRef(false);
+   const generation = useRef(0);
+@@ -138,7 +141,7 @@
+     const version = ++generation.current;
+     void load(version);
+     return () => { active.current = false; generation.current += 1; };
+-  }, []));
++  }, [memory]));
+   function restoreDraft(saved: any) {
+     setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: floridaCityFromLocation(saved.preferred_city) });
+     setLocationCity(floridaCityFromLocation(saved.location));
+@@ -152,7 +155,7 @@
+     setLoading(true); setLoadError(false); setEditing(false);
+     try {
+     const { user, profile: p, role: r } = await getCurrentContext();
+-    if (!active.current || generation.current !== version) return;
++    if (!active.current || generation.current !== version || !memory.current()) return;
+     if (!user) return router.replace("/login");
+     if (!r) return router.replace({ pathname: "/signup", params: { complete: "1" } });
+     const demographicsResult = r === "barista"
+@@ -161,14 +164,17 @@
+     const { data: demographics, error: demographicsError } = demographicsResult;
+     if (demographicsError) throw demographicsError;
+     await requireCurrentUser(user.id);
+-    if (!active.current || generation.current !== version) return;
++    if (!active.current || generation.current !== version || !memory.current()) return;
+     const saved = { ...p, ...demographics };
++    memory.save(user.id, r, { profile: saved, role: r, userId: user.id });
++    if (!memory.current()) return;
++    loaded.current = true;
+     accountId.current = user.id;
+     setSavedProfile(saved);
+     restoreDraft(saved);
+     setRole(r);
+     } catch {
+-      if (active.current && generation.current === version) setLoadError(true);
++      if (active.current && generation.current === version && memory.current()) { memory.forget(); setLoadError(true); }
+     } finally {
+       if (active.current && generation.current === version) setLoading(false);
+     }
+@@ -294,7 +300,7 @@
+     if (saveInProgress.current || !editing || !accountId.current) return;
+     const userId = accountId.current;
+     const version = generation.current;
+-    const stillCurrent = () => active.current && generation.current === version;
++    const stillCurrent = () => active.current && generation.current === version && memory.current();
+     const assertCurrent = async () => {
+       if (!stillCurrent()) throw new Error("The profile editor was closed. Reopen it to continue.");
+       await requireCurrentUser(userId);
+@@ -331,6 +337,8 @@
+       const saved = await persistProfileUpdate(supabase, userId, role, payload, demographics, assertCurrent);
+       if (!stillCurrent()) return;
+       const confirmed = { ...saved, ...(role === "barista" ? demographics : {}) };
++      memory.save(userId, role, { profile: confirmed, role, userId });
++      if (!memory.current()) return;
+       setSavedProfile(confirmed);
+       restoreDraft(confirmed);
+       setEditing(false);
+@@ -347,7 +355,7 @@
+     <Pressable accessibilityRole="button" onPress={() => void load()} style={s.primary}><Text style={s.primaryText}>Try again</Text></Pressable>
+     <Pressable accessibilityRole="button" onPress={() => router.replace("/login")}><Text style={s.sub}>Return to login</Text></Pressable>
+   </View></SafeAreaView>;
+-  if (loading)
++  if (loading && !loaded.current)
+     return (
+       <SafeAreaView style={s.safe}>
+         <View style={s.center}>
+@@ -1036,3 +1044,5 @@
+   },
+   infoValue: { fontSize: 14, lineHeight: 21, color: prism.ink, marginTop: 5 },
+ });
++
++export default withSectionMemory(Profile);
+diff --git a/tests/native-marketplace-parity.test.mjs b/tests/native-marketplace-parity.test.mjs
+--- a/tests/native-marketplace-parity.test.mjs
++++ b/tests/native-marketplace-parity.test.mjs
+@@ -38,6 +38,7 @@
+       if (name.endsWith('/supabase') || name === './supabase') return { supabase: client };
+       if (name.endsWith('/api') || name === './api') return { authenticatedApi: api };
+       if (name.endsWith('/session') || name === './session') return { getCurrentContext: context };
++    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
+       if (name.endsWith('/AppBottomNav')) return { AppBottomNav: () => null };
+       // Preserve form children while native keyboard layout is tested on devices.
+       if (name.endsWith('/ConversationKeyboardView')) return { ConversationKeyboardView: 'KeyboardAvoidingView' };
+diff --git a/tests/native-profile-visibility.test.mjs b/tests/native-profile-visibility.test.mjs
+--- a/tests/native-profile-visibility.test.mjs
++++ b/tests/native-profile-visibility.test.mjs
+@@ -9,6 +9,7 @@
+   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+   const load = name => {
+     if (Object.hasOwn(mocks, name)) return mocks[name];
++    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
+     if (name === '@/lib/dashboardPrism') return compile('lib/dashboardPrism.ts');
+     if (name === './floridaLocation') return compile('lib/floridaLocation.ts');
+     throw new Error(`Unmocked import ${name}`);
+diff --git a/tests/native-auth-profile.test.mjs b/tests/native-auth-profile.test.mjs
+--- a/tests/native-auth-profile.test.mjs
++++ b/tests/native-auth-profile.test.mjs
+@@ -13,6 +13,7 @@
+   const exports = {};
+   cache.set(name, exports);
+   const load = dependency => {
++    if (dependency.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
+     if (dependency in mocks) return mocks[dependency];
+     if (dependency === './supabase' || dependency === '@/lib/supabase') return { supabase: mocks.client };
+     const file = dependency.startsWith('@/') ? `${dependency.slice(2)}.ts` : dependency.startsWith('.') ? `${name.slice(0, name.lastIndexOf('/') + 1)}${dependency.replace(/^\.\//, '')}.ts` : null;
+diff --git a/tests/layout/native-headers.test.mjs b/tests/layout/native-headers.test.mjs
+--- a/tests/layout/native-headers.test.mjs
++++ b/tests/layout/native-headers.test.mjs
+@@ -68,6 +68,7 @@
+     return nested.exports;
+   }
+   const require = (name, fromFile = file) => {
++    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
+     if (name === 'react') return react;
+     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
+     if (name === 'react-native') return native;
+diff --git a/mobile/features/section-memory/store.ts b/mobile/features/section-memory/store.ts
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/section-memory/store.ts
+@@ -0,0 +1,56 @@
++export type SectionLease = Readonly<{ scope: string; accountId: string | null; generation: number }>;
++type Entry = { json: string; savedAt: number };
++
++/** Short-lived display snapshots only. Never used to authorize an action or stored on disk. */
++export class SectionMemoryStore {
++  private scope = '';
++  private accountId: string | null = null;
++  private expiresAt = 0;
++  private generation = 0;
++  private role: string | null = null;
++  private entries = new Map<string, Entry>();
++  private listeners = new Set<() => void>();
++  constructor(private now = Date.now, private ttl = 5 * 60_000, private maxEntries = 12, private maxCharacters = 2_000_000) {}
++
++  subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
++  version = () => this.generation;
++  lease = (): SectionLease => ({ scope: this.scope, accountId: this.accountId, generation: this.generation });
++  current = (lease: SectionLease) => lease.scope === this.scope && lease.accountId === this.accountId && lease.generation === this.generation;
++
++  setSession(scope: string, accountId: string | null, expiresAt = 0) {
++    const changed = this.scope !== scope || this.accountId !== accountId;
++    this.scope = scope; this.accountId = accountId; this.expiresAt = expiresAt;
++    if (changed) { this.role = null; this.reset(); }
++  }
++  reset() {
++    this.entries.clear(); this.generation++;
++    for (const listener of this.listeners) listener();
++  }
++  read<T>(lease: SectionLease, key: string): T | undefined {
++    if (!this.current(lease) || !this.accountId || this.expiresAt <= this.now()) return;
++    const entry = this.entries.get(key);
++    if (!entry) return;
++    if (this.now() - entry.savedAt >= this.ttl) { this.entries.delete(key); return; }
++    // Recency is bounded. Return a copy so an editor cannot mutate the saved snapshot.
++    this.entries.delete(key); this.entries.set(key, entry);
++    return JSON.parse(entry.json) as T;
++  }
++  save<T>(lease: SectionLease, key: string, accountId: string, role: string, value: T): boolean {
++    if (!this.current(lease) || !accountId || accountId !== this.accountId || this.expiresAt <= this.now()) return false;
++    if (this.role && this.role !== role) { this.role = role; this.reset(); return false; }
++    this.role = role;
++    let json: string;
++    try { json = JSON.stringify(value); } catch { return false; }
++    if (!json || json.length > this.maxCharacters) { this.entries.delete(key); return false; }
++    this.entries.delete(key); this.entries.set(key, { json, savedAt: this.now() });
++    let size = [...this.entries.values()].reduce((sum, item) => sum + item.json.length, 0);
++    while (this.entries.size > this.maxEntries || size > this.maxCharacters) {
++      const oldest = this.entries.keys().next().value!;
++      size -= this.entries.get(oldest)!.json.length; this.entries.delete(oldest);
++    }
++    return true;
++  }
++  forget(lease: SectionLease, key: string) { if (this.current(lease)) this.entries.delete(key); }
++}
++
++export const sectionMemory = new SectionMemoryStore();
+diff --git a/mobile/features/section-memory/session.ts b/mobile/features/section-memory/session.ts
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/section-memory/session.ts
+@@ -0,0 +1,37 @@
++import { sectionMemory, type SectionMemoryStore } from './store';
++
++type Session = { user: { id: string }; expires_at?: number } | null;
++type AuthClient = { auth: {
++  getSession(): Promise<{ data: { session: Session }; error: unknown }>;
++  onAuthStateChange(callback: (event: string, session: Session) => void): { data: { subscription: { unsubscribe(): void } } };
++} };
++
++/** One synchronous auth listener per running app; never calls Auth inside its callback. */
++export function createSectionMemorySession(store: SectionMemoryStore) {
++  let client: AuthClient | undefined, namespace = '', initialization: Promise<void> | undefined;
++  let stop: (() => void) | undefined;
++  return (nextClient: AuthClient, nextNamespace: string): Promise<void> => {
++    if (client === nextClient && namespace === nextNamespace && initialization) return initialization;
++    stop?.(); store.setSession(nextNamespace, null);
++    client = nextClient; namespace = nextNamespace;
++    let active = true, events = 0;
++    const apply = (session: Session) => store.setSession(nextNamespace, session?.user.id ?? null, (session?.expires_at ?? 0) * 1000);
++    const { data: { subscription } } = nextClient.auth.onAuthStateChange((_event, session) => {
++      if (active) { events++; apply(session); }
++    });
++    stop = () => { active = false; subscription.unsubscribe(); };
++    const pending = nextClient.auth.getSession().then(({ data, error }) => {
++      // A slower initial read cannot overwrite a newer sign-in or sign-out event.
++      if (!active || events) return;
++      apply(error ? null : data.session);
++    }).catch(() => {
++      // This optional display cache must not block login when session recovery fails.
++      // Keep listening so a later successful sign-in can enable it again.
++      if (active && !events) store.setSession(nextNamespace, null);
++    });
++    initialization = pending;
++    return pending;
++  };
++}
++
++export const initializeSectionMemory = createSectionMemorySession(sectionMemory);
+diff --git a/mobile/features/section-memory/useSectionMemory.tsx b/mobile/features/section-memory/useSectionMemory.tsx
+new file mode 100644
+--- /dev/null
++++ b/mobile/features/section-memory/useSectionMemory.tsx
+@@ -0,0 +1,23 @@
++import { useMemo, useSyncExternalStore, type ComponentType } from 'react';
++import { sectionMemory } from './store';
++
++/** Remount only the private section on account/environment changes, not the auth router. */
++export function withSectionMemory(Screen: ComponentType, useScope: () => string = () => '') {
++  return function AccountSection() {
++    const generation = useSyncExternalStore(sectionMemory.subscribe, sectionMemory.version, sectionMemory.version);
++    const scope = useScope();
++    return <Screen key={`${generation}:${scope}`} />;
++  };
++}
++
++export function useSectionMemory<T>(key: string) {
++  return useMemo(() => {
++    const lease = sectionMemory.lease();
++    return {
++      initial: sectionMemory.read<T>(lease, key),
++      current: () => sectionMemory.current(lease),
++      save: (accountId: string, role: string, value: T) => sectionMemory.save(lease, key, accountId, role, value),
++      forget: () => sectionMemory.forget(lease, key),
++    };
++  }, [key]);
++}
+diff --git a/tests/approved-update/section-memory.test.mjs b/tests/approved-update/section-memory.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/approved-update/section-memory.test.mjs
+@@ -0,0 +1,89 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { loadTypescript, plain } from './load-typescript.mjs';
++const { SectionMemoryStore } = loadTypescript('mobile/features/section-memory/store.ts');
++const { createSectionMemorySession } = loadTypescript('mobile/features/section-memory/session.ts', { './store': { sectionMemory: new SectionMemoryStore() } });
++const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
++function fixture(options = {}) { let clock = 1000; const store = new SectionMemoryStore(() => clock, options.ttl ?? 300000, options.maxEntries ?? 12, options.maxCharacters ?? 2000000); store.setSession('production', 'a', 900000); return { store, tick: n => clock += n, lease: store.lease() }; }
++test('only a successful account-scoped snapshot is reused, with independent copies', () => {
++ const { store, lease } = fixture(), data = { name: 'Saved', skills: ['Coffee'] };
++ assert.equal(store.read(lease, 'profile'), undefined);
++ assert.equal(store.save(lease, 'profile', 'a', 'barista', data), true);
++ data.skills.push('Unsaved'); const draft = store.read(lease, 'profile'); draft.name = 'Draft'; draft.skills.push('New');
++ assert.deepEqual(plain(store.read(lease, 'profile')), { name: 'Saved', skills: ['Coffee'] });
++});
++for (const [name, transition] of [
++ ['sign-out', s => s.setSession('production', null)],
++ ['another account', s => s.setSession('production', 'b', 900000)],
++ ['test environment', s => s.setSession('sandbox', 'a', 900000)],
++ ['same account after logout', s => { s.setSession('production', null); s.setSession('production', 'a', 900000); }],
++]) test(`${name} clears data and rejects a late request from the previous session`, () => {
++ const { store, lease } = fixture(); let notifications = 0; store.subscribe(() => notifications++);
++ store.save(lease, 'messages', 'a', 'barista', ['private']); transition(store);
++ assert.equal(store.read(store.lease(), 'messages'), undefined); assert.equal(store.current(lease), false);
++ assert.equal(store.save(lease, 'messages', 'a', 'barista', ['late']), false); assert.ok(notifications);
++});
++test('token refresh for the same account keeps screens; expired sessions cannot read or write snapshots', () => {
++ const { store, lease } = fixture(); store.save(lease, 'home', 'a', 'barista', []);
++ store.setSession('production', 'a', 900001); assert.equal(store.current(lease), true); assert.deepEqual(plain(store.read(lease, 'home')), []);
++ store.setSession('production', 'a', 1000); assert.equal(store.read(lease, 'home'), undefined); assert.equal(store.save(lease, 'home', 'a', 'barista', []), false);
++});
++test('five-minute expiry, bounded size, and separate filtered lists', () => {
++ const { store, lease, tick } = fixture({ maxEntries: 2 });
++ for (const key of ['matches', 'matches:job-a']) store.save(lease, key, 'a', 'barista', key);
++ assert.equal(store.read(lease, 'matches:job-b'), undefined);
++ store.save(lease, 'profile', 'a', 'barista', 'profile'); assert.equal(store.read(lease, 'matches'), undefined);
++ tick(300000); assert.equal(store.read(lease, 'profile'), undefined);
++ const bounded = fixture({ maxCharacters: 10 }); bounded.store.save(bounded.lease, 'x', 'a', 'barista', '12345'); bounded.store.save(bounded.lease, 'y', 'a', 'barista', '12345');
++ assert.equal(bounded.store.read(bounded.lease, 'x'), undefined);
++ assert.equal(bounded.store.save(bounded.lease, 'z', 'a', 'barista', '12345678901'), false);
++});
++test('role change invalidates every screen before accepting the new role; mismatched owners cannot write', () => {
++ const { store, lease } = fixture(); store.save(lease, 'home', 'a', 'barista', {});
++ assert.equal(store.save(lease, 'jobs', 'b', 'cafe_owner_manager', {}), false);
++ assert.equal(store.save(lease, 'jobs', 'a', 'cafe_owner_manager', {}), false); assert.equal(store.read(store.lease(), 'home'), undefined);
++ assert.equal(store.save(store.lease(), 'jobs', 'a', 'cafe_owner_manager', {}), true);
++});
++test('failed snapshots and explicit invalidation are recoverable', () => {
++ const { store, lease } = fixture(); const circular = {}; circular.self = circular;
++ assert.equal(store.save(lease, 'home', 'a', 'barista', circular), false);
++ store.save(lease, 'home', 'a', 'barista', {}); store.forget(lease, 'home'); assert.equal(store.read(lease, 'home'), undefined);
++ assert.equal(store.save(lease, 'home', 'a', 'barista', {}), true);
++});
++function client(pending) { let callback, stopped = 0, calls = 0; return { auth: { getSession: () => { calls++; return pending.promise; }, onAuthStateChange: cb => { callback = cb; return { data: { subscription: { unsubscribe: () => stopped++ } } }; } }, emit: session => callback('CHANGE', session), get stopped() { return stopped; }, get calls() { return calls; } }; }
++const session = id => ({ user: { id }, expires_at: 1000 });
++test('initialization is shared and auth events win over a stale initial read', async () => {
++ const { store } = fixture(), initialize = createSectionMemorySession(store), pending = deferred(), auth = client(pending);
++ const first = initialize(auth, 'production'); assert.equal(initialize(auth, 'production'), first); assert.equal(auth.calls, 1);
++ auth.emit(session('b')); pending.resolve({ data: { session: session('a') }, error: null }); await first;
++ assert.equal(store.lease().accountId, 'b'); auth.emit(null); assert.equal(store.lease().accountId, null);
++});
++test('switching environments ignores an old client event and pending request', async () => {
++ const { store } = fixture(), initialize = createSectionMemorySession(store), p = deferred(), q = deferred(), old = client(p), next = client(q);
++ const a = initialize(old, 'production'), b = initialize(next, 'sandbox'); old.emit(session('wrong'));
++ p.resolve({ data: { session: session('wrong') }, error: null }); q.resolve({ data: { session: session('right') }, error: null }); await Promise.all([a, b]);
++ assert.equal(old.stopped, 1); assert.equal(store.lease().scope, 'sandbox'); assert.equal(store.lease().accountId, 'right');
++});
++test('failed initial session read does not block the app; a later sign-in enables display memory', async () => {
++ const { store } = fixture(), initialize = createSectionMemorySession(store), pending = deferred(), auth = client(pending);
++ const first = initialize(auth, 'production'); pending.reject(new Error('offline')); await first;
++ assert.equal(store.lease().accountId, null); assert.equal(auth.stopped, 0);
++ auth.emit(session('a')); assert.equal(store.lease().accountId, 'a');
++});
++test('an error from an old initial read does not clear a newer authenticated session', async () => {
++ const { store } = fixture(), initialize = createSectionMemorySession(store), pending = deferred(), auth = client(pending);
++ const first = initialize(auth, 'production'); auth.emit(session('b')); pending.reject(new Error('stale failure')); await first;
++ assert.equal(store.lease().accountId, 'b');
++});
++test('optional display-memory initialization cannot hold the app behind its startup gate', async () => {
++ let values = [], cursor = 0, effect, initialized = 0;
++ const react = { useState(initial) { const i = cursor++; if (!(i in values)) values[i] = initial; return [values[i], v => { values[i] = v; }]; }, useEffect: fn => { effect = fn; } };
++ const jsx = (type, props) => ({ type, props });
++ const { AppEnvironmentGate } = loadTypescript('mobile/features/review-mode/AppEnvironmentGate.tsx', {
++  react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': { StyleSheet: { create: v => v }, View: 'View', Text: 'Text', ActivityIndicator: 'ActivityIndicator' },
++  '@/lib/supabase': { initializeSupabaseEnvironment: async () => {}, supabase: {}, AUTH_STORAGE_KEY: 'test' },
++  '@/features/section-memory/session': { initializeSectionMemory: () => { initialized++; return new Promise(() => {}); } },
++ });
++ AppEnvironmentGate({ children: 'APP' }); const cleanup = effect(); await Promise.resolve(); await Promise.resolve(); cursor = 0;
++ assert.equal(AppEnvironmentGate({ children: 'APP' }), 'APP'); assert.equal(initialized, 1); cleanup();
++});
+diff --git a/tests/approved-update/section-memory-screens.test.mjs b/tests/approved-update/section-memory-screens.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/approved-update/section-memory-screens.test.mjs
+@@ -0,0 +1,81 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { loadTypescript } from './load-typescript.mjs';
++const settle = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); };
++const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
++const files = { home: 'mobile/features/approved-dashboard/ApprovedHomeScreen.tsx', messages: 'mobile/app/messages.tsx', matches: 'mobile/app/matches.tsx', jobs: 'mobile/app/jobs.tsx', discover: 'mobile/app/discover.tsx', profile: 'mobile/app/profile.tsx' };
++function fixture() {
++ const { SectionMemoryStore } = loadTypescript('mobile/features/section-memory/store.ts'), store = new SectionMemoryStore(); store.setSession('test', 'a', Date.now() + 3600000);
++ const f = { store, name: 'Saved record', role: 'cafe_owner_manager', userId: 'a', reads: 0, gate: null, fail: false, params: {} };
++ f.wait = async () => { f.reads++; if (f.gate) await f.gate.promise; if (f.fail) throw new Error('Connection unavailable'); };
++ f.profile = () => ({ id: f.userId, role: f.role, cafe_name: f.name, display_name: f.name, location: 'Miami, FL', skills: [], is_discoverable: true });
++ f.job = () => ({ id: 'job', owner_id: f.userId, title: f.name, active: true, owner: { cafe_name: f.name } });
++ return f;
++}
++function mount(name, f) {
++ let inner = [], wrapper = [], cursor = 0, hooks = wrapper, key, cleanup, focusCallback, tree;
++ const useMemo = (fn, deps) => { const i = cursor++; if (!hooks[i] || deps.some((d, j) => d !== hooks[i].deps[j])) hooks[i] = { deps, value: fn() }; return hooks[i].value; };
++ const react = { useMemo, useCallback: (fn, deps) => useMemo(() => fn, deps), useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useState(initial) { const i = cursor++, cells = hooks; if (!(i in cells)) cells[i] = typeof initial === 'function' ? initial() : initial; return [cells[i], v => { cells[i] = typeof v === 'function' ? v(cells[i]) : v; }]; }, useRef(initial) { const i = cursor++; return hooks[i] ||= { current: initial }; } };
++ const jsx = (type, props, key) => ({ type, props: props || {}, key });
++ const memory = loadTypescript('mobile/features/section-memory/useSectionMemory.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './store': { sectionMemory: f.store } });
++ const channel = { on() { return this; }, subscribe() { return this; } };
++ const supabase = { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) }, channel: () => channel, removeChannel() {}, from(table) { return { table, select() { return this; }, eq() { return this; }, or() { return this; }, order() { return this; }, maybeSingle: async () => ({ data: {}, error: null }) }; } };
++ const market = { formatJobPay: () => '$20/hr', JOB_FIELDS: '', loadApplications: async () => [], readAllRows: async fn => fn().table === 'jobs' ? [f.job()] : [{ id: 'match', cafe_id: 'a', barista_id: 'b' }], readProfiles: async () => ({ b: { display_name: f.name } }), loadMarketplace: async () => ({ jobs: [f.job()], candidates: [], applications: [], interests: [], matches: [], profiles: {} }), interestState: () => ({ disabled: false, label: 'Show interest' }), applicationStatus: s => s };
++ const native = new Proxy({ StyleSheet: { create: v => v }, Platform: { OS: 'ios' }, AppState: { addEventListener: () => ({ remove() {} }) }, Alert: { alert() {} } }, { get: (o, p) => o[p] ?? p });
++ const session = { getCurrentContext: async () => { await f.wait(); return { user: { id: f.userId }, role: f.role, profile: f.profile() }; }, requireCurrentUser: async () => ({ id: f.userId }) };
++ const mocks = {
++  react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
++  'expo-router': { router: { replace() {}, push() {}, navigate() {}, back() {} }, useFocusEffect: cb => { focusCallback = cb; }, useLocalSearchParams: () => f.params },
++  '@/features/section-memory/useSectionMemory': memory, '@/lib/dashboardPrism': { dashboardPrism: {}, prismPanel: {} }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' },
++  '@/lib/supabase': { supabase }, '../../lib/supabase': { supabase }, '@/lib/session': session, '../../lib/session': session,
++  '@/lib/marketplace': market, '@/lib/discovery': {}, '@/lib/floridaLocation': { workAreaLabel: () => 'Miami', floridaCityFromLocation: s => s || '' },
++  '@/lib/profilePrivacy': { getProfileReadiness: () => ({ complete: true, missing: [] }) }, 'expo-image-picker': {},
++  '@/lib/messaging': { LatestMessageRequest: class { version = 0; begin() { const v = ++this.version; return () => v === this.version; } invalidate() { this.version++; } }, withMessageDeadline: p => p, messageError: () => 'Messages could not load. Please try again.', loadConversations: async () => [{ id: 'conversation', kind: 'application', name: f.name, unread: 0 }] },
++  './loadDashboard': { DashboardSessionError: class extends Error {}, loadDashboard: async () => { await f.wait(); return { accountId: f.userId, role: f.role, marker: f.name }; } },
++  './model': { safeDashboardError: () => 'Could not refresh' }, './ApprovedDashboard': { ApprovedDashboard: 'ApprovedDashboard' }, './DashboardPrimitives': { Action: 'Action' }, './theme': { dashboardTheme: {} },
++ };
++ const Wrapper = loadTypescript(files[name], mocks).default;
++ function render() { hooks = wrapper; cursor = 0; const root = Wrapper(); if (root.key !== key) { cleanup?.(); inner = []; key = root.key; } hooks = inner; cursor = 0; tree = root.type(); return tree; }
++ const nodes = () => { const result = []; const visit = n => { if (Array.isArray(n)) return n.forEach(visit); if (!n || typeof n !== 'object') return; result.push(n); visit(n.props?.children); }; visit(tree); return result; };
++ const text = n => Array.isArray(n) ? n.map(text).join(' ') : n && typeof n === 'object' ? [text(n.props?.children), n.type === 'ApprovedDashboard' ? [n.props.data.marker, n.props.error].join(' ') : ''].join(' ') : typeof n === 'string' || typeof n === 'number' ? String(n) : '';
++ render(); return { render, nodes, text: () => text(tree), focus() { cleanup = focusCallback(); }, blur() { cleanup?.(); }, spinner: () => nodes().some(n => n.type === 'ActivityIndicator'), button(label) { return nodes().find(n => n.type === 'Pressable' && text(n).trim() === label); }, get tree() { return tree; } };
++}
++for (const name of Object.keys(files)) {
++ test(`${name}: first load waits; returning immediately shows saved data and replaces it after refresh`, async () => {
++  const f = fixture(), first = mount(name, f); assert.equal(first.spinner(), true); first.focus(); await settle(); first.render(); assert.equal(first.spinner(), false);
++  // Café discovery has no candidates in this fixture; its saved state is still a loaded empty result.
++  if (name !== 'discover') assert.match(first.text(), /Saved record/);
++  first.blur(); const gate = deferred(); f.gate = gate; const warm = mount(name, f); assert.equal(warm.spinner(), false); warm.focus(); warm.render(); assert.equal(warm.spinner(), false); assert.equal(f.reads, 2);
++  if (name === 'home') assert.equal(warm.tree.props.refreshing, false);
++  if (name === 'messages') assert.equal(warm.nodes().find(n => n.type === 'ScrollView').props.refreshControl.props.refreshing, false);
++  f.name = 'Updated record'; gate.resolve(); await settle(); warm.render(); if (name !== 'discover') assert.match(warm.text(), /Updated record/); warm.blur();
++ });
++ test(`${name}: a failed refresh is visible and does not save a false success`, async () => {
++  const f = fixture(), first = mount(name, f); first.focus(); await settle(); first.render(); first.blur(); f.fail = true;
++  const warm = mount(name, f); warm.focus(); await settle(); warm.render(); assert.equal(warm.spinner(), false); assert.match(warm.text(), /could not|unavailable|Could not/i); warm.blur();
++  // Home intentionally retains its last good dashboard with a retry notice.
++  if (name !== 'home') assert.equal(mount(name, f).spinner(), true);
++ });
++}
++test('account changes remount private content and discard an old request', async () => {
++ const f = fixture(), ui = mount('messages', f); ui.focus(); await settle(); ui.render(); assert.match(ui.text(), /Saved record/);
++ f.store.setSession('test', 'b', Date.now() + 3600000); f.userId = 'b'; f.gate = deferred(); ui.render(); ui.focus(); assert.equal(ui.spinner(), true); assert.doesNotMatch(ui.text(), /Saved record/);
++ f.name = 'Other account'; f.gate.resolve(); await settle(); ui.render(); assert.match(ui.text(), /Other account/); ui.blur();
++});
++test('job-filter changes remount the screen instead of displaying another job’s saved matches', async () => {
++ const f = fixture(), ui = mount('matches', f); ui.focus(); await settle(); ui.render(); assert.match(ui.text(), /Saved record/);
++ f.params = { jobId: 'unseen-job' }; f.gate = deferred(); ui.render(); ui.focus(); assert.equal(ui.spinner(), true); assert.doesNotMatch(ui.text(), /Saved record/);
++ f.gate.resolve(); await settle(); ui.render(); assert.match(ui.text(), /No matches yet/); ui.blur();
++});
++test('editing a saved profile does not allow its background refresh to overwrite the draft', async () => {
++ const f = fixture(), first = mount('profile', f); first.focus(); await settle(); first.render(); first.blur(); f.gate = deferred();
++ const warm = mount('profile', f); warm.focus(); warm.button('Edit profile').props.onPress(); warm.render();
++ f.name = 'Background update'; f.gate.resolve(); await settle(); warm.render(); assert.match(warm.text(), /Cancel/); assert.doesNotMatch(warm.text(), /Background update/);
++ assert.equal(f.store.read(f.store.lease(), 'profile').profile.cafe_name, 'Saved record'); warm.blur();
++});
++test('leaving an unsaved profile edit cannot replace the saved snapshot on the next visit', async () => {
++ const f = fixture(), ui = mount('profile', f); ui.focus(); await settle(); ui.render(); ui.button('Edit profile').props.onPress(); ui.render();
++ const field = ui.nodes().find(node => node.props?.label === 'Café name'); assert.ok(field); field.props.onChange('Unsaved draft'); ui.render(); ui.blur();
++ assert.equal(f.store.read(f.store.lease(), 'profile').profile.cafe_name, 'Saved record');
++ const next = mount('profile', f); assert.match(next.text(), /Saved record/); assert.doesNotMatch(next.text(), /Unsaved draft/);
++});

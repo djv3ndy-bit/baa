@@ -1,3 +1,4 @@
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -10,19 +11,21 @@ import { applicationStatus, applyToMarketplaceJob, formatJobPay, interestState, 
 
 type Tab = 'browse' | 'received' | 'sent';
 const emptyData: Marketplace = { jobs: [], candidates: [], applications: [], interests: [], matches: [], profiles: {} };
-export default function DiscoverScreen() {
+function DiscoverScreen() {
   const params = useLocalSearchParams<{ tab?: string; jobId?: string }>();
+  const memory = useSectionMemory<{ data: Marketplace; profile: MarketProfile; userId: string; role: AppRole }>(`discover:${params.jobId || ''}`);
+  const loaded = useRef(!!memory.initial);
   const [loading, setLoading] = useState(true);
-  const [jobs, setJobs] = useState<MarketJob[]>([]);
-  const [role, setRole] = useState<AppRole>('barista');
-  const [candidates, setCandidates] = useState<MarketProfile[]>([]);
-  const [data, setData] = useState<Marketplace>(emptyData);
-  const [profile, setProfile] = useState<MarketProfile | null>(null);
-  const [userId, setUserId] = useState('');
+  const [jobs, setJobs] = useState<MarketJob[]>(memory.initial?.data.jobs ?? []);
+  const [role, setRole] = useState<AppRole>(memory.initial?.role ?? 'barista');
+  const [candidates, setCandidates] = useState<MarketProfile[]>(memory.initial?.data.candidates ?? []);
+  const [data, setData] = useState<Marketplace>(memory.initial?.data ?? emptyData);
+  const [profile, setProfile] = useState<MarketProfile | null>(memory.initial?.profile ?? null);
+  const [userId, setUserId] = useState(memory.initial?.userId ?? '');
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('browse');
   const [search, setSearch] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(params.jobId && memory.initial?.data.requestedJob ? `job:${memory.initial.data.requestedJob.id}` : null);
   const [expandedProfile, setExpandedProfile] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const request = useRef(0), action = useRef(false), focused = useRef(false);
@@ -31,16 +34,19 @@ export default function DiscoverScreen() {
     setLoading(true); setError('');
     try {
       const context = await getCurrentContext();
-      if (version !== request.current) return;
+      if (version !== request.current || !memory.current()) return;
       if (!context.user) { router.replace('/login'); return; }
       if (!context.profile || !context.role) throw new Error('Your account profile could not be loaded. Refresh to try again.');
       const next = await loadMarketplace(context.user.id, context.role, context.profile, params.jobId);
-      if (version !== request.current) return;
+      if (version !== request.current || !memory.current()) return;
+      memory.save(context.user.id, context.role, { data: next, profile: context.profile, role: context.role, userId: context.user.id });
+      if (!memory.current()) return;
+      loaded.current = true;
       setRole(context.role); setUserId(context.user.id); setProfile(context.profile); setData(next); setJobs(next.jobs); setCandidates(next.candidates); if (params.jobId && next.requestedJob) setExpanded(`job:${next.requestedJob.id}`);
     } catch (caught) {
-      if (version === request.current) { setError(caught instanceof Error ? caught.message : 'Your results could not load. Please refresh.'); setJobs([]); setCandidates([]); setData(emptyData); }
+      if (version === request.current && memory.current()) { memory.forget(); setError(caught instanceof Error ? caught.message : 'Your results could not load. Please refresh.'); setJobs([]); setCandidates([]); setData(emptyData); }
     } finally { if (version === request.current) setLoading(false); }
-  }, [params.jobId]);
+  }, [params.jobId, memory]);
   useFocusEffect(useCallback(() => { focused.current = true; if (params.tab === 'received' || params.tab === 'sent') setTab(params.tab); else if (params.tab === 'applications') setTab('sent'); void load(); return () => { focused.current = false; request.current++; }; }, [load, params.tab]));
 
   async function respond(targetId: string) {
@@ -49,6 +55,7 @@ export default function DiscoverScreen() {
     action.current = true; setBusy(true);
     try {
       const result = await sendDiscoveryInterest(userId, targetId, role);
+      memory.forget();
       if (focused.current) { await load(); Alert.alert(result.matched ? 'It’s a match!' : 'Interest sent', result.matched ? 'Open Matches to start a conversation.' : 'This profile can now review your interest.'); }
     } catch (caught) { if (focused.current) Alert.alert('Interest not confirmed', caught instanceof Error ? caught.message : 'Please refresh and retry.'); }
     finally { action.current = false; setBusy(false); }
@@ -57,7 +64,7 @@ export default function DiscoverScreen() {
     if (action.current) return;
     if (!profile?.is_discoverable || profile.suspended_at) { Alert.alert('Complete your profile', 'Save every required profile detail before applying.', [{ text: 'Open profile', onPress: () => router.push('/profile') }, { text: 'Cancel', style: 'cancel' }]); return; }
     action.current = true; setBusy(true);
-    try { await applyToMarketplaceJob(job.id, userId); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
+    try { await applyToMarketplaceJob(job.id, userId); memory.forget(); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
     catch (caught) { if (focused.current) Alert.alert('Application not confirmed', caught instanceof Error ? caught.message : 'Please refresh and retry.'); }
     finally { action.current = false; setBusy(false); }
   }
@@ -72,13 +79,13 @@ export default function DiscoverScreen() {
       {open ? <View><Detail label="Skills" value={person.skills?.join(' · ')} /><Detail label="Experience" value={person.experience} /><Detail label="Availability" value={person.availability} /><Detail label="Desired pay" value={person.pay_expectation} /><Detail label="Café address" value={person.cafe_address} /><Detail label="Opening hours" value={person.open_hours} /><Detail label="Shop type" value={person.shop_type} /><Detail label="Barista preferences" value={person.barista_preferences?.join(' · ')} />{person.bar_picture_url ? <Image source={{ uri: person.bar_picture_url }} accessibilityLabel="Café coffee bar" style={s.barPhoto} /> : null}{person.video_path ? <Pressable accessibilityRole="button" style={s.secondary} onPress={() => void viewVideo(person.video_path!)}><Text style={s.secondaryText}>Watch coffee showcase</Text></Pressable> : null}</View> : null}
       {person.cafe_name ? <Text style={s.copy}>Connect with this café overall. Apply to a job separately to track that role.</Text> : null}
       <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpandedProfile(open ? null : id)}><Text style={s.secondaryText}>{open ? 'Hide profile' : 'View profile'}</Text></Pressable>
-        <Pressable accessibilityRole="button" disabled={busy || state.disabled} style={[s.primary, (busy || state.disabled) && s.disabled]} onPress={() => respond(id)}><Text style={s.primaryText}>{state.label}</Text></Pressable></View>
+        <Pressable accessibilityRole="button" disabled={busy || loading || state.disabled} style={[s.primary, (busy || loading || state.disabled) && s.disabled]} onPress={() => respond(id)}><Text style={s.primaryText}>{state.label}</Text></Pressable></View>
     </View>;
   }
   function jobCard(job: MarketJob) { const application = data.applications.find(row => row.job_id === job.id), open = expanded === `job:${job.id}`; return <View key={job.id} style={s.card}>
           <Text style={s.name}>{job.title}</Text><Text style={s.meta}>{job.owner?.cafe_name || 'Café'} · {job.location}</Text><Text style={s.pay}>{formatJobPay(job)}</Text><Text style={s.copy}>{job.schedule || 'Schedule not listed'}</Text>
           {open ? <><Detail label="Address" value={[job.address_line1, job.address_line2, job.city || job.location, job.state, job.postal_code].filter(Boolean).join(', ')} /><Detail label="About the role" value={job.description || 'Description not added.'} /><Detail label="Required skills" value={job.required_skills?.join(' · ') || 'No specific skills listed'} />{job.owner ? profileCard(job.owner, job.owner_id) : null}</> : <Text numberOfLines={3} style={s.copy}>{job.description}</Text>}
-          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpanded(open ? null : `job:${job.id}`)}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || !!application} style={[s.primary, (busy || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
+          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpanded(open ? null : `job:${job.id}`)}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || loading || !!application} style={[s.primary, (busy || loading || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
         </View>; }
   const query = search.trim().toLowerCase();
   const visibleJobs = jobs.filter(job => job.id !== data.requestedJob?.id).filter(job => [job.title, job.location, job.owner?.cafe_name, job.description, job.schedule, job.required_skills?.join(' ')].join(' ').toLowerCase().includes(query));
@@ -90,7 +97,7 @@ export default function DiscoverScreen() {
     <View style={s.tabs}>{(['browse', 'received', 'sent'] as Tab[]).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: tab === value }} style={[s.tab, tab === value && s.selectedTab]} onPress={() => setTab(value)}><Text style={s.tabText}>{value === 'browse' ? 'Browse' : value === 'received' ? `Interested in you (${received.length})` : 'Sent & applications'}</Text></Pressable>)}</View>
     <ScrollView contentContainerStyle={s.list} keyboardShouldPersistTaps="handled">
       <Pressable accessibilityRole="button" disabled={loading || busy} style={s.secondary} onPress={() => void load()}><Text style={s.secondaryText}>Refresh results</Text></Pressable>
-      {loading ? <View style={s.empty}><ActivityIndicator size="large" color={prism.ink} /><Text style={s.copy}>Loading your current results…</Text></View> : error ? <View style={s.empty}><Text style={s.name}>Results could not load</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text></View> : tab === 'browse' ? <>
+      {loading && !loaded.current ? <View style={s.empty}><ActivityIndicator size="large" color={prism.ink} /><Text style={s.copy}>Loading your current results…</Text></View> : error ? <View style={s.empty}><Text style={s.name}>Results could not load</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text></View> : tab === 'browse' ? <>
         {params.jobId && role === 'barista' ? <View><Text style={s.sectionTitle}>Requested job</Text>{data.requestedJob ? jobCard(data.requestedJob) : <Text style={s.copy}>This job is no longer available. It may have been paused or removed.</Text>}</View> : null}
         <Text style={s.copy}>Matches use the exact saved city or ZIP. Update your profile to change your search area.</Text><Pressable onPress={() => router.push('/profile')} style={s.secondary}><Text style={s.secondaryText}>Update search area</Text></Pressable>
         <TextInput accessibilityLabel={role === 'barista' ? 'Search jobs' : 'Search baristas'} placeholder={role === 'barista' ? 'Search title, café, skill…' : 'Search name, skill…'} value={search} onChangeText={setSearch} style={s.search} />
@@ -108,3 +115,6 @@ function Detail({ label, value }: { label: string; value?: string | null }) { re
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: prism.background }, header: { padding: 18, gap: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: prism.surface }, headerCopy: { flex: 1, minWidth: 0 }, title: { fontSize: 24, fontWeight: '700', color: prism.ink }, subtitle: { fontSize: 12, marginTop: 4, color: prism.muted }, settings: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, settingsText: { fontSize: 25, color: prism.ink }, tabs: { flexDirection: 'row', flexWrap: 'wrap', padding: 10, gap: 8 }, tab: { flexGrow: 1, flexBasis: 90, minHeight: 44, padding: 10, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: prism.soft }, selectedTab: { backgroundColor: prism.selected }, tabText: { fontSize: 12, fontWeight: '700', color: prism.ink, textAlign: 'center' }, list: { padding: 18, paddingBottom: 32 }, card: { ...prismPanel, padding: 18, marginTop: 14, borderRadius: 24, backgroundColor: prism.surface, borderWidth: 1, borderColor: prism.line }, name: { fontSize: 20, fontWeight: '700', color: prism.ink }, meta: { fontSize: 13, color: prism.muted, marginTop: 6 }, copy: { fontSize: 14, color: prism.muted, lineHeight: 21, marginTop: 8 }, pay: { fontSize: 17, fontWeight: '700', color: '#287443', marginTop: 10 }, barPhoto: { width: '100%', height: 180, borderRadius: 12, marginVertical: 12 }, photo: { width: 72, height: 72, borderRadius: 16, marginBottom: 12 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 }, primary: { minHeight: 44, justifyContent: 'center', borderRadius: 12, padding: 12, backgroundColor: prism.accent }, primaryText: { fontWeight: '700', color: prism.surface, textAlign: 'center' }, secondary: { minHeight: 44, justifyContent: 'center', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: prism.line, alignSelf: 'flex-start' }, secondaryText: { fontWeight: '700', color: prism.ink, textAlign: 'center' }, disabled: { opacity: .5 }, search: { marginTop: 18, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: prism.line, backgroundColor: prism.surface, fontSize: 16, color: prism.ink }, sectionTitle: { fontSize: 20, fontWeight: '700', color: prism.ink, marginTop: 22 }, detail: { marginTop: 12 }, detailLabel: { fontSize: 12, fontWeight: '700', color: prism.ink }, empty: { paddingVertical: 35, alignItems: 'center' },
 });
+
+function useDiscoverScope() { return useLocalSearchParams<{ jobId?: string }>().jobId || ''; }
+export default withSectionMemory(DiscoverScreen, useDiscoverScope);

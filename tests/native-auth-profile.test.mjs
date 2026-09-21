@@ -13,6 +13,7 @@ function compile(name, mocks = {}, cache = new Map()) {
   const exports = {};
   cache.set(name, exports);
   const load = dependency => {
+    if (dependency.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
     if (dependency in mocks) return mocks[dependency];
     if (dependency === './supabase' || dependency === '@/lib/supabase') return { supabase: mocks.client };
     const file = dependency.startsWith('@/') ? `${dependency.slice(2)}.ts` : dependency.startsWith('.') ? `${name.slice(0, name.lastIndexOf('/') + 1)}${dependency.replace(/^\.\//, '')}.ts` : null;
