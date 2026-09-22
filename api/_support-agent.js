@@ -108,3 +108,56 @@ export function supportDraft(ticket = {}, triage = triageSupportTicket(ticket)) 
   }
   return `${greeting}\n\nThanks for contacting BaristaMatch${reference}. We’ve reviewed the details you provided and prepared your request for our support team. If we need any additional information, we’ll follow up with you.\n\n— BaristaMatch Support`;
 }
+
+
+const BUSINESS_SENDERS = [
+  { pattern: /stripe\.com$/i, category: 'billing_ops', route: 'billing' },
+  { pattern: /accounts\.google\.com$|google\.com$/i, category: 'security_ops', route: 'security' },
+  { pattern: /instagram\.com$|tiktok\.com$/i, category: 'social_ops', route: 'social' },
+  { pattern: /sunbiz\.dos\.fl\.gov$/i, category: 'business_admin', route: 'owner' },
+];
+
+export function triageBusinessInboxEmail(email = {}) {
+  const from = clean(email.from || email.from_, 240).toLowerCase();
+  const subject = clean(email.subject, 240);
+  const snippet = clean(email.snippet || email.body, 2000);
+  const text = `${subject}\n${snippet}`;
+  const senderDomain = (from.match(/@([^>\s]+)/)?.[1] || '').replace(/[>,;].*$/, '');
+  const provider = BUSINESS_SENDERS.find(item => item.pattern.test(senderDomain));
+  const supportLike = /support ticket|help|can't log|cannot log|login|account|application|apply|job post|café|cafe|barista/i.test(text);
+  const security = /security alert|unrecognized device|new sign-in|new login|hacked|breach|account takeover/i.test(text);
+  const billing = /stripe|payment|payout|invoice|subscription|refund|charge|webhook|tax id/i.test(text);
+  const routine = /verification code|6-digit code|tips for|recap|newsletter|getting started/i.test(text);
+
+  let category = provider?.category || (supportLike ? 'customer_support' : 'other');
+  let route = provider?.route || (supportLike ? 'support' : 'owner');
+  let priority = 'P3';
+  let approvalRequired = false;
+  let notifyOwner = false;
+
+  if (security) { category='security_ops'; route='security'; priority='P1'; approvalRequired=true; notifyOwner=true; }
+  else if (billing) { category='billing_ops'; route='billing'; priority=/action required|delivery issues|failed|paused|declined/i.test(text)?'P1':'P2'; approvalRequired=true; notifyOwner=priority==='P1'; }
+  else if (supportLike) { priority='P2'; notifyOwner=true; }
+  if (routine && !security && !/action required/i.test(text)) notifyOwner=false;
+
+  return Object.freeze({
+    version:'support-inbox-v2', category, route, priority,
+    notify_owner:notifyOwner, approval_required:approvalRequired,
+    autonomous_send_allowed:false, email_write_allowed:false,
+    destructive_action_allowed:false, financial_action_allowed:false,
+    production_write_allowed:false,
+    safe_for_private_notion_summary:true,
+  });
+}
+
+export function privateEscalationSummary(email = {}, triage = triageBusinessInboxEmail(email)) {
+  const subject = clean(email.subject, 180) || 'No subject';
+  return {
+    task: `Inbox: ${subject}`,
+    agent: 'Customer Support Agent',
+    area: triage.route === 'billing' ? 'Payments' : triage.route === 'security' ? 'Security' : triage.route === 'support' ? 'Support' : 'Email',
+    priority: triage.priority === 'P0' ? 'Critical' : triage.priority === 'P1' ? 'High' : triage.priority === 'P2' ? 'Medium' : 'Low',
+    owner_approval_required: triage.approval_required,
+    summary: `Private inbox triage: ${triage.category}; route=${triage.route}; priority=${triage.priority}. No email or external action was sent automatically.`,
+  };
+}
