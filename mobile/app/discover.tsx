@@ -7,6 +7,7 @@ import { getCurrentContext, AppRole } from '@/lib/session';
 import { sendDiscoveryInterest } from '@/lib/discovery';
 import { workAreaLabel } from '@/lib/floridaLocation';
 import { applicationStatus, applyToMarketplaceJob, formatJobPay, interestState, loadMarketplace, Marketplace, MarketJob, MarketProfile, profileVideoUrl } from '@/lib/marketplace';
+import { trackProductEvent } from '@/lib/productEvents';
 
 type Tab = 'browse' | 'received' | 'sent';
 const emptyData: Marketplace = { jobs: [], candidates: [], applications: [], interests: [], matches: [], profiles: {} };
@@ -55,9 +56,10 @@ export default function DiscoverScreen() {
   }
   async function apply(job: MarketJob) {
     if (action.current) return;
+    void trackProductEvent('apply_started', { surface: 'mobile' });
     if (!profile?.is_discoverable || profile.suspended_at) { Alert.alert('Complete your profile', 'Save every required profile detail before applying.', [{ text: 'Open profile', onPress: () => router.push('/profile') }, { text: 'Cancel', style: 'cancel' }]); return; }
     action.current = true; setBusy(true);
-    try { await applyToMarketplaceJob(job.id, userId); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
+    try { await applyToMarketplaceJob(job.id, userId); void trackProductEvent('application_submitted', { surface: 'mobile' }); if (focused.current) { await load(); Alert.alert('Application sent', 'Track this role in Sent & applications.'); } }
     catch (caught) { if (focused.current) Alert.alert('Application not confirmed', caught instanceof Error ? caught.message : 'Please refresh and retry.'); }
     finally { action.current = false; setBusy(false); }
   }
@@ -78,7 +80,7 @@ export default function DiscoverScreen() {
   function jobCard(job: MarketJob) { const application = data.applications.find(row => row.job_id === job.id), open = expanded === `job:${job.id}`; return <View key={job.id} style={s.card}>
           <Text style={s.name}>{job.title}</Text><Text style={s.meta}>{job.owner?.cafe_name || 'Café'} · {job.location}</Text><Text style={s.pay}>{formatJobPay(job)}</Text><Text style={s.copy}>{job.schedule || 'Schedule not listed'}</Text>
           {open ? <><Detail label="Address" value={[job.address_line1, job.address_line2, job.city || job.location, job.state, job.postal_code].filter(Boolean).join(', ')} /><Detail label="About the role" value={job.description || 'Description not added.'} /><Detail label="Required skills" value={job.required_skills?.join(' · ') || 'No specific skills listed'} />{job.owner ? profileCard(job.owner, job.owner_id) : null}</> : <Text numberOfLines={3} style={s.copy}>{job.description}</Text>}
-          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => setExpanded(open ? null : `job:${job.id}`)}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || !!application} style={[s.primary, (busy || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
+          <View style={s.actions}><Pressable accessibilityRole="button" style={s.secondary} onPress={() => { if (!open) void trackProductEvent('job_viewed', { surface: 'mobile' }); setExpanded(open ? null : `job:${job.id}`); }}><Text style={s.secondaryText}>{open ? 'Hide details' : 'Full job details'}</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || !!application} style={[s.primary, (busy || !!application) && s.disabled]} onPress={() => apply(job)}><Text style={s.primaryText}>{application ? applicationStatus(application.status) : 'Apply to this job'}</Text></Pressable></View>
         </View>; }
   const query = search.trim().toLowerCase();
   const visibleJobs = jobs.filter(job => job.id !== data.requestedJob?.id).filter(job => [job.title, job.location, job.owner?.cafe_name, job.description, job.schedule, job.required_skills?.join(' ')].join(' ').toLowerCase().includes(query));

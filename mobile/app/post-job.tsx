@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
 import { authenticatedApi } from '@/lib/api';
 import { JOB_FIELDS, MarketJob } from '@/lib/marketplace';
+import { trackProductEvent } from '@/lib/productEvents';
 import { blankJobDraft, draftFromJob, jobPayload } from '@/lib/jobEditor';
 
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
@@ -26,7 +27,7 @@ export default function PostJobScreen() {
       if (!user) { router.replace('/login'); return; }
       if (role !== 'cafe_owner_manager') { router.replace('/home'); return; }
       ownerId.current = user.id;
-      if (!jobId) { initialized.current = jobId || 'new'; return; }
+      if (!jobId) { initialized.current = jobId || 'new'; void trackProductEvent('post_job_started', { surface: 'mobile' }); return; }
       const { data, error } = await supabase.from('jobs').select(JOB_FIELDS).eq('id', jobId).eq('owner_id', user.id).maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('This job is no longer available to edit.');
@@ -51,7 +52,7 @@ export default function PostJobScreen() {
       const { data: job, error } = await query.select('id,active').single();
       if (error) throw error;
       if (!job) throw new Error('Your saved job could not be confirmed. Please refresh Job Posts before retrying.');
-      if (!editing) authenticatedApi('/push-event', { type: 'job', job_id: job.id }, 'POST', user.id).catch(() => {});
+      if (!editing) { authenticatedApi('/push-event', { type: 'job', job_id: job.id }, 'POST', user.id).catch(() => {}); void trackProductEvent('job_posted', { surface: 'mobile' }); }
       if (focused.current) { router.replace('/jobs'); Alert.alert(editing ? 'Job updated' : 'Job published', job.active ? 'Your job details are saved and available to baristas.' : 'Your changes are saved. This job remains paused and its applications are retained.'); }
     } catch (caught) { if (focused.current) Alert.alert(editing ? 'Job not updated' : 'Job not published', caught instanceof Error ? caught.message : 'Please check your connection and try again.'); }
     finally { action.current = false; setPublishing(false); }
