@@ -6,8 +6,12 @@ export function prioritizeCafeLead(lead={}) {
  const priority=score>=75?'High':score>=50?'Medium':'Low';
  return Object.freeze({version:'cafe-sales-v1',score,priority,qualified:score>=50,reasons:{florida,hiring_signal:hiring,independent,website_present:Boolean(website),contact_channel_present:Boolean(contact)},autonomous_outreach_allowed:false,email_send_allowed:false,dm_send_allowed:false,ad_spend_allowed:false,pricing_change_allowed:false,financial_action_allowed:false,user_write_allowed:false,production_write_allowed:false,owner_approval_required_for_outreach:true});
 }
-export function draftCafeOutreach(lead={},result=prioritizeCafeLead(lead)){
+export function draftCafeOutreach(lead={},result=prioritizeCafeLead(lead),channel='instagram_dm'){
  const name=clean(lead.name,160)||'your café', city=clean(lead.city,80), location=city?' in '+city:'';
- return {subject:'A simpler way to find local baristas',body:'Hi '+name+' team,\n\nI’m reaching out from BaristaMatch, a hiring platform built specifically for cafés and baristas. We’re growing our Florida café network'+location+' and would love to invite your team to take a look.\n\nBaristaMatch is designed to make it easier to post café roles and connect with local baristas without the noise of a general job board.\n\nIf it sounds useful, I can share the details.\n\n— BaristaMatch',approval_required:true,send_allowed:false,lead_priority:result.priority};
+ if(channel==='email') return {channel:'email',body:'',approval_required:true,send_allowed:false,blocked:true,reason:'Owner policy: do not use email for café sales outreach.'};
+ const body=channel==='in_person'
+  ? 'Hi — I’m with BaristaMatch. We’re building a Florida platform specifically for cafés that need baristas'+location+'. I noticed '+name+' and thought it could be a good fit. If you’re open to it, I can show you how it works.'
+  : 'Hi '+name+'! I’m with BaristaMatch, a Florida platform built specifically to connect cafés with baristas'+location+'. I thought your team could be a great fit. If you’re open to it, I’d be happy to share how it works. ☕';
+ return {channel:channel==='in_person'?'in_person':'instagram_dm',body,approval_required:true,send_allowed:false,blocked:false,lead_priority:result.priority};
 }
 export function privateLeadSummary(lead={},result=prioritizeCafeLead(lead)){return {task:'Café prospect: '+(clean(lead.name,120)||'Unnamed café'),priority:result.priority,summary:'Sales prospect scored '+result.score+'/100. Florida='+result.reasons.florida+'; hiring signal='+result.reasons.hiring_signal+'; independent='+result.reasons.independent+'. Outreach is draft-only and requires owner approval.',owner_approval_required:true};}
