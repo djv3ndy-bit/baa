@@ -1,6 +1,6 @@
 # Issue #62 — first SEO milestone
 
-Prepared 2026-09-24 for owner review. Related issue: https://github.com/djv3ndy-bit/baa/issues/62
+Prepared 2026-09-24. Foundation released after owner direction to make the website discoverable on Google. Related issue: https://github.com/djv3ndy-bit/baa/issues/62
 
 This is a technical-foundation PR and a proposed local-marketplace plan. It does not publish city pages or jobs. The owner-approved design, native app, authentication, billing, database policies and user data are unchanged. Keep issue #62 open for architecture review and the subsequent public-job work.
 
@@ -15,7 +15,13 @@ This is a technical-foundation PR and a proposed local-marketplace plan. It does
 | Measurement, release checklist and rollback | [release-and-measurement.md](release-and-measurement.md) | Ready for review |
 | Sitemap, robots, canonical/social tags, utility noindex | Root website files | Implemented on PR branch only |
 
-## Review decisions
+## Current owner direction
+
+The owner has deferred all public job and city job pages. For now, job browsing stays behind sign-in/sign-up on both web and app. A future browse-first experience is an idea only, not approved implementation scope. The JobPosting and local architecture documents are deferred proposals.
+
+PR #68 passed all five GitHub workflows and was merged as `e94d4446fc2200aa96093beaa81be0d6e5156c21`. The follow-up adds only the actual Google-issued homepage verification tag for the canonical HTTPS www Search Console property; no job data is exposed. Search Console verification, submission and indexing status must be confirmed from its interface, not inferred from the presence of the tag.
+
+## Original review decisions
 
 1. Review and merge the foundation only after CI and the release checklist pass.
 2. Review the proposed two-city architecture. The city slugs are reserved in the plan, not created or submitted for indexing.
