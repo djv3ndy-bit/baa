@@ -1,0 +1,40 @@
+name: SEO foundation checks
+
+on:
+  pull_request:
+    paths:
+      - '*.html'
+      - 'robots.txt'
+      - 'sitemap.xml'
+      - 'vercel.json'
+      - '.vercelignore'
+      - 'tests/seo.test.mjs'
+      - '.github/workflows/seo-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - '*.html'
+      - 'robots.txt'
+      - 'sitemap.xml'
+      - 'vercel.json'
+      - '.vercelignore'
+      - 'tests/seo.test.mjs'
+      - '.github/workflows/seo-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node --test tests/seo.test.mjs
+      - name: Parse sitemap XML
+        run: python3 -c "import xml.etree.ElementTree as ET; ET.parse('sitemap.xml')"

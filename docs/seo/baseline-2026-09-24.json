@@ -1,0 +1,3685 @@
+{
+  "observed_at_utc": "2026-09-24T03:09:01.024655+00:00",
+  "source_commit": "3ce3f1982103da1c50074e54523c7234856a6b86",
+  "method": "Unauthenticated public GETs with redirect following; source HTML parsing, no JavaScript execution.",
+  "limitations": [
+    "No Search Console, Google URL Inspection, CrUX or authenticated database state measured.",
+    "HTTP 200 and crawlable HTML do not prove Google indexing.",
+    "Source policy is not proof of deployed database policy."
+  ],
+  "source_pages": {
+    "account-deleted.html": {
+      "sha256": "c6e0296fedc1aef3d65ffd652681be4e59d9379b6516dcd89cb70b66dcf87626",
+      "bytes": 2848,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/delete-account.html",
+        "https://account.apple.com/",
+        "https://support.apple.com/en-us/102571",
+        "/login.html",
+        "/privacy.html",
+        "/support.html"
+      ],
+      "images": [],
+      "scripts": [
+        "/account-deleted.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Account deletion information"
+        },
+        {
+          "level": "h2",
+          "text": "Disconnect Sign in with Apple"
+        }
+      ],
+      "title": "Account deletion \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "cafe-trial.html": {
+      "sha256": "311dfdbdfa882c0bb925009b2d13cebb12967ca2d6396b26d2c9a3829b2853fb",
+      "bytes": 7049,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Open your BaristaMatch caf\u00e9 workspace.",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [
+        "/login.html",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/cafe-account-gate.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Post your firstjob free."
+        }
+      ],
+      "title": "Caf\u00e9 access \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "checkout.html": {
+      "sha256": "a6a1237ab6be68602d118c0f27737b00241754f2fb65b5a22b2e20bcd7af927e",
+      "bytes": 542,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [
+        "/dashboard.html?section=subscription"
+      ],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "Opening your subscription \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "dashboard.html": {
+      "sha256": "9dcde46abb8d52d3f965d365d030268b35f07f2aad66dbafedb4d521310fad6c",
+      "bytes": 211103,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "Your BaristaMatch dashboard."
+      },
+      "canonicals": [],
+      "links": [
+        "/login.html",
+        "/",
+        "/",
+        "https://apps.apple.com/account/subscriptions",
+        "https://play.google.com/store/account/subscriptions?package=com.baristajobmatch.app"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/dashboard-quiet-focus.js",
+        "/checkout.js",
+        "/account-billing-presentation.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Dashboard"
+        },
+        {
+          "level": "h2",
+          "text": "Build your profile"
+        },
+        {
+          "level": "h2",
+          "text": "Post a barista job"
+        },
+        {
+          "level": "h2",
+          "text": "Continue hiring with Pro"
+        },
+        {
+          "level": "h2",
+          "text": "Messages"
+        },
+        {
+          "level": "h2",
+          "text": "Delete your account?"
+        }
+      ],
+      "title": "Dashboard \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "delete-account.html": {
+      "sha256": "e61c3057ba6626c11849ff633872899091e312eaba3e6a0d001d59ad73b5d7e0",
+      "bytes": 4365,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Request deletion of your BaristaMatch account and associated personal data, even without the app installed."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "mailto:hello@baristajobmatch.com?subject=BaristaMatch%20account%20deletion%20request",
+        "mailto:hello@baristajobmatch.com",
+        "/support.html",
+        "/account-deleted.html",
+        "/privacy.html",
+        "/privacy.html",
+        "/support.html"
+      ],
+      "images": [],
+      "scripts": [],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Delete your BaristaMatch account"
+        },
+        {
+          "level": "h2",
+          "text": "Delete from the app"
+        },
+        {
+          "level": "h2",
+          "text": "Request deletion without the app"
+        },
+        {
+          "level": "h2",
+          "text": "Accounts using Sign in with Apple"
+        },
+        {
+          "level": "h2",
+          "text": "What deletion covers"
+        }
+      ],
+      "title": "Delete your account \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "index.html": {
+      "sha256": "8a7744f2879c1ba17c01e34d163f73ff4b759422579a96904a4e1a0ed2578366",
+      "bytes": 34900,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "BaristaMatch helps caf\u00e9s and baristas discover each other, match locally, and move directly into private conversations.",
+        "og:title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+        "og:description": "A simpler way for caf\u00e9s and baristas to discover, match, and chat."
+      },
+      "canonicals": [],
+      "links": [
+        "#top",
+        "#how",
+        "#baristas",
+        "#cafes",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/login.html",
+        "/dashboard.html",
+        "/login.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=barista",
+        "/support.html",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=cafe_owner_manager",
+        "/support.html",
+        "/support.html",
+        "/privacy.html",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/barista-pouring-icon.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/vintage-cafe-mark-small.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v4.png",
+          "alt": "Barista seen from behind at the Caf\u00e9 Feliz espresso bar",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/brand-safe-community.jpg",
+          "alt": "Coffee shop interior",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Barista working at an espresso machine",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/warm-editorial.js",
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Great caf\u00e9s andgreat baristas belong together."
+        },
+        {
+          "level": "h3",
+          "text": "Cafe Feliz"
+        },
+        {
+          "level": "h2",
+          "text": "Simple steps. Better matches."
+        },
+        {
+          "level": "h3",
+          "text": "1. Discover"
+        },
+        {
+          "level": "h3",
+          "text": "2. Match"
+        },
+        {
+          "level": "h3",
+          "text": "3. Chat"
+        },
+        {
+          "level": "h3",
+          "text": "Made for thecoffee community"
+        },
+        {
+          "level": "h3",
+          "text": "Find a caf\u00e9where you belong."
+        },
+        {
+          "level": "h3",
+          "text": "Hire great baristas.Faster."
+        },
+        {
+          "level": "h2",
+          "text": "Why caf\u00e9s and baristas love BaristaMatch"
+        },
+        {
+          "level": "h3",
+          "text": "Built for coffee people"
+        },
+        {
+          "level": "h3",
+          "text": "Local first"
+        },
+        {
+          "level": "h3",
+          "text": "Safe & private"
+        },
+        {
+          "level": "h3",
+          "text": "For every stage"
+        },
+        {
+          "level": "h2",
+          "text": "Better matches. Stronger teams.A better coffee community."
+        },
+        {
+          "level": "h3",
+          "text": "For Baristas"
+        },
+        {
+          "level": "h3",
+          "text": "For Caf\u00e9s"
+        },
+        {
+          "level": "h3",
+          "text": "Resources"
+        },
+        {
+          "level": "h3",
+          "text": "Company"
+        },
+        {
+          "level": "h2",
+          "text": "What brings you to BaristaMatch?"
+        }
+      ],
+      "title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+      "json_ld_count": 0
+    },
+    "login.html": {
+      "sha256": "46b610823d9bafd43cc39d8f686f583957f3cd21714b85c41b85ca94a3a4b47f",
+      "bytes": 11165,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Log in to BaristaMatch."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "#",
+        "/signup.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [],
+      "title": "Log in \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "mobile-auth-callback.html": {
+      "sha256": "5283eded8877d2a58d2b3e17e126c082dc529ba8c49ce13899df8558b0f79032",
+      "bytes": 1721,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [
+        "baristamatch://auth/callback"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Returning to BaristaMatch"
+        }
+      ],
+      "title": "Returning to BaristaMatch",
+      "json_ld_count": 0
+    },
+    "mobile-auth-start.html": {
+      "sha256": "73a5cbbeb7998560f610d8f412cce763b8a87b82efac2233ef6827de56fced14",
+      "bytes": 1249,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "BaristaMatch"
+        }
+      ],
+      "title": "Secure BaristaMatch Sign In",
+      "json_ld_count": 0
+    },
+    "mobile-billing-return.html": {
+      "sha256": "ab40009d6b145390d898c175107a5d00bf514f6678dd10e6ed803f57751dc974",
+      "bytes": 2513,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex",
+        "referrer": "no-referrer"
+      },
+      "canonicals": [],
+      "links": [
+        "baristamatch://settings?billing=complete"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Returning to BaristaMatch"
+        }
+      ],
+      "title": "Returning to BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-accounts.html": {
+      "sha256": "bf534d7f75d44422dfe81af5a24409aa9733f4ece312d41518fe089458eb9591",
+      "bytes": 767,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow,noarchive"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Member Accounts \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-audience.html": {
+      "sha256": "7b9521f7cd95ed6cfc20283efea39392907a9de827149670e5ef7192c40b9d4b",
+      "bytes": 732,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Audience Insights \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-dashboard.html": {
+      "sha256": "38fb3321eeb1886a07b8e7d5cc605da59296f9bd05057be0c2054a5b625523a7",
+      "bytes": 726,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Owner Overview \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-growth.html": {
+      "sha256": "eedda5ab69d261523da0656735449a768f20aca18c9c332f9b306babd93ee38d",
+      "bytes": 734,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Growth & Marketing \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-marketplace.html": {
+      "sha256": "539aaa55534d0f13c26fdf205fdcd6404baf8f7cb2f3d90f0089322031606187",
+      "bytes": 740,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Marketplace Health \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "owner-subscriptions.html": {
+      "sha256": "7ae7e8e172b4e81e1e61b93898c5e641661373f530ac74f57083ce797c4dbb28",
+      "bytes": 752,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Subscriptions & Revenue \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "pricing.html": {
+      "sha256": "c465f092364f6e8ead56be16ebcb638019e6cd3f3429b5f0b8e99b231ee5ab31",
+      "bytes": 2319,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow",
+        "description": "Access your BaristaMatch caf\u00e9 account."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/cafe-account-gate.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Your caf\u00e9 account"
+        }
+      ],
+      "title": "Caf\u00e9 account \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "privacy.html": {
+      "sha256": "d00838a86e0a499003b9eb3972eb020f834b8453957cb15d202616c37b9d19b4",
+      "bytes": 9347,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Privacy Policy"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/delete-account.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Privacy Policy"
+        },
+        {
+          "level": "h2",
+          "text": "1. Information we collect"
+        },
+        {
+          "level": "h2",
+          "text": "2. How we use information"
+        },
+        {
+          "level": "h2",
+          "text": "3. Profile and marketplace visibility"
+        },
+        {
+          "level": "h2",
+          "text": "4. Service providers"
+        },
+        {
+          "level": "h2",
+          "text": "5. Cookies and local storage"
+        },
+        {
+          "level": "h2",
+          "text": "6. Retention and deletion"
+        },
+        {
+          "level": "h2",
+          "text": "7. Your choices and rights"
+        },
+        {
+          "level": "h2",
+          "text": "8. Security"
+        },
+        {
+          "level": "h2",
+          "text": "9. Younger users"
+        },
+        {
+          "level": "h2",
+          "text": "10. Changes to this policy"
+        },
+        {
+          "level": "h2",
+          "text": "11. Contact"
+        }
+      ],
+      "title": "Privacy Policy \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "reset-password.html": {
+      "sha256": "571935f08550f91b813f98d8068ab289f23b7a993a0d4d03bc5f980a4ff83cf1",
+      "bytes": 6432,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Choose a new BaristaMatch password."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/login.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Opening your secure link\u2026"
+        },
+        {
+          "level": "h1",
+          "text": "Choose a new password"
+        },
+        {
+          "level": "h1",
+          "text": "Password updated"
+        },
+        {
+          "level": "h1",
+          "text": "This link is no longer valid"
+        }
+      ],
+      "title": "Choose a new password \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "signup.html": {
+      "sha256": "024d94cd051d73caf4ff12e39ba6c29d5a57972a6c4cc2739ab01fdb017da3e0",
+      "bytes": 19713,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Create your BaristaMatch account as a barista or caf\u00e9."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/privacy.html",
+        "/terms.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "A better coffee career starts with a great profile."
+        },
+        {
+          "level": "h2",
+          "text": "Sign up"
+        }
+      ],
+      "title": "Sign up \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "support-admin.html": {
+      "sha256": "ea864dfcd6ade703dfa8f38ca522676f86146895fdc2e2774853ab4d0824ea32",
+      "bytes": 11319,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1"
+      },
+      "canonicals": [],
+      "links": [
+        "/owner-dashboard",
+        "/owner-growth",
+        "/owner-subscriptions",
+        "/owner-marketplace",
+        "/owner-audience",
+        "/support-admin.html",
+        "/dashboard.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-32-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Support Desk"
+        }
+      ],
+      "title": "Support Admin \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "support.html": {
+      "sha256": "c2758233e138b2b6f5f1b7bf30e5d459ff5c948f5bb2dff9a1051e27961d53a9",
+      "bytes": 11684,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch support center for account help, bug reports, and product questions."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/#how",
+        "/"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "How can we help?"
+        },
+        {
+          "level": "h2",
+          "text": "Contact support"
+        },
+        {
+          "level": "h3",
+          "text": "What happens next?"
+        },
+        {
+          "level": "h3",
+          "text": "Check a ticket"
+        }
+      ],
+      "title": "Support \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "terms.html": {
+      "sha256": "76e6d589837df398880f6a5b9130baea4971cc0c1c6e347adc621e69cfc06097",
+      "bytes": 7828,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Terms of Service"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/privacy.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Terms of Service"
+        },
+        {
+          "level": "h2",
+          "text": "1. Eligibility and accounts"
+        },
+        {
+          "level": "h2",
+          "text": "2. Marketplace use"
+        },
+        {
+          "level": "h2",
+          "text": "3. User content"
+        },
+        {
+          "level": "h2",
+          "text": "4. Acceptable conduct"
+        },
+        {
+          "level": "h2",
+          "text": "5. Safety and employment decisions"
+        },
+        {
+          "level": "h2",
+          "text": "6. Availability and changes"
+        },
+        {
+          "level": "h2",
+          "text": "7. Disclaimers and liability"
+        },
+        {
+          "level": "h2",
+          "text": "8. Caf\u00e9 plans and subscriptions"
+        },
+        {
+          "level": "h2",
+          "text": "9. Ending use"
+        },
+        {
+          "level": "h2",
+          "text": "10. Governing law"
+        },
+        {
+          "level": "h2",
+          "text": "11. Changes to these terms"
+        },
+        {
+          "level": "h2",
+          "text": "12. Contact"
+        }
+      ],
+      "title": "Terms of Service \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    "verify-email.html": {
+      "sha256": "45dc630f99dfa392608d367e60375010529d518d84ecd609bcf33bb95e60d13d",
+      "bytes": 2978,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Verify your BaristaMatch email address to complete account setup."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "You\u2019re signed up!"
+        }
+      ],
+      "title": "Verify your email \u2014 BaristaMatch",
+      "json_ld_count": 0
+    }
+  },
+  "live_pages": [
+    {
+      "requested_url": "https://www.baristajobmatch.com/account-deleted",
+      "final_url": "https://www.baristajobmatch.com/account-deleted",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"0245d933da3e0cf2beba5310eccf3069\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:12 GMT"
+      },
+      "total_seconds": 6.23194,
+      "ttfb_seconds": 6.231735,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c6e0296fedc1aef3d65ffd652681be4e59d9379b6516dcd89cb70b66dcf87626",
+      "bytes": 2848,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/delete-account.html",
+        "https://account.apple.com/",
+        "https://support.apple.com/en-us/102571",
+        "/login.html",
+        "/privacy.html",
+        "/support.html"
+      ],
+      "images": [],
+      "scripts": [
+        "/account-deleted.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Account deletion information"
+        },
+        {
+          "level": "h2",
+          "text": "Disconnect Sign in with Apple"
+        }
+      ],
+      "title": "Account deletion \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/cafe-trial",
+      "final_url": "https://www.baristajobmatch.com/cafe-trial",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"0b096671b4af17db2bb7ae0d1ce7114e\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:12 GMT"
+      },
+      "total_seconds": 6.526872,
+      "ttfb_seconds": 6.487853,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "311dfdbdfa882c0bb925009b2d13cebb12967ca2d6396b26d2c9a3829b2853fb",
+      "bytes": 7049,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Open your BaristaMatch caf\u00e9 workspace.",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [
+        "/login.html",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/cafe-account-gate.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Post your firstjob free."
+        }
+      ],
+      "title": "Caf\u00e9 access \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/checkout",
+      "final_url": "https://www.baristajobmatch.com/checkout",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"56a91c694f9740c506c2a347f582e756\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:12 GMT"
+      },
+      "total_seconds": 6.211735,
+      "ttfb_seconds": 6.211574,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "a6a1237ab6be68602d118c0f27737b00241754f2fb65b5a22b2e20bcd7af927e",
+      "bytes": 542,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [
+        "/dashboard.html?section=subscription"
+      ],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "Opening your subscription \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/dashboard",
+      "final_url": "https://www.baristajobmatch.com/dashboard",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"275831df041255d9ba722f035c845522\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:43 GMT"
+      },
+      "total_seconds": 6.091415,
+      "ttfb_seconds": 6.043502,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "9dcde46abb8d52d3f965d365d030268b35f07f2aad66dbafedb4d521310fad6c",
+      "bytes": 211103,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "Your BaristaMatch dashboard."
+      },
+      "canonicals": [],
+      "links": [
+        "/login.html",
+        "/",
+        "/",
+        "https://apps.apple.com/account/subscriptions",
+        "https://play.google.com/store/account/subscriptions?package=com.baristajobmatch.app"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/dashboard-quiet-focus.js",
+        "/checkout.js",
+        "/account-billing-presentation.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Dashboard"
+        },
+        {
+          "level": "h2",
+          "text": "Build your profile"
+        },
+        {
+          "level": "h2",
+          "text": "Post a barista job"
+        },
+        {
+          "level": "h2",
+          "text": "Continue hiring with Pro"
+        },
+        {
+          "level": "h2",
+          "text": "Messages"
+        },
+        {
+          "level": "h2",
+          "text": "Delete your account?"
+        }
+      ],
+      "title": "Dashboard \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/delete-account",
+      "final_url": "https://www.baristajobmatch.com/delete-account",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"22853b83423f38631efc799e2a3e6aaa\"",
+        "last-modified": "Thu, 24 Sep 2026 03:06:19 GMT"
+      },
+      "total_seconds": 3.926469,
+      "ttfb_seconds": 3.926283,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "e61c3057ba6626c11849ff633872899091e312eaba3e6a0d001d59ad73b5d7e0",
+      "bytes": 4365,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Request deletion of your BaristaMatch account and associated personal data, even without the app installed."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "mailto:hello@baristajobmatch.com?subject=BaristaMatch%20account%20deletion%20request",
+        "mailto:hello@baristajobmatch.com",
+        "/support.html",
+        "/account-deleted.html",
+        "/privacy.html",
+        "/privacy.html",
+        "/support.html"
+      ],
+      "images": [],
+      "scripts": [],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Delete your BaristaMatch account"
+        },
+        {
+          "level": "h2",
+          "text": "Delete from the app"
+        },
+        {
+          "level": "h2",
+          "text": "Request deletion without the app"
+        },
+        {
+          "level": "h2",
+          "text": "Accounts using Sign in with Apple"
+        },
+        {
+          "level": "h2",
+          "text": "What deletion covers"
+        }
+      ],
+      "title": "Delete your account \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/",
+      "final_url": "https://www.baristajobmatch.com/",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"f9469a5a8e7b8d044345a45bcc6be594\"",
+        "last-modified": "Wed, 23 Sep 2026 21:32:32 GMT"
+      },
+      "total_seconds": 3.874393,
+      "ttfb_seconds": 3.834246,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "8a7744f2879c1ba17c01e34d163f73ff4b759422579a96904a4e1a0ed2578366",
+      "bytes": 34900,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "BaristaMatch helps caf\u00e9s and baristas discover each other, match locally, and move directly into private conversations.",
+        "og:title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+        "og:description": "A simpler way for caf\u00e9s and baristas to discover, match, and chat."
+      },
+      "canonicals": [],
+      "links": [
+        "#top",
+        "#how",
+        "#baristas",
+        "#cafes",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/login.html",
+        "/dashboard.html",
+        "/login.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=barista",
+        "/support.html",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=cafe_owner_manager",
+        "/support.html",
+        "/support.html",
+        "/privacy.html",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/barista-pouring-icon.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/vintage-cafe-mark-small.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v4.png",
+          "alt": "Barista seen from behind at the Caf\u00e9 Feliz espresso bar",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/brand-safe-community.jpg",
+          "alt": "Coffee shop interior",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Barista working at an espresso machine",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/warm-editorial.js",
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Great caf\u00e9s andgreat baristas belong together."
+        },
+        {
+          "level": "h3",
+          "text": "Cafe Feliz"
+        },
+        {
+          "level": "h2",
+          "text": "Simple steps. Better matches."
+        },
+        {
+          "level": "h3",
+          "text": "1. Discover"
+        },
+        {
+          "level": "h3",
+          "text": "2. Match"
+        },
+        {
+          "level": "h3",
+          "text": "3. Chat"
+        },
+        {
+          "level": "h3",
+          "text": "Made for thecoffee community"
+        },
+        {
+          "level": "h3",
+          "text": "Find a caf\u00e9where you belong."
+        },
+        {
+          "level": "h3",
+          "text": "Hire great baristas.Faster."
+        },
+        {
+          "level": "h2",
+          "text": "Why caf\u00e9s and baristas love BaristaMatch"
+        },
+        {
+          "level": "h3",
+          "text": "Built for coffee people"
+        },
+        {
+          "level": "h3",
+          "text": "Local first"
+        },
+        {
+          "level": "h3",
+          "text": "Safe & private"
+        },
+        {
+          "level": "h3",
+          "text": "For every stage"
+        },
+        {
+          "level": "h2",
+          "text": "Better matches. Stronger teams.A better coffee community."
+        },
+        {
+          "level": "h3",
+          "text": "For Baristas"
+        },
+        {
+          "level": "h3",
+          "text": "For Caf\u00e9s"
+        },
+        {
+          "level": "h3",
+          "text": "Resources"
+        },
+        {
+          "level": "h3",
+          "text": "Company"
+        },
+        {
+          "level": "h2",
+          "text": "What brings you to BaristaMatch?"
+        }
+      ],
+      "title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/login",
+      "final_url": "https://www.baristajobmatch.com/login",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"15a7526cf1da2e9b5fb782be77ce9fc4\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:15 GMT"
+      },
+      "total_seconds": 3.833665,
+      "ttfb_seconds": 3.833042,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "46b610823d9bafd43cc39d8f686f583957f3cd21714b85c41b85ca94a3a4b47f",
+      "bytes": 11165,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Log in to BaristaMatch."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "#",
+        "/signup.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [],
+      "title": "Log in \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/mobile-auth-callback",
+      "final_url": "https://www.baristajobmatch.com/mobile-auth-callback",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"cce43f456a57b4411c417378145c700d\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:15 GMT"
+      },
+      "total_seconds": 3.542812,
+      "ttfb_seconds": 3.542699,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "5283eded8877d2a58d2b3e17e126c082dc529ba8c49ce13899df8558b0f79032",
+      "bytes": 1721,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [
+        "baristamatch://auth/callback"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Returning to BaristaMatch"
+        }
+      ],
+      "title": "Returning to BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/mobile-auth-start",
+      "final_url": "https://www.baristajobmatch.com/mobile-auth-start",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"2b6c766217e926a28434303244e49624\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:21 GMT"
+      },
+      "total_seconds": 5.569399,
+      "ttfb_seconds": 5.523167,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "73a5cbbeb7998560f610d8f412cce763b8a87b82efac2233ef6827de56fced14",
+      "bytes": 1249,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "BaristaMatch"
+        }
+      ],
+      "title": "Secure BaristaMatch Sign In",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/mobile-billing-return",
+      "final_url": "https://www.baristajobmatch.com/mobile-billing-return",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"a916e281575a96e3e057768801de15e7\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:21 GMT"
+      },
+      "total_seconds": 5.483183,
+      "ttfb_seconds": 5.48307,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "ab40009d6b145390d898c175107a5d00bf514f6678dd10e6ed803f57751dc974",
+      "bytes": 2513,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "robots": "noindex",
+        "referrer": "no-referrer"
+      },
+      "canonicals": [],
+      "links": [
+        "baristamatch://settings?billing=complete"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Returning to BaristaMatch"
+        }
+      ],
+      "title": "Returning to BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-accounts",
+      "final_url": "https://www.baristajobmatch.com/owner-accounts",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"f12d4a11486bfcc2e1eba327a72ce6ec\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:21 GMT"
+      },
+      "total_seconds": 5.511533,
+      "ttfb_seconds": 5.511408,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "bf534d7f75d44422dfe81af5a24409aa9733f4ece312d41518fe089458eb9591",
+      "bytes": 767,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow,noarchive"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Member Accounts \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-audience",
+      "final_url": "https://www.baristajobmatch.com/owner-audience",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"03e4d61394ead98b2dfe62ff731b1d92\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:21 GMT"
+      },
+      "total_seconds": 5.685296,
+      "ttfb_seconds": 5.644675,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "7b9521f7cd95ed6cfc20283efea39392907a9de827149670e5ef7192c40b9d4b",
+      "bytes": 732,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Audience Insights \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-dashboard",
+      "final_url": "https://www.baristajobmatch.com/owner-dashboard",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"c1eb44f2247f81ccb956ef35578017b1\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:32 GMT"
+      },
+      "total_seconds": 10.792142,
+      "ttfb_seconds": 10.792006,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "38fb3321eeb1886a07b8e7d5cc605da59296f9bd05057be0c2054a5b625523a7",
+      "bytes": 726,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Owner Overview \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-growth",
+      "final_url": "https://www.baristajobmatch.com/owner-growth",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"8a937f5d7567339467dacfabdf1edd43\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:32 GMT"
+      },
+      "total_seconds": 10.811121,
+      "ttfb_seconds": 10.810987,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "eedda5ab69d261523da0656735449a768f20aca18c9c332f9b306babd93ee38d",
+      "bytes": 734,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Growth & Marketing \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-marketplace",
+      "final_url": "https://www.baristajobmatch.com/owner-marketplace",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"ffb0db4bee9741e245b841b93ac2d87d\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:32 GMT"
+      },
+      "total_seconds": 10.935951,
+      "ttfb_seconds": 10.893612,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "539aaa55534d0f13c26fdf205fdcd6404baf8f7cb2f3d90f0089322031606187",
+      "bytes": 740,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Marketplace Health \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-subscriptions",
+      "final_url": "https://www.baristajobmatch.com/owner-subscriptions",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"3e486fabbc3f725d8e8762832d0c6ca5\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:32 GMT"
+      },
+      "total_seconds": 10.691147,
+      "ttfb_seconds": 10.690883,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "7ae7e8e172b4e81e1e61b93898c5e641661373f530ac74f57083ce797c4dbb28",
+      "bytes": 752,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Subscriptions & Revenue \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/pricing",
+      "final_url": "https://www.baristajobmatch.com/pricing",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"416ccde78be0462ca4081d5f24cc7aef\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:36 GMT"
+      },
+      "total_seconds": 3.883365,
+      "ttfb_seconds": 3.883005,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c465f092364f6e8ead56be16ebcb638019e6cd3f3429b5f0b8e99b231ee5ab31",
+      "bytes": 2319,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow",
+        "description": "Access your BaristaMatch caf\u00e9 account."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/cafe-account-gate.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Your caf\u00e9 account"
+        }
+      ],
+      "title": "Caf\u00e9 account \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/privacy",
+      "final_url": "https://www.baristajobmatch.com/privacy",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"4f89761fc3a87423b9cd45aab9037e80\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:31 GMT"
+      },
+      "total_seconds": 3.858772,
+      "ttfb_seconds": 3.855961,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "d00838a86e0a499003b9eb3972eb020f834b8453957cb15d202616c37b9d19b4",
+      "bytes": 9347,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Privacy Policy"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/delete-account.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Privacy Policy"
+        },
+        {
+          "level": "h2",
+          "text": "1. Information we collect"
+        },
+        {
+          "level": "h2",
+          "text": "2. How we use information"
+        },
+        {
+          "level": "h2",
+          "text": "3. Profile and marketplace visibility"
+        },
+        {
+          "level": "h2",
+          "text": "4. Service providers"
+        },
+        {
+          "level": "h2",
+          "text": "5. Cookies and local storage"
+        },
+        {
+          "level": "h2",
+          "text": "6. Retention and deletion"
+        },
+        {
+          "level": "h2",
+          "text": "7. Your choices and rights"
+        },
+        {
+          "level": "h2",
+          "text": "8. Security"
+        },
+        {
+          "level": "h2",
+          "text": "9. Younger users"
+        },
+        {
+          "level": "h2",
+          "text": "10. Changes to this policy"
+        },
+        {
+          "level": "h2",
+          "text": "11. Contact"
+        }
+      ],
+      "title": "Privacy Policy \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/reset-password",
+      "final_url": "https://www.baristajobmatch.com/reset-password",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"67d6962f8ce76396312c19a3a36210cd\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:36 GMT"
+      },
+      "total_seconds": 3.909613,
+      "ttfb_seconds": 3.871111,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "571935f08550f91b813f98d8068ab289f23b7a993a0d4d03bc5f980a4ff83cf1",
+      "bytes": 6432,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Choose a new BaristaMatch password."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/login.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Opening your secure link\u2026"
+        },
+        {
+          "level": "h1",
+          "text": "Choose a new password"
+        },
+        {
+          "level": "h1",
+          "text": "Password updated"
+        },
+        {
+          "level": "h1",
+          "text": "This link is no longer valid"
+        }
+      ],
+      "title": "Choose a new password \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/signup",
+      "final_url": "https://www.baristajobmatch.com/signup",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"44415bb8606fa988f15251ace9456b18\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:47 GMT"
+      },
+      "total_seconds": 3.836786,
+      "ttfb_seconds": 3.787399,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "024d94cd051d73caf4ff12e39ba6c29d5a57972a6c4cc2739ab01fdb017da3e0",
+      "bytes": 19713,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Create your BaristaMatch account as a barista or caf\u00e9."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html",
+        "/privacy.html",
+        "/terms.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "A better coffee career starts with a great profile."
+        },
+        {
+          "level": "h2",
+          "text": "Sign up"
+        }
+      ],
+      "title": "Sign up \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/support-admin",
+      "final_url": "https://www.baristajobmatch.com/support-admin",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"3a9fc983f5f03dfa504f4e29ed1467a4\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:39 GMT"
+      },
+      "total_seconds": 3.694581,
+      "ttfb_seconds": 3.652505,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "ea864dfcd6ade703dfa8f38ca522676f86146895fdc2e2774853ab4d0824ea32",
+      "bytes": 11319,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1"
+      },
+      "canonicals": [],
+      "links": [
+        "/owner-dashboard",
+        "/owner-growth",
+        "/owner-subscriptions",
+        "/owner-marketplace",
+        "/owner-audience",
+        "/support-admin.html",
+        "/dashboard.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-32-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Support Desk"
+        }
+      ],
+      "title": "Support Admin \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/support",
+      "final_url": "https://www.baristajobmatch.com/support",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"6b885464f212d72513409d9f4b46677d\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:15 GMT"
+      },
+      "total_seconds": 3.673798,
+      "ttfb_seconds": 3.63913,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c2758233e138b2b6f5f1b7bf30e5d459ff5c948f5bb2dff9a1051e27961d53a9",
+      "bytes": 11684,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch support center for account help, bug reports, and product questions."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/#how",
+        "/"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "How can we help?"
+        },
+        {
+          "level": "h2",
+          "text": "Contact support"
+        },
+        {
+          "level": "h3",
+          "text": "What happens next?"
+        },
+        {
+          "level": "h3",
+          "text": "Check a ticket"
+        }
+      ],
+      "title": "Support \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/terms",
+      "final_url": "https://www.baristajobmatch.com/terms",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"07c72374e6da2d45e0d5bbc2adf9ba58\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:39 GMT"
+      },
+      "total_seconds": 3.464921,
+      "ttfb_seconds": 3.423822,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "76e6d589837df398880f6a5b9130baea4971cc0c1c6e347adc621e69cfc06097",
+      "bytes": 7828,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Terms of Service"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/privacy.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Terms of Service"
+        },
+        {
+          "level": "h2",
+          "text": "1. Eligibility and accounts"
+        },
+        {
+          "level": "h2",
+          "text": "2. Marketplace use"
+        },
+        {
+          "level": "h2",
+          "text": "3. User content"
+        },
+        {
+          "level": "h2",
+          "text": "4. Acceptable conduct"
+        },
+        {
+          "level": "h2",
+          "text": "5. Safety and employment decisions"
+        },
+        {
+          "level": "h2",
+          "text": "6. Availability and changes"
+        },
+        {
+          "level": "h2",
+          "text": "7. Disclaimers and liability"
+        },
+        {
+          "level": "h2",
+          "text": "8. Caf\u00e9 plans and subscriptions"
+        },
+        {
+          "level": "h2",
+          "text": "9. Ending use"
+        },
+        {
+          "level": "h2",
+          "text": "10. Governing law"
+        },
+        {
+          "level": "h2",
+          "text": "11. Changes to these terms"
+        },
+        {
+          "level": "h2",
+          "text": "12. Contact"
+        }
+      ],
+      "title": "Terms of Service \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/verify-email",
+      "final_url": "https://www.baristajobmatch.com/verify-email",
+      "status": 200,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"4b86f41f625edb0cfb47ae450d6a6abe\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:39 GMT"
+      },
+      "total_seconds": 3.458212,
+      "ttfb_seconds": 3.45809,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "45dc630f99dfa392608d367e60375010529d518d84ecd609bcf33bb95e60d13d",
+      "bytes": 2978,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Verify your BaristaMatch email address to complete account setup."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/login.html"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "You\u2019re signed up!"
+        }
+      ],
+      "title": "Verify your email \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/robots.txt",
+      "final_url": "https://www.baristajobmatch.com/robots.txt",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.997012,
+      "ttfb_seconds": 3.950156,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "ee7736a23a3de7384d8a0801af838113791a182940175daf2805d2afdb5b5dd4",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/sitemap.xml",
+      "final_url": "https://www.baristajobmatch.com/sitemap.xml",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 4.007443,
+      "ttfb_seconds": 3.965558,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "79596ab69da7081f455fdb568c6cd16c88561e0678ee157975c1f74a0102a9ed",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/index.html",
+      "final_url": "https://www.baristajobmatch.com/",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"f9469a5a8e7b8d044345a45bcc6be594\"",
+        "last-modified": "Wed, 23 Sep 2026 21:32:32 GMT"
+      },
+      "total_seconds": 3.969853,
+      "ttfb_seconds": 3.920792,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "8a7744f2879c1ba17c01e34d163f73ff4b759422579a96904a4e1a0ed2578366",
+      "bytes": 34900,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "BaristaMatch helps caf\u00e9s and baristas discover each other, match locally, and move directly into private conversations.",
+        "og:title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+        "og:description": "A simpler way for caf\u00e9s and baristas to discover, match, and chat."
+      },
+      "canonicals": [],
+      "links": [
+        "#top",
+        "#how",
+        "#baristas",
+        "#cafes",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/login.html",
+        "/dashboard.html",
+        "/login.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=barista",
+        "/support.html",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=cafe_owner_manager",
+        "/support.html",
+        "/support.html",
+        "/privacy.html",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/barista-pouring-icon.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/vintage-cafe-mark-small.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v4.png",
+          "alt": "Barista seen from behind at the Caf\u00e9 Feliz espresso bar",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/brand-safe-community.jpg",
+          "alt": "Coffee shop interior",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Barista working at an espresso machine",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/warm-editorial.js",
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Great caf\u00e9s andgreat baristas belong together."
+        },
+        {
+          "level": "h3",
+          "text": "Cafe Feliz"
+        },
+        {
+          "level": "h2",
+          "text": "Simple steps. Better matches."
+        },
+        {
+          "level": "h3",
+          "text": "1. Discover"
+        },
+        {
+          "level": "h3",
+          "text": "2. Match"
+        },
+        {
+          "level": "h3",
+          "text": "3. Chat"
+        },
+        {
+          "level": "h3",
+          "text": "Made for thecoffee community"
+        },
+        {
+          "level": "h3",
+          "text": "Find a caf\u00e9where you belong."
+        },
+        {
+          "level": "h3",
+          "text": "Hire great baristas.Faster."
+        },
+        {
+          "level": "h2",
+          "text": "Why caf\u00e9s and baristas love BaristaMatch"
+        },
+        {
+          "level": "h3",
+          "text": "Built for coffee people"
+        },
+        {
+          "level": "h3",
+          "text": "Local first"
+        },
+        {
+          "level": "h3",
+          "text": "Safe & private"
+        },
+        {
+          "level": "h3",
+          "text": "For every stage"
+        },
+        {
+          "level": "h2",
+          "text": "Better matches. Stronger teams.A better coffee community."
+        },
+        {
+          "level": "h3",
+          "text": "For Baristas"
+        },
+        {
+          "level": "h3",
+          "text": "For Caf\u00e9s"
+        },
+        {
+          "level": "h3",
+          "text": "Resources"
+        },
+        {
+          "level": "h3",
+          "text": "Company"
+        },
+        {
+          "level": "h2",
+          "text": "What brings you to BaristaMatch?"
+        }
+      ],
+      "title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/support.html",
+      "final_url": "https://www.baristajobmatch.com/support",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/support"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"6b885464f212d72513409d9f4b46677d\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:15 GMT"
+      },
+      "total_seconds": 4.000049,
+      "ttfb_seconds": 3.952729,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c2758233e138b2b6f5f1b7bf30e5d459ff5c948f5bb2dff9a1051e27961d53a9",
+      "bytes": 11684,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch support center for account help, bug reports, and product questions."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/#how",
+        "/"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "How can we help?"
+        },
+        {
+          "level": "h2",
+          "text": "Contact support"
+        },
+        {
+          "level": "h3",
+          "text": "What happens next?"
+        },
+        {
+          "level": "h3",
+          "text": "Check a ticket"
+        }
+      ],
+      "title": "Support \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/support/",
+      "final_url": "https://www.baristajobmatch.com/support",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/support"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"6b885464f212d72513409d9f4b46677d\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:15 GMT"
+      },
+      "total_seconds": 3.855252,
+      "ttfb_seconds": 3.769967,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c2758233e138b2b6f5f1b7bf30e5d459ff5c948f5bb2dff9a1051e27961d53a9",
+      "bytes": 11684,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch support center for account help, bug reports, and product questions."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/#how",
+        "/"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch logo",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "How can we help?"
+        },
+        {
+          "level": "h2",
+          "text": "Contact support"
+        },
+        {
+          "level": "h3",
+          "text": "What happens next?"
+        },
+        {
+          "level": "h3",
+          "text": "Check a ticket"
+        }
+      ],
+      "title": "Support \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/privacy.html",
+      "final_url": "https://www.baristajobmatch.com/privacy",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/privacy"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"4f89761fc3a87423b9cd45aab9037e80\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:31 GMT"
+      },
+      "total_seconds": 3.885925,
+      "ttfb_seconds": 3.840816,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "d00838a86e0a499003b9eb3972eb020f834b8453957cb15d202616c37b9d19b4",
+      "bytes": 9347,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Privacy Policy"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/delete-account.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Privacy Policy"
+        },
+        {
+          "level": "h2",
+          "text": "1. Information we collect"
+        },
+        {
+          "level": "h2",
+          "text": "2. How we use information"
+        },
+        {
+          "level": "h2",
+          "text": "3. Profile and marketplace visibility"
+        },
+        {
+          "level": "h2",
+          "text": "4. Service providers"
+        },
+        {
+          "level": "h2",
+          "text": "5. Cookies and local storage"
+        },
+        {
+          "level": "h2",
+          "text": "6. Retention and deletion"
+        },
+        {
+          "level": "h2",
+          "text": "7. Your choices and rights"
+        },
+        {
+          "level": "h2",
+          "text": "8. Security"
+        },
+        {
+          "level": "h2",
+          "text": "9. Younger users"
+        },
+        {
+          "level": "h2",
+          "text": "10. Changes to this policy"
+        },
+        {
+          "level": "h2",
+          "text": "11. Contact"
+        }
+      ],
+      "title": "Privacy Policy \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/terms.html",
+      "final_url": "https://www.baristajobmatch.com/terms",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/terms"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"07c72374e6da2d45e0d5bbc2adf9ba58\"",
+        "last-modified": "Thu, 24 Sep 2026 02:14:39 GMT"
+      },
+      "total_seconds": 3.869381,
+      "ttfb_seconds": 3.822018,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "76e6d589837df398880f6a5b9130baea4971cc0c1c6e347adc621e69cfc06097",
+      "bytes": 7828,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "BaristaMatch Terms of Service"
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "/",
+        "/privacy.html",
+        "mailto:hello@baristajobmatch.com"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/analytics.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Terms of Service"
+        },
+        {
+          "level": "h2",
+          "text": "1. Eligibility and accounts"
+        },
+        {
+          "level": "h2",
+          "text": "2. Marketplace use"
+        },
+        {
+          "level": "h2",
+          "text": "3. User content"
+        },
+        {
+          "level": "h2",
+          "text": "4. Acceptable conduct"
+        },
+        {
+          "level": "h2",
+          "text": "5. Safety and employment decisions"
+        },
+        {
+          "level": "h2",
+          "text": "6. Availability and changes"
+        },
+        {
+          "level": "h2",
+          "text": "7. Disclaimers and liability"
+        },
+        {
+          "level": "h2",
+          "text": "8. Caf\u00e9 plans and subscriptions"
+        },
+        {
+          "level": "h2",
+          "text": "9. Ending use"
+        },
+        {
+          "level": "h2",
+          "text": "10. Governing law"
+        },
+        {
+          "level": "h2",
+          "text": "11. Changes to these terms"
+        },
+        {
+          "level": "h2",
+          "text": "12. Contact"
+        }
+      ],
+      "title": "Terms of Service \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/delete-account.html",
+      "final_url": "https://www.baristajobmatch.com/delete-account",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "/delete-account"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"22853b83423f38631efc799e2a3e6aaa\"",
+        "last-modified": "Thu, 24 Sep 2026 03:06:19 GMT"
+      },
+      "total_seconds": 3.77048,
+      "ttfb_seconds": 3.722109,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "e61c3057ba6626c11849ff633872899091e312eaba3e6a0d001d59ad73b5d7e0",
+      "bytes": 4365,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "description": "Request deletion of your BaristaMatch account and associated personal data, even without the app installed."
+      },
+      "canonicals": [],
+      "links": [
+        "/",
+        "mailto:hello@baristajobmatch.com?subject=BaristaMatch%20account%20deletion%20request",
+        "mailto:hello@baristajobmatch.com",
+        "/support.html",
+        "/account-deleted.html",
+        "/privacy.html",
+        "/privacy.html",
+        "/support.html"
+      ],
+      "images": [],
+      "scripts": [],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Delete your BaristaMatch account"
+        },
+        {
+          "level": "h2",
+          "text": "Delete from the app"
+        },
+        {
+          "level": "h2",
+          "text": "Request deletion without the app"
+        },
+        {
+          "level": "h2",
+          "text": "Accounts using Sign in with Apple"
+        },
+        {
+          "level": "h2",
+          "text": "What deletion covers"
+        }
+      ],
+      "title": "Delete your account \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/owner-reliability",
+      "final_url": "https://www.baristajobmatch.com/owner-dashboard",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 307,
+          "location": "/owner-dashboard"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"c1eb44f2247f81ccb956ef35578017b1\"",
+        "last-modified": "Thu, 24 Sep 2026 03:08:32 GMT"
+      },
+      "total_seconds": 3.708901,
+      "ttfb_seconds": 3.612115,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "38fb3321eeb1886a07b8e7d5cc605da59296f9bd05057be0c2054a5b625523a7",
+      "bytes": 726,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1",
+        "robots": "noindex,nofollow"
+      },
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js",
+        "/owner-dashboard.js"
+      ],
+      "headings": [],
+      "title": "Owner Overview \u2014 BaristaMatch",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/barista-jobs",
+      "final_url": "https://www.baristajobmatch.com/barista-jobs",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.708861,
+      "ttfb_seconds": 3.707484,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "87d8a0939e452c70c936cfacb5ede8ab012dd75578b1c94317e10553067adb95",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/barista-jobs/miami-fl",
+      "final_url": "https://www.baristajobmatch.com/barista-jobs/miami-fl",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.584017,
+      "ttfb_seconds": 3.583796,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "c2ab4b9afd0ef6cb8840ff9f50584437a0e62aba869f3f3bae0560146f77fccb",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/barista-jobs/fort-lauderdale-fl",
+      "final_url": "https://www.baristajobmatch.com/barista-jobs/fort-lauderdale-fl",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.643715,
+      "ttfb_seconds": 3.643645,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "3a66e58439ebbe201d341a5f6130b734ec430372b6ac5d91a56e29e9a623cbc0",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/hire-baristas",
+      "final_url": "https://www.baristajobmatch.com/hire-baristas",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.505729,
+      "ttfb_seconds": 3.505469,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "fe46cf03ddf9dffb4a4908928975de7f875e94aff34f761e73955519917ac5fa",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://www.baristajobmatch.com/seo-audit-missing-page-62",
+      "final_url": "https://www.baristajobmatch.com/seo-audit-missing-page-62",
+      "status": 404,
+      "redirects": [],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/plain; charset=utf-8"
+      },
+      "total_seconds": 3.421726,
+      "ttfb_seconds": 3.421606,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "e62062dbba64ab7e67a80149ce26ca4d25714ef94b103a8a4e83c343396dfcde",
+      "bytes": 79,
+      "metadata": {},
+      "canonicals": [],
+      "links": [],
+      "images": [],
+      "scripts": [],
+      "headings": [],
+      "title": "",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "https://baristajobmatch.com/",
+      "final_url": "https://www.baristajobmatch.com/",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "https://www.baristajobmatch.com/"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"f9469a5a8e7b8d044345a45bcc6be594\"",
+        "last-modified": "Wed, 23 Sep 2026 21:32:32 GMT"
+      },
+      "total_seconds": 9.507131,
+      "ttfb_seconds": 9.463722,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "8a7744f2879c1ba17c01e34d163f73ff4b759422579a96904a4e1a0ed2578366",
+      "bytes": 34900,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "BaristaMatch helps caf\u00e9s and baristas discover each other, match locally, and move directly into private conversations.",
+        "og:title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+        "og:description": "A simpler way for caf\u00e9s and baristas to discover, match, and chat."
+      },
+      "canonicals": [],
+      "links": [
+        "#top",
+        "#how",
+        "#baristas",
+        "#cafes",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/login.html",
+        "/dashboard.html",
+        "/login.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=barista",
+        "/support.html",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=cafe_owner_manager",
+        "/support.html",
+        "/support.html",
+        "/privacy.html",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/barista-pouring-icon.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/vintage-cafe-mark-small.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v4.png",
+          "alt": "Barista seen from behind at the Caf\u00e9 Feliz espresso bar",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/brand-safe-community.jpg",
+          "alt": "Coffee shop interior",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Barista working at an espresso machine",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/warm-editorial.js",
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Great caf\u00e9s andgreat baristas belong together."
+        },
+        {
+          "level": "h3",
+          "text": "Cafe Feliz"
+        },
+        {
+          "level": "h2",
+          "text": "Simple steps. Better matches."
+        },
+        {
+          "level": "h3",
+          "text": "1. Discover"
+        },
+        {
+          "level": "h3",
+          "text": "2. Match"
+        },
+        {
+          "level": "h3",
+          "text": "3. Chat"
+        },
+        {
+          "level": "h3",
+          "text": "Made for thecoffee community"
+        },
+        {
+          "level": "h3",
+          "text": "Find a caf\u00e9where you belong."
+        },
+        {
+          "level": "h3",
+          "text": "Hire great baristas.Faster."
+        },
+        {
+          "level": "h2",
+          "text": "Why caf\u00e9s and baristas love BaristaMatch"
+        },
+        {
+          "level": "h3",
+          "text": "Built for coffee people"
+        },
+        {
+          "level": "h3",
+          "text": "Local first"
+        },
+        {
+          "level": "h3",
+          "text": "Safe & private"
+        },
+        {
+          "level": "h3",
+          "text": "For every stage"
+        },
+        {
+          "level": "h2",
+          "text": "Better matches. Stronger teams.A better coffee community."
+        },
+        {
+          "level": "h3",
+          "text": "For Baristas"
+        },
+        {
+          "level": "h3",
+          "text": "For Caf\u00e9s"
+        },
+        {
+          "level": "h3",
+          "text": "Resources"
+        },
+        {
+          "level": "h3",
+          "text": "Company"
+        },
+        {
+          "level": "h2",
+          "text": "What brings you to BaristaMatch?"
+        }
+      ],
+      "title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+      "json_ld_count": 0
+    },
+    {
+      "requested_url": "http://www.baristajobmatch.com/",
+      "final_url": "https://www.baristajobmatch.com/",
+      "status": 200,
+      "redirects": [
+        {
+          "status": 308,
+          "location": "https://www.baristajobmatch.com/"
+        }
+      ],
+      "headers": {
+        "cache-control": "public, max-age=0, must-revalidate",
+        "content-type": "text/html; charset=utf-8",
+        "etag": "\"f9469a5a8e7b8d044345a45bcc6be594\"",
+        "last-modified": "Wed, 23 Sep 2026 21:32:32 GMT"
+      },
+      "total_seconds": 9.605399,
+      "ttfb_seconds": 9.604909,
+      "note": "Single audit-client observation; not a Core Web Vitals measurement.",
+      "sha256": "8a7744f2879c1ba17c01e34d163f73ff4b759422579a96904a4e1a0ed2578366",
+      "bytes": 34900,
+      "metadata": {
+        "viewport": "width=device-width,initial-scale=1,viewport-fit=cover",
+        "description": "BaristaMatch helps caf\u00e9s and baristas discover each other, match locally, and move directly into private conversations.",
+        "og:title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+        "og:description": "A simpler way for caf\u00e9s and baristas to discover, match, and chat."
+      },
+      "canonicals": [],
+      "links": [
+        "#top",
+        "#how",
+        "#baristas",
+        "#cafes",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/login.html",
+        "/dashboard.html",
+        "/login.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=barista",
+        "/signup.html?role=barista",
+        "/support.html",
+        "/signup.html?role=cafe_owner_manager",
+        "/signup.html?role=cafe_owner_manager",
+        "/support.html",
+        "/support.html",
+        "/privacy.html",
+        "/support.html",
+        "/privacy.html",
+        "/terms.html",
+        "/signup.html?role=barista",
+        "/signup.html?role=cafe_owner_manager"
+      ],
+      "images": [
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "BaristaMatch",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/barista-pouring-icon.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/vintage-cafe-mark-small.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v4.png",
+          "alt": "Barista seen from behind at the Caf\u00e9 Feliz espresso bar",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/brand-safe-community.jpg",
+          "alt": "Coffee shop interior",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Barista working at an espresso machine",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/editorial-hero-v3.jpg",
+          "alt": "Warm caf\u00e9 scene with a barista seen from behind",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        },
+        {
+          "src": "/assets/favicon-transparent-v2.png",
+          "alt": "",
+          "width": null,
+          "height": null,
+          "loading": null,
+          "fetchpriority": null
+        }
+      ],
+      "scripts": [
+        "/warm-editorial.js",
+        "/analytics.js",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js"
+      ],
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Great caf\u00e9s andgreat baristas belong together."
+        },
+        {
+          "level": "h3",
+          "text": "Cafe Feliz"
+        },
+        {
+          "level": "h2",
+          "text": "Simple steps. Better matches."
+        },
+        {
+          "level": "h3",
+          "text": "1. Discover"
+        },
+        {
+          "level": "h3",
+          "text": "2. Match"
+        },
+        {
+          "level": "h3",
+          "text": "3. Chat"
+        },
+        {
+          "level": "h3",
+          "text": "Made for thecoffee community"
+        },
+        {
+          "level": "h3",
+          "text": "Find a caf\u00e9where you belong."
+        },
+        {
+          "level": "h3",
+          "text": "Hire great baristas.Faster."
+        },
+        {
+          "level": "h2",
+          "text": "Why caf\u00e9s and baristas love BaristaMatch"
+        },
+        {
+          "level": "h3",
+          "text": "Built for coffee people"
+        },
+        {
+          "level": "h3",
+          "text": "Local first"
+        },
+        {
+          "level": "h3",
+          "text": "Safe & private"
+        },
+        {
+          "level": "h3",
+          "text": "For every stage"
+        },
+        {
+          "level": "h2",
+          "text": "Better matches. Stronger teams.A better coffee community."
+        },
+        {
+          "level": "h3",
+          "text": "For Baristas"
+        },
+        {
+          "level": "h3",
+          "text": "For Caf\u00e9s"
+        },
+        {
+          "level": "h3",
+          "text": "Resources"
+        },
+        {
+          "level": "h3",
+          "text": "Company"
+        },
+        {
+          "level": "h2",
+          "text": "What brings you to BaristaMatch?"
+        }
+      ],
+      "title": "BaristaMatch \u2014 Great caf\u00e9s and great baristas belong together",
+      "json_ld_count": 0
+    }
+  ]
+}
