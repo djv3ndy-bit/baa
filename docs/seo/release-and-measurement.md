@@ -1,5 +1,9 @@
 # Release, measurement and rollback
 
+## Released status — 2026-09-24 UTC
+
+The original checklist below is retained for traceability. Foundation PR #68 and verification PRs #69/#70 were merged and deployed after owner authorization. See [search-console-handoff.md](search-console-handoff.md) for observed ownership and indexing results. Outstanding items are not implied to have passed.
+
 ## Foundation scope
 
 This PR adds `robots.txt`, a five-URL XML sitemap, canonical tags on existing public pages, missing noindex tags on six utility pages and homepage social metadata using the current approved image. No layout, visible text, application JavaScript, routes, database, billing, native app or account permissions change. The baseline and later-page proposals remain repository-only documents, excluded by `.vercelignore`.
@@ -11,14 +15,14 @@ This PR adds `robots.txt`, a five-URL XML sitemap, canonical tags on existing pu
 - [x] Robots allows page crawling so noindex can be seen, and advertises the canonical sitemap. API endpoints are disallowed; API authorization remains the actual security boundary.
 - [x] Six SEO tests, launch static checks and 76 account/message regression tests pass locally.
 - [x] XML parses; edited page bodies, styles and scripts match the baseline exactly.
-- [ ] GitHub CI checks at the PR head reviewed; note any unrelated failures rather than declaring a blanket pass.
+- [x] Foundation PR #68: all five GitHub workflows passed. Verification correction PR #70: six local SEO tests and SEO/native-layout CI passed at the observed checkpoint; no blanket claim about remaining workflows.
 - [ ] On a branch preview, check homepage at phone and desktop sizes and confirm role/signup links, login and help links still work. Do not use real accounts or submit forms just for SEO verification.
 - [ ] Verify preview `robots.txt` is text and `sitemap.xml` is XML, with expected status 200 and final URL canonicals. Preview-level noindex is expected; do not mistake it for a production defect.
-- [ ] Owner approves merge/release. This milestone does not merge or deploy to production.
-- [ ] After approved production release, repeat HTTP checks: robots/sitemap 200; five sitemap pages 200 and canonical; utility noindex visible; missing pages remain 404. Confirm no production `X-Robots-Tag: noindex` overrides the public-page policy.
+- [x] Owner authorized release; PR #68 and verification corrections #69/#70 merged and deployed.
+- [x] After approved production release, repeated HTTP checks: robots/sitemap 200; five sitemap pages 200 and canonical; utility noindex visible; missing pages remain 404. Confirm no production `X-Robots-Tag: noindex` overrides the public-page policy.
 - [ ] Submit the sitemap in the verified Search Console property and inspect the homepage plus representative utility routes. Record Google's actual chosen canonical and indexing reason.
 
-No search-engine submission, DNS change, scheduled task or public job publication is performed in this PR. Existing automated Vercel branch previews may run normally.
+Sitemap submission and two URL indexing requests were subsequently completed in Search Console. No DNS change, scheduled task or public job publication was performed.
 
 ## Measurement baseline: unknown is not zero
 
@@ -26,8 +30,8 @@ Current `analytics.js` sends path and referrer hostname to `/api/analytics`, ski
 
 | Metric | Preferred evidence | Baseline status / next step |
 | --- | --- | --- |
-| Search impressions, clicks, CTR, queries, landing pages | Verified Google Search Console Search Performance | Not accessed; export latest complete 28 days and preceding 28 days, noting GSC timezone and reporting lag |
-| Indexed pages, exclusions, selected canonical | GSC Page Indexing, Sitemaps, URL Inspection | Not accessed; sitemap missing in current deployment |
+| Search impressions, clicks, CTR, queries, landing pages | Verified Google Search Console Search Performance | Accessed; new-property reports still processing. Export complete periods when available, noting reporting timezone and lag; do not report missing data as zero |
+| Indexed pages, exclusions, selected canonical | GSC Page Indexing, Sitemaps, URL Inspection | Sitemap successful, five discovered pages. Three inspected URLs indexed; two discovered but not indexed, with indexing requests accepted. Selected-canonical and utility inspection remain outstanding |
 | Real-user LCP, INP, CLS | GSC Core Web Vitals / CrUX | Unknown; mark insufficient traffic explicitly if applicable |
 | Organic landing visits | Existing referrer-host pageviews, with documented search-engine classification | Available implementation, counts not queried; referrer loss and bot traffic limit accuracy |
 | Organic signups by café/barista | Future verified signup-success event plus approved attribution | Not implemented/verified; aggregate signups are not an SEO conversion rate |

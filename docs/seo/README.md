@@ -2,7 +2,7 @@
 
 Prepared 2026-09-24. Foundation released after owner direction to make the website discoverable on Google. Related issue: https://github.com/djv3ndy-bit/baa/issues/62
 
-This is a technical-foundation PR and a proposed local-marketplace plan. It does not publish city pages or jobs. The owner-approved design, native app, authentication, billing, database policies and user data are unchanged. Keep issue #62 open for architecture review and the subsequent public-job work.
+This deliverable records the released technical foundation and a deferred local-marketplace plan. It does not publish city pages or jobs. The owner-approved design, native app, authentication, billing, database policies and user data are unchanged. Keep issue #62 open for architecture review and the subsequent public-job work.
 
 ## Deliverables
 
@@ -12,8 +12,10 @@ This is a technical-foundation PR and a proposed local-marketplace plan. It does
 | Reproducible timestamped public HTTP evidence | [baseline-2026-09-24.json](baseline-2026-09-24.json) | 40 requests; no credentials or private data |
 | Miami/Fort Lauderdale architecture and quality gates | [local-architecture.md](local-architecture.md) | Proposed; owner review outstanding |
 | Genuine JobPosting data contract and expiry strategy | [jobposting-strategy.md](jobposting-strategy.md) | Documented; deliberately not activated |
-| Measurement, release checklist and rollback | [release-and-measurement.md](release-and-measurement.md) | Ready for review |
-| Sitemap, robots, canonical/social tags, utility noindex | Root website files | Implemented on PR branch only |
+| Measurement, release checklist and rollback | [release-and-measurement.md](release-and-measurement.md) | Updated with production and Search Console observations |
+| Sitemap, robots, canonical/social tags, utility noindex | Root website files | Released to production in PR #68 |
+
+| Production ownership, sitemap and URL Inspection handoff | [search-console-handoff.md](search-console-handoff.md) | Business owner verified; three pages indexed; two requests accepted |
 
 ## Current owner direction
 
@@ -37,4 +39,4 @@ PR #68 passed all five GitHub workflows and was merged as `e94d4446fc2200aa96093
 
 Local Node was v24.19.0; the dedicated SEO CI job uses the repository's Node 22 target. Full mobile builds, live account journeys, rendered preview checks, Google URL Inspection and Rich Results Test were not run locally. No JobPosting markup was introduced, so this PR makes no claim of job rich-result validation.
 
-The added CI job has read-only repository permissions, no secrets and no deployment steps. Vercel may create its normal branch preview; production merge/deployment is not part of this work.
+The added CI job has read-only repository permissions, no secrets and no deployment steps. Production release and subsequent Google verification were completed after owner authorization; see the dated handoff for actual results.
