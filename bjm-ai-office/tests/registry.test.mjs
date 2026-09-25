@@ -12,11 +12,11 @@ const permission=(id,requested)=>Boolean(registry[id])&&rank[requested]<=rank[re
 const route=event=>{
  const v=event.toLowerCase();
  if(/security|credential|secret|vulnerab|suspicious login/.test(v))return'security';
+ if(/seo|indexing|sitemap|schema|search console/.test(v))return'seo';
  if(/database|query|index|migration|rls/.test(v))return'data';
  if(/crash|api failure|ci failure|performance|outage|bug/.test(v))return'engineering';
  if(/refund|subscription|payment|billing/.test(v))return'billing';
  if(/support|customer issue|help request/.test(v))return'support';
- if(/seo|indexing|sitemap|schema|search console/.test(v))return'seo';
  if(/café prospect|cafe prospect|sales lead/.test(v))return'sales';
  if(/barista acquisition|barista signup|barista prospect/.test(v))return'barista-acquisition';
  if(/marketplace|zero applicants|supply|demand|liquidity/.test(v))return'marketplace';
