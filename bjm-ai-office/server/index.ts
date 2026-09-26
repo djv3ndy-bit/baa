@@ -2,6 +2,7 @@ import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createOfficeMcpServer } from './mcp.js';
 import { getSystemHealth } from './providers.js';
+import { requireOwnerAuth } from './auth.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -11,6 +12,7 @@ app.all('/mcp', async (req, res) => {
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(405).json({ error: 'Method not allowed.' });
   }
+  if (!requireOwnerAuth(req, res)) return;
 
   const server = createOfficeMcpServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
