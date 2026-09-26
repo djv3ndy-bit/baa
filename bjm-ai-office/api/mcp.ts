@@ -1,5 +1,6 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createOfficeMcpServer } from '../server/mcp.js';
+import { requireOwnerAuth } from '../server/auth.js';
 
 export const config = { maxDuration: 60 };
 
@@ -11,6 +12,7 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(405).json({ error: 'Method not allowed.' });
   }
+  if (!requireOwnerAuth(req, res)) return;
 
   const server = createOfficeMcpServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
