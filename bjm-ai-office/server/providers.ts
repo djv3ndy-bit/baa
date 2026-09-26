@@ -45,7 +45,7 @@ async function count(table: string, query = 'select=*&limit=1') {
 
 export async function getLiveOverview() {
   const [profiles, cafes, baristas, jobs, applications, subscriptions, payments] = await Promise.all([
-    count('profiles'), count('cafe_profiles'), count('barista_profiles'), count('jobs'), count('applications'), count('cafe_subscriptions'), count('subscription_payments'),
+    count('profiles'), count('profiles', 'role=eq.cafe_owner_manager&select=id&limit=1'), count('profiles', 'role=eq.barista&select=id&limit=1'), count('jobs'), count('applications'), count('cafe_subscriptions'), count('subscription_payments'),
   ]);
   const configured = Boolean(env('SUPABASE_URL') && supabaseKey());
   return { source: 'supabase', configured, metrics: { profiles, cafes, baristas, jobs, applications, subscriptions, payments }, status: configured ? 'connected' : 'configuration_required' };
