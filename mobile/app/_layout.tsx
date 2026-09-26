@@ -39,7 +39,10 @@ function ReadyRootLayout() {
           Expo Router supplies the safe-area provider. The login screen handles its own photo-header insets on both platforms. */}
       <SafeAreaView style={{ flex: 1 }} edges={getAppEnvironment().review || pathname === '/review-mode' ? ['top', 'right', 'bottom', 'left'] : Platform.OS === 'android' && !isLogin ? ['top', 'right', 'bottom', 'left'] : []}>
         <ReviewModeBanner />
-        <Stack screenOptions={{ headerShown: false, animation: 'fade' }} />
+        <Stack screenOptions={({ route }) => ({
+          headerShown: false,
+          animation: ['home', 'jobs', 'discover', 'matches', 'messages', 'profile'].includes(route.name) ? 'none' : 'fade',
+        })} />
         {isLogin && <ReviewModeEntry />}
       </SafeAreaView>
     </AppErrorBoundary>
