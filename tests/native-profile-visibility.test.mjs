@@ -11,6 +11,7 @@ function compile(file, mocks = {}) {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
     if (name === '@/lib/dashboardPrism') return compile('lib/dashboardPrism.ts');
+    if (name === './usLocation') return compile('lib/usLocation.ts');
     if (name === './floridaLocation') return compile('lib/floridaLocation.ts');
     throw new Error(`Unmocked import ${name}`);
   };
@@ -44,7 +45,7 @@ function profileEditor(initial, { serverFields = {}, gate } = {}) {
     'react-native': new Proxy({ StyleSheet: { create: value => value }, Platform: { OS: 'ios' }, Alert: { alert: (...args) => alerts.push(args) } }, { get: (target, key) => target[key] || key }),
     'expo-router': { router: { replace() {}, push() {} }, useFocusEffect: react.useEffect },
     'expo-image-picker': {}, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' }, '@/lib/supabase': { supabase: client },
-    '@/lib/profilePrivacy': privacy, '@/lib/floridaLocation': compile('lib/floridaLocation.ts'),
+    '@/lib/profilePrivacy': privacy, '@/lib/usLocation': compile('lib/usLocation.ts'),
     '@/lib/session': { getCurrentContext: async () => ({ user: { id: saved.id }, role: saved.role, profile: saved }), requireCurrentUser: async () => ({ id: saved.id }) },
   }).default;
   function render() { cursor = refCursor = effectCursor = 0; tree = component(); }

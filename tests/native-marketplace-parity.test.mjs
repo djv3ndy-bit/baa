@@ -31,6 +31,7 @@ function sourceLoader({ client = clientFor(() => ({ data: [] })).client, api = a
     const source = readFileSync(file, 'utf8');
     const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
     function localRequire(name) {
+      if (name === './usLocation') return load('mobile/lib/usLocation.ts');
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react-native') return native;
@@ -135,7 +136,7 @@ test('job editor blocks duplicate publishes before the account lookup resolves',
   const db = clientFor(call => { if (call.operation === 'insert') { inserts++; return { data: { id: 'new-job', active: true } }; } return { data: [] }; });
   const h = screen('mobile/app/post-job.tsx', { ...db, context: () => pause ? gate.promise : Promise.resolve(readyCafe) });
   h.focus(); await settle(); h.render();
-  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
+  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['State', 'FL'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
   h.press('Full-time'); h.render(); pause = true;
   const publish = h.all('Pressable').find(node => node.props.accessibilityRole === 'button' && node.props.onPress && !node.props.accessibilityLabel && !node.props.disabled);
   assert.ok(publish); publish.props.onPress(); publish.props.onPress();

@@ -1,5 +1,5 @@
 import type { AppRole } from './session';
-import { floridaCityFromLocation, normalizeFloridaLocation } from './floridaLocation';
+import { cityFromUSLocation, normalizeUSLocation, normalizeUSState, parseUSLocation } from './usLocation';
 
 /** Optional reporting data must never gate marketplace access. */
 export function normalizeOptionalGender(value: unknown): 'female' | 'male' | null {
@@ -48,10 +48,11 @@ export function getProfileSaveMessage(profile: Record<string, any>, role: AppRol
 }
 
 export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, options: {
-  locationCity: string; availability: string[]; availabilityNotes: string; openHours: string;
+  locationCity: string; locationState?: string; availability: string[]; availabilityNotes: string; openHours: string;
 }) {
-  const location = normalizeFloridaLocation(options.locationCity);
-  if (!location) throw new Error('Enter a Florida city such as Miami.');
+  const locationState = options.locationState === undefined ? parseUSLocation(profile.location, 'FL')?.state : options.locationState;
+  const location = normalizeUSLocation(options.locationCity, locationState);
+  if (!normalizeUSState(locationState) || !location) throw new Error('Enter your city and a valid U.S. state code, such as Miami and FL.');
   const payload: Record<string, any> = {
     location, bio: String(profile.bio || '').trim() || null,
     avatar_url: profile.avatar_url || null, video_path: profile.video_path || null,
@@ -60,8 +61,9 @@ export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, 
   if (role === 'barista') {
     if (!isEligibleBirthDate(profile.date_of_birth)) throw new Error('Enter a valid date of birth (YYYY-MM-DD). You must be at least 16. This stays private.');
     normalizeOptionalGender(profile.gender_identity);
-    const preferred = normalizeFloridaLocation(profile.preferred_city || options.locationCity);
-    if (!preferred) throw new Error('Enter a valid preferred Florida city.');
+    const preferredState = normalizeUSState(profile.preferred_state || locationState);
+    const preferred = normalizeUSLocation(profile.preferred_city || options.locationCity, preferredState);
+    if (!preferredState || !preferred) throw new Error('Enter a valid preferred work city and U.S. state.');
     const zip = String(profile.preferred_postal_code || '').trim();
     if (zip && !/^\d{5}$/.test(zip)) throw new Error('Enter a five-digit preferred ZIP code, or leave it blank.');
     Object.assign(payload, {
@@ -70,7 +72,7 @@ export function buildProfileUpdate(profile: Record<string, any>, role: AppRole, 
       pay_expectation: String(profile.pay_expectation || '').trim() || null,
       availability: [...options.availability, options.availabilityNotes.trim()].filter(Boolean).join(' · ') || null,
       skills: String(profile.skills_text ?? profile.skills?.join(', ') ?? '').split(',').map(value => value.trim()).filter(Boolean),
-      preferred_city: floridaCityFromLocation(preferred), preferred_state: 'FL', preferred_postal_code: zip || null,
+      preferred_city: cityFromUSLocation(preferred), preferred_state: preferredState, preferred_postal_code: zip || null,
     });
   } else {
     Object.assign(payload, {

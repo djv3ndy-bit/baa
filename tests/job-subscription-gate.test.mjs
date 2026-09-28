@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 
 const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 const dashboard = read('dashboard.html');
@@ -16,7 +19,7 @@ function source(name) {
 }
 
 function context(names, extra = {}) {
-  const value = { console, Date, URLSearchParams, ...extra };
+  const value = { console, Date, URLSearchParams, window: locationWindow, ...extra };
   vm.createContext(value);
   vm.runInContext(names.map(source).join('\n'), value);
   return value;
@@ -169,7 +172,7 @@ test('a PJB01 race returns to the preserved Pro prompt instead of leaking a data
   await assert.rejects(raced.ctx.saveJobPost(validJobForm(), null), error => error.code === 'JOB_SUBSCRIPTION_REQUIRED' && /still a draft/.test(error.message));
 });
 
-test('pending drafts are account-scoped, safely restored, and forced back to Florida', () => {
+test('pending drafts are account-scoped, safely restored, and retain the chosen U.S. state', () => {
   const values = new Map(), sessionStorage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   const schedules = [{ value: 'Full-time', checked: false }, { value: 'Part-time', checked: true }];
   const form = { elements: { title: { value: '' }, state: { value: '' }, description: { value: '' } }, querySelectorAll: () => schedules };
@@ -178,7 +181,7 @@ test('pending drafts are account-scoped, safely restored, and forced back to Flo
   });
   assert.equal(ctx.persistPendingJobDraft([['title', 'Weekend barista'], ['state', 'NY'], ['schedule', 'Full-time'], ['description', 'Saved before Checkout']]), true);
   assert.match([...values.keys()][0], /cafe$/);
-  assert.equal(ctx.applyPendingJobDraft(form), true); assert.equal(form.elements.title.value, 'Weekend barista'); assert.equal(form.elements.state.value, 'FL');
+  assert.equal(ctx.applyPendingJobDraft(form), true); assert.equal(form.elements.title.value, 'Weekend barista'); assert.equal(form.elements.state.value, 'NY');
   assert.equal(schedules[0].checked, true); assert.equal(schedules[1].checked, false);
   ctx.currentUser = { id: 'another-cafe' }; assert.equal(ctx.readPendingJobDraft(), null);
   ctx.currentUser = { id: 'cafe' }; ctx.clearPendingJobDraft(); assert.equal(values.size, 0);

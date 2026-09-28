@@ -28,7 +28,7 @@ function mount(name, f) {
   'expo-router': { router: { replace() {}, push() {}, navigate() {}, back() {} }, useFocusEffect: cb => { focusCallback = cb; }, useLocalSearchParams: () => f.params },
   '@/features/section-memory/useSectionMemory': memory, '@/lib/dashboardPrism': { dashboardPrism: {}, prismPanel: {} }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' },
   '@/lib/supabase': { supabase }, '../../lib/supabase': { supabase }, '@/lib/session': session, '../../lib/session': session,
-  '@/lib/marketplace': market, '@/lib/discovery': {}, '@/lib/floridaLocation': { workAreaLabel: () => 'Miami', floridaCityFromLocation: s => s || '' },
+  '@/lib/marketplace': market, '@/lib/discovery': {}, '@/lib/usLocation': { cityFromUSLocation: s => s || '', parseUSLocation: () => ({ city: 'Miami', state: 'FL' }) }, '@/lib/floridaLocation': { workAreaLabel: () => 'Miami', floridaCityFromLocation: s => s || '' },
   '@/lib/profilePrivacy': { getProfileReadiness: () => ({ complete: true, missing: [] }) }, 'expo-image-picker': {},
   '@/lib/messaging': { LatestMessageRequest: class { version = 0; begin() { const v = ++this.version; return () => v === this.version; } invalidate() { this.version++; } }, withMessageDeadline: p => p, messageError: () => 'Messages could not load. Please try again.', loadConversations: async () => [{ id: 'conversation', kind: 'application', name: f.name, unread: 0 }] },
   './loadDashboard': { DashboardSessionError: class extends Error {}, loadDashboard: async () => { await f.wait(); return { accountId: f.userId, role: f.role, marker: f.name }; } },

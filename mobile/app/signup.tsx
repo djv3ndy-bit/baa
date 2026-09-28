@@ -4,7 +4,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
 import { createExplicitProfile, getCurrentContext, savedAppRole } from '@/lib/session';
-import { normalizeFloridaLocation } from '@/lib/floridaLocation';
+import { normalizeUSLocation, normalizeUSState } from '@/lib/usLocation';
 
 type Role = 'barista' | 'cafe_owner_manager';
 
@@ -13,6 +13,7 @@ export default function SignupScreen() {
   const [role, setRole] = useState<Role | null>(savedAppRole(params.role));
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
+  const [locationState, setLocationState] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -46,8 +47,8 @@ export default function SignupScreen() {
       return Alert.alert('Check your information', 'Enter your name and city, plus a valid email and a password with at least 10 characters when creating an email account.');
     }
     if (!setupUserId && password !== confirmPassword) return Alert.alert('Passwords do not match', 'Enter the same password in both fields.');
-    const normalizedLocation = normalizeFloridaLocation(location);
-    if (!normalizedLocation) return Alert.alert('Florida city required', 'Enter a city such as Miami. Florida is selected automatically.');
+    const normalizedLocation = normalizeUSLocation(location, locationState);
+    if (!normalizeUSState(locationState) || !normalizedLocation) return Alert.alert('City and state required', 'Enter your city and a valid U.S. state code, such as Miami and FL.');
     if (!ageConfirmed) return Alert.alert('Age confirmation required', 'Confirm that you are at least 16 years old and, if you are under 18, have permission from a parent or legal guardian.');
     const draft = { role, display_name: role === 'barista' ? name.trim() : null, cafe_name: role === 'cafe_owner_manager' ? name.trim() : null, location: normalizedLocation };
     const cleanEmail = email.trim().toLowerCase();
@@ -119,8 +120,8 @@ export default function SignupScreen() {
           <Text style={styles.label}>City</Text>
           <TextInput editable={!busy} accessibilityLabel="City" autoCapitalize="words" autoComplete="postal-address-locality" textContentType="addressCity" value={location} onChangeText={setLocation} style={styles.input} placeholder="Miami" />
           <Text style={styles.label}>State</Text>
-          <TextInput accessibilityLabel="State" value="Florida (FL)" editable={false} style={[styles.input, styles.inputDisabled]} />
-          <Text style={styles.helper}>Florida is selected automatically while BaristaMatch launches statewide.</Text>
+          <TextInput accessibilityLabel="State (two-letter code)" value={locationState} onChangeText={value => setLocationState(value.toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={2} editable={!busy} placeholder="FL, NY, CA…" style={styles.input} />
+          <Text style={styles.helper}>Available in all 50 U.S. states and Washington, D.C. Enter your two-letter state code.</Text>
           {!setupUserId ? <>
           <Text style={styles.label}>Email</Text>
           <TextInput editable={!busy} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="you@example.com" />

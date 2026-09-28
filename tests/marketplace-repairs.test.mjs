@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(fs.readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 
 const dashboard = fs.readFileSync(new URL('../dashboard.html', import.meta.url), 'utf8');
 const quietFocus = fs.readFileSync(new URL('../dashboard-quiet-focus.js', import.meta.url), 'utf8');
@@ -15,6 +18,7 @@ function source(name) {
 const baseFunctions = ['normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
 function context(extra = {}, functions = []) {
   const ctx = { currentRole: 'barista', currentUser: { id: 'barista' }, currentProfile: { id: 'barista', location: 'Miami, FL' }, applications: [], discoveryInterests: [], discoveryMatches: [], discoveryProfiles: {}, candidateProfiles: [], marketJobs: [], marketplaceRefreshMessage: '', editingJobId: null, window: {}, ...extra };
+  ctx.window.BaristaMatchLocation = locationWindow.BaristaMatchLocation;
   vm.createContext(ctx);
   vm.runInContext([...new Set([...baseFunctions, ...functions])].map(source).join('\n'), ctx);
   return ctx;
@@ -134,9 +138,9 @@ test('editing updates the original owner-scoped post without replacing ID, visib
   assert.equal(Object.hasOwn(payload, 'owner_id'), false);
 });
 
-test('job form rejects invalid Florida geography, zero pay and reversed pay ranges before any write', () => {
+test('job form rejects invalid U.S. geography, zero pay and reversed pay ranges before any write', () => {
   const ctx = context({}, ['jobPayloadFromForm']);
-  for (const invalid of [{ state: 'NY' }, { postal_code: 'abc' }, { hourly_pay: '0' }, { max_hourly_pay: '20' }]) assert.throws(() => ctx.jobPayloadFromForm(validJobForm(invalid)));
+  for (const invalid of [{ state: 'ZZ' }, { postal_code: 'abc' }, { hourly_pay: '0' }, { max_hourly_pay: '20' }]) assert.throws(() => ctx.jobPayloadFromForm(validJobForm(invalid)));
 });
 
 test('filtering updates a visible count, announces no matches, and clearing restores results', () => {
@@ -205,19 +209,20 @@ function jobEditorContext() {
   return { ctx, form, elements, button, status, dialog, content, navigations, writes, submit: () => ctx.submitJobForm({ preventDefault() {}, currentTarget: form }) };
 }
 
-test('first and subsequent new job editors retain the required read-only Florida state after reset', async () => {
+test('first and subsequent new job editors allow an explicit state on first and subsequent new jobs', async () => {
   const h = jobEditorContext();
   for (let post = 0; post < 2; post++) {
     h.ctx.openJobEditor();
-    assert.equal(h.elements.state.readOnly, true);
-    assert.equal(h.elements.state.value, 'FL');
+    assert.equal(h.elements.state.readOnly, false);
+    assert.equal(h.elements.state.value, '');
+    h.elements.state.value = 'NY';
     await h.submit();
   }
   h.ctx.openJobEditor(job.id);
   h.dialog.close();
   h.ctx.openJobEditor();
-  assert.equal(h.elements.state.value, 'FL', 'editing another post must not change the new-post default');
-  assert.deepEqual(h.writes.map(write => write.state), ['FL', 'FL']);
+  assert.equal(h.elements.state.value, '', 'editing another post must not change the new-post default');
+  assert.deepEqual(h.writes.map(write => write.state), ['NY', 'NY']);
 });
 
 test('an earlier job save cannot close or reset a newer editor during either the write or refresh', async () => {

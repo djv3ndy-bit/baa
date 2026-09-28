@@ -120,11 +120,11 @@
     if (!job) {
       return `<article class="quiet-feature-card quiet-empty-feature">
         ${featureImage(job)}
-        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3><span class="quiet-desktop-copy">Your next café starts here.</span><span class="quiet-mobile-copy">No matching roles yet</span></h3><p>New roles matching your saved Florida work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
+        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3><span class="quiet-desktop-copy">Your next café starts here.</span><span class="quiet-mobile-copy">No matching roles yet</span></h3><p>New roles matching your saved work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
       </article>`;
     }
     const cafe = job.owner?.cafe_name || 'Local café';
-    const location = job.location || context.profile.location || 'Florida';
+    const location = job.location || context.profile.location || 'Location not added';
     return `<article class="quiet-feature-card">
       ${featureImage(job)}
       <div class="quiet-feature-body">
@@ -151,7 +151,7 @@
       <div class="quiet-feature-body">
         <span class="quiet-card-kicker">YOUR JOB POST</span>
         <div class="quiet-title-row"><h3>${escapeHtml(job.title || 'Barista role')}</h3><span class="quiet-live">${job.active === false ? 'PAUSED' : 'LIVE'}</span></div>
-        <p class="quiet-meta">⌖ ${escapeHtml(job.location || context.profile.location || 'Florida')}</p>
+        <p class="quiet-meta">⌖ ${escapeHtml(job.location || context.profile.location || 'Location not added')}</p>
         <div class="quiet-tags">${tagList(job.schedule)}</div>
         <p>${escapeHtml(job.description || 'Keep this role current so nearby baristas can understand the opportunity.')}</p>
         <button class="quiet-primary" type="button" data-go="Job Posts">Manage job <span aria-hidden="true">→</span></button>
@@ -163,7 +163,7 @@
     const rows = context.marketJobs.slice(1, 3);
     if (!rows.length) return '';
     return `<section class="quiet-more"><div class="quiet-section-heading"><h3>${isCafe ? 'More job posts' : 'More jobs for you'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">See all <span aria-hidden="true">→</span></button></div><div class="quiet-more-grid">${rows
-      .map((job) => `<button class="quiet-mini-job" type="button" ${isCafe ? 'data-go="Job Posts"' : `data-view-job="${escapeHtml(job.id)}"`}><span class="quiet-mini-photo" aria-hidden="true"></span><span><strong>${escapeHtml(job.title || 'Barista role')}</strong><small>${escapeHtml(isCafe ? (job.location || 'Florida') : (job.owner?.cafe_name || 'Local café'))}</small></span><b>${escapeHtml(money(job))}</b></button>`)
+      .map((job) => `<button class="quiet-mini-job" type="button" ${isCafe ? 'data-go="Job Posts"' : `data-view-job="${escapeHtml(job.id)}"`}><span class="quiet-mini-photo" aria-hidden="true"></span><span><strong>${escapeHtml(job.title || 'Barista role')}</strong><small>${escapeHtml(isCafe ? (job.location || 'Location not added') : (job.owner?.cafe_name || 'Local café'))}</small></span><b>${escapeHtml(money(job))}</b></button>`)
       .join('')}</div></section>`;
   }
 

@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 const html=readFileSync(new URL('../dashboard.html',import.meta.url),'utf8');
 const completion=html.match(/const profileFields=[^\n]+/)[0]+'\n'+html.slice(html.indexOf('function validBaristaBirthDate'),html.indexOf('function trustBanner'));
 const base={display_name:'Barista',avatar_url:'/photo.png',location:'Miami, FL',bio:'Coffee professional',skills:['Espresso'],availability:'Weekdays',experience:'Two years',pay_expectation:'$20/hour'};
@@ -44,9 +47,9 @@ function profileSaveHarness(options={}){
  const dialog={open:true,close(){this.open=false;closes++},showModal(){this.open=true}};
  const controls=[nameInput,cancel,button,alreadyDisabled],form={querySelector:()=>button,querySelectorAll:()=>controls,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
  const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog};
- Object.assign(c,{currentUser:{id:'test'},currentSection:options.section||'Café Profile',currentView:{},document:{getElementById:id=>elements[id]},FormData:class{
+ Object.assign(c,{window:locationWindow,currentUser:{id:'test'},currentSection:options.section||'Café Profile',currentView:{},document:{getElementById:id=>elements[id]},FormData:class{
   constructor(){this.snapshot={...fields};if(nameInput.disabled)delete this.snapshot.name}
-  get(key){return this.snapshot[key]||''}getAll(){return ['Espresso']}
+  get(key){return this.snapshot[key]||''}set(key,value){this.snapshot[key]=value}getAll(){return ['Espresso']}
  },isFloridaPlace:()=>true,collectOpeningHours:()=>hours.value,refreshMarketplaceAfterProfileSave:async()=>{refreshes++;return await options.refresh?.()},setTimeout:callback=>timers.push(callback),openSection:section=>renders.push(section),activeClient:{
   storage:{from:()=>({upload:async()=>options.upload?options.upload():{error:null},getPublicUrl:()=>({data:{publicUrl:'/uploaded.png'}})})},
   from:()=>({update:payload=>({eq:()=>({select:()=>({single:async()=>{writes.push(payload);const result=await options.write?.(writes.length,payload);return result||{data:{...profile,...payload,is_discoverable:Boolean(options.discoverable)}}}})})})})
