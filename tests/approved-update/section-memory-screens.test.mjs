@@ -19,7 +19,7 @@ function mount(name, f) {
  const jsx = (type, props, key) => ({ type, props: props || {}, key });
  const memory = loadTypescript('mobile/features/section-memory/useSectionMemory.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './store': { sectionMemory: f.store } });
  const channel = { on() { return this; }, subscribe() { return this; } };
- const supabase = { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) }, channel: () => channel, removeChannel() {}, from(table) { return { table, select() { return this; }, eq() { return this; }, or() { return this; }, order() { return this; }, maybeSingle: async () => ({ data: {}, error: null }) }; } };
+ const supabase = { rpc: async () => ({ data: { free_job_id: null, free_job_expires_at: null, has_paid_access: false, can_create: true, active_job_count: 0, server_time: new Date().toISOString() }, error: null }), auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) }, channel: () => channel, removeChannel() {}, from(table) { return { table, select() { return this; }, eq() { return this; }, or() { return this; }, order() { return this; }, maybeSingle: async () => ({ data: {}, error: null }) }; } };
  const market = { formatJobPay: () => '$20/hr', JOB_FIELDS: '', loadApplications: async () => [], readAllRows: async fn => fn().table === 'jobs' ? [f.job()] : [{ id: 'match', cafe_id: 'a', barista_id: 'b' }], readProfiles: async () => ({ b: { display_name: f.name } }), loadMarketplace: async () => ({ jobs: [f.job()], candidates: [], applications: [], interests: [], matches: [], profiles: {} }), interestState: () => ({ disabled: false, label: 'Show interest' }), applicationStatus: s => s };
  const native = new Proxy({ StyleSheet: { create: v => v }, Platform: { OS: 'ios' }, AppState: { addEventListener: () => ({ remove() {} }) }, Alert: { alert() {} } }, { get: (o, p) => o[p] ?? p });
  const session = { getCurrentContext: async () => { await f.wait(); return { user: { id: f.userId }, role: f.role, profile: f.profile() }; }, requireCurrentUser: async () => ({ id: f.userId }) };
@@ -27,6 +27,7 @@ function mount(name, f) {
   react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   'expo-router': { router: { replace() {}, push() {}, navigate() {}, back() {} }, useFocusEffect: cb => { focusCallback = cb; }, useLocalSearchParams: () => f.params },
   '@/features/section-memory/useSectionMemory': memory, '@/lib/dashboardPrism': { dashboardPrism: {}, prismPanel: {} }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' },
+  '@/lib/jobAccess': loadTypescript('mobile/lib/jobAccess.ts'),
   '@/lib/productEvents': { trackProductEvent: async () => {} },
   '@/lib/supabase': { supabase }, '../../lib/supabase': { supabase }, '@/lib/session': session, '../../lib/session': session,
   '@/lib/marketplace': market, '@/lib/discovery': {}, '@/lib/usLocation': { cityFromUSLocation: s => s || '', parseUSLocation: () => ({ city: 'Miami', state: 'FL' }) }, '@/lib/floridaLocation': { workAreaLabel: () => 'Miami', floridaCityFromLocation: s => s || '' },

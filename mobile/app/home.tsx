@@ -10,7 +10,7 @@ import { workAreaLabel } from '@/lib/floridaLocation';
 import { DashboardCounts, emptyDashboardCounts, loadHomeSummary } from '@/lib/homeSummary';
 import { LatestMessageRequest, messageError, withMessageDeadline } from '@/lib/messaging';
 
-const CAFE_PLAN_COPY = 'Your first job, matches, and interview messaging are included.';
+const CAFE_PLAN_COPY = 'Your first job is free for 30 days. Existing matches and interview messaging stay included.';
 
 export function PreviousHomeScreen() {
   const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);

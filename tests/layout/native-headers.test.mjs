@@ -459,7 +459,7 @@ const cases = [
   { name: 'candidate empty', file: 'mobile/app/candidates.tsx', states: { 0: false } },
   { name: 'job posts', file: 'mobile/app/jobs.tsx', states: { 0: false } },
   { name: 'account settings', file: 'mobile/app/settings.tsx' },
-  { name: 'post job', file: 'mobile/app/post-job.tsx', states: { 3: false } },
+  { name: 'post job', file: 'mobile/app/post-job.tsx', states: { 4: false } },
   { name: 'café plans', file: 'mobile/app/subscription.tsx', states: { 0: false } },
   { name: 'conversation', file: 'mobile/app/chat/[id].tsx', states: { 0: false, 5: 'A very long café and barista conversation display name for checking wrapping' } },
 ];

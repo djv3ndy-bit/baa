@@ -11,7 +11,7 @@
     const end = status.status === 'grace' ? status.gracePeriodEnd : status.currentPeriodEnd;
     const date = end && Number.isFinite(Date.parse(end)) ? new Date(end).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : '';
     let title = paid ? 'Pro · Active' : 'Free · Active · $0';
-    let detail = paid ? `Your Pro access is verified through ${provider}.` : 'Your first lifetime job, matches, messages, and interview scheduling are included.';
+    let detail = paid ? `Your Pro access is verified through ${provider}.` : 'Your first job is free for 30 days. A second job or reopening an expired post requires Pro. Existing matches, messages, and interviews stay included.';
     if (paid && date) detail += ` ${status.status === 'grace' ? 'Grace access ends' : status.autoRenews ? 'Current period ends' : 'Access ends'} ${date}.`;
     if (status.status === 'grace') detail += ' Review your payment method with your billing provider.';
     if (status.status === 'payment_required') { title = 'Payment needs attention'; detail = 'Review your existing subscription before purchasing again.'; }

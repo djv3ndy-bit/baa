@@ -209,7 +209,8 @@ const pricingTokens=['$9.99','3 active jobs','first job','second job','schedule 
 for(const file of pricingFiles){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
   for(const token of pricingTokens)if(!source.includes(token.toLowerCase()))throw new Error(`${file}: pricing is missing ${token}`);
-  for(const stale of ['1 month free','30-day free','30 days'])if(source.includes(stale))throw new Error(`${file}: stale trial copy remains (${stale})`);
+  if(!source.includes('30 days'))throw new Error(`${file}: first-job expiration is missing`);
+  for(const stale of ['1 month free','30-day free trial','30 days free Pro'])if(source.includes(stale))throw new Error(`${file}: stale trial copy remains (${stale})`);
 }
 for(const file of ['mobile/app/home.tsx','mobile/app/settings.tsx']){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
@@ -230,7 +231,7 @@ if(!mobileSubscription.includes('useCafeAccess')||!mobileSubscription.includes('
 if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
 for(const file of ['terms.html','privacy.html']){
   const source=fs.readFileSync(file,'utf8');
-  const effectiveDate='Effective September 15, 2026';
+  const effectiveDate=file==='terms.html'?'Effective September 28, 2026':'Effective September 15, 2026';
   if(!source.includes('BaristaMatch LLC')||!source.includes(effectiveDate))throw new Error(`${file}: LLC operator or effective date is missing`);
 }
 

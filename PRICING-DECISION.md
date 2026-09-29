@@ -10,13 +10,13 @@ This document is the source of truth for customer-facing plan copy across the we
 
 ### Free café plan — $0 forever
 
-- First job post included
+- One lifetime first job post, visible free for 30 days
 - View applicants and full profiles for that job
 - Message mutual matches
 - Schedule interviews with matches
 - No credit card required
 
-The Free plan is a first-job offer, not a time-limited trial. The first job can be edited, paused, and reopened without using another free post. A café keeps its account, applicants, matches, and messages after the role is filled.
+The Free account does not expire, but its one free job has a 30-day publication period. It can be edited, paused, and reopened during those same 30 days without using another free post or extending the deadline. Reopening it after expiration requires active Pro. A café keeps its account, applicants, matches, and messages after the role is filled.
 
 ### Pro café plan — $9.99/month Founder Price
 
@@ -48,3 +48,7 @@ Stripe billing and production enforcement remain paused until the web checkout, 
 ## Future pricing
 
 Validate conversion, retention, and support load before adding annual, multi-location, featured-job, or enterprise plans.
+
+## First-job publication period — September 28, 2026
+
+Each café receives one lifetime free job post, visible for 30 days. A second distinct job requires verified active Pro. Editing, pausing, deleting, or reopening does not reset the allowance or its deadline. An expired first post also requires Pro to reopen. Existing free posts receive 30 days from rollout. Their applicants, matches, and conversations remain saved. Paid pricing and the three-active-job limit remain unchanged.

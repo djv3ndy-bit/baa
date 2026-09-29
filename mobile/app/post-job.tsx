@@ -7,6 +7,8 @@ import { getCurrentContext } from '@/lib/session';
 import { authenticatedApi } from '@/lib/api';
 import { JOB_FIELDS, MarketJob } from '@/lib/marketplace';
 import { trackProductEvent } from '@/lib/productEvents';
+import { loadCafeJobAccess, jobAccessError, freeJobNotice, type CafeJobAccess } from '@/lib/jobAccess';
+import { withMessageDeadline } from '@/lib/messaging';
 import { blankJobDraft, draftFromJob, jobPayload } from '@/lib/jobEditor';
 
 const scheduleOptions = ['Full-time', 'Part-time', 'Morning shift', 'Evening shift'];
@@ -15,6 +17,7 @@ export default function PostJobScreen() {
   const jobId = typeof params.jobId === 'string' ? params.jobId : undefined, editing = !!jobId;
   const [form, setForm] = useState({ ...blankJobDraft });
   const [schedules, setSchedules] = useState<string[]>([]);
+  const [access, setAccess] = useState<CafeJobAccess | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [loadingJob, setLoadingJob] = useState(true);
   const [loadError, setLoadError] = useState(''), [customSchedule, setCustomSchedule] = useState('');
@@ -26,7 +29,10 @@ export default function PostJobScreen() {
       if (version !== request.current) return;
       if (!user) { router.replace('/login'); return; }
       if (role !== 'cafe_owner_manager') { router.replace('/home'); return; }
-      ownerId.current = user.id;
+      const nextAccess = await withMessageDeadline(loadCafeJobAccess(() => supabase.rpc('cafe_job_access')));
+      if (version !== request.current) return;
+      ownerId.current = user.id; setAccess(nextAccess);
+      if (!jobId && !nextAccess.can_create) return;
       if (!jobId) { initialized.current = jobId || 'new'; void trackProductEvent('post_job_started', { surface: 'mobile' }); return; }
       const { data, error } = await supabase.from('jobs').select(JOB_FIELDS).eq('id', jobId).eq('owner_id', user.id).maybeSingle();
       if (error) throw error;
@@ -54,15 +60,20 @@ export default function PostJobScreen() {
       if (!job) throw new Error('Your saved job could not be confirmed. Please refresh Job Posts before retrying.');
       if (!editing) { authenticatedApi('/push-event', { type: 'job', job_id: job.id }, 'POST', user.id).catch(() => {}); void trackProductEvent('job_posted', { surface: 'mobile' }); }
       if (focused.current) { router.replace('/jobs'); Alert.alert(editing ? 'Job updated' : 'Job published', job.active ? 'Your job details are saved and available to baristas.' : 'Your changes are saved. This job remains paused and its applications are retained.'); }
-    } catch (caught) { if (focused.current) Alert.alert(editing ? 'Job not updated' : 'Job not published', caught instanceof Error ? caught.message : 'Please check your connection and try again.'); }
+    } catch (caught) { if (focused.current) Alert.alert(editing ? 'Job not updated' : 'Job not published', jobAccessError(caught)); }
     finally { action.current = false; setPublishing(false); }
   }
   if (loadingJob) return <SafeAreaView style={styles.safe}><View style={styles.loading}><ActivityIndicator size="large" color="#321708"/><Text style={styles.loadingText}>Loading job…</Text></View></SafeAreaView>;
   return <SafeAreaView style={styles.safe}><ConversationKeyboardView style={styles.flex}>
     <View style={styles.header}><Pressable disabled={publishing} accessibilityRole="button" accessibilityLabel="Go back" style={styles.backButton} onPress={() => router.back()}><Text allowFontScaling={false} style={styles.back}>‹</Text></Pressable><Text style={styles.headerTitle}>{editing ? 'Edit job' : 'Post a job'}</Text><View style={styles.headerSpacer}/></View>
     <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
-      {loadError ? <><Text accessibilityRole="alert" style={styles.subtitle}>{loadError}</Text><Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Retry loading job</Text></Pressable></> : <>
+      {loadError ? <><Text accessibilityRole="alert" style={styles.subtitle}>{loadError}</Text><Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Retry loading job</Text></Pressable></> : !editing && access && !access.can_create ? <>
+      <Text style={styles.title}>{access.active_job_count >= 3 ? 'Your active jobs are full.' : 'Continue hiring with Pro.'}</Text>
+      <Text style={styles.subtitle}>{access.active_job_count >= 3 ? 'You already have 3 active jobs. Pause one before publishing another.' : 'Your one free job has already been used. An active Pro membership is required before posting another job. Your first free post lasts 30 days.'}</Text>
+      <Pressable style={styles.primary} onPress={() => router.push(access.active_job_count >= 3 ? '/jobs' : '/subscription')}><Text style={styles.primaryText}>{access.active_job_count >= 3 ? 'Manage jobs' : 'View café plans'}</Text></Pressable>
+      <Pressable style={styles.primary} onPress={() => void load()}><Text style={styles.primaryText}>Check access again</Text></Pressable></> : <>
       <Text style={styles.title}>{editing ? 'Keep your job accurate.' : 'Find your next great barista.'}</Text><Text style={styles.subtitle}>{editing ? `Update the role while keeping its applications and ${active.current ? 'active' : 'paused'} status.` : 'Publish a clear opportunity in your U.S. work location.'}</Text>
+      <Text style={styles.subtitle}>{editing ? freeJobNotice(jobId!, access) : access?.has_paid_access ? 'Pro includes up to 3 active jobs.' : 'Your first job is free for 30 days. A second distinct job requires Pro. Editing or pausing does not restart the free period.'}</Text>
       <Field label="Job title" value={form.title} onValueChange={value => update('title', value)} placeholder="Lead Barista" editable={!publishing}/>
       <Field label="Street address" value={form.address1} onValueChange={value => update('address1', value)} placeholder="123 Main Street" editable={!publishing} autoComplete="address-line1"/>
       <Field label="Suite / unit (optional)" value={form.address2} onValueChange={value => update('address2', value)} placeholder="Suite 200" editable={!publishing} autoComplete="address-line2"/>

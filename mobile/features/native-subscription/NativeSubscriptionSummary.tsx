@@ -9,7 +9,7 @@ export function NativeSubscriptionSummary({ subscription, error, opening, onPres
   const provider = subscription.provider === 'apple' ? 'Apple' : subscription.provider === 'google' ? 'Google Play' : 'Stripe';
   const paid = subscription.access === 'pro';
   const heading = subscription.status === 'pending' ? 'Purchase pending' : paid ? 'Pro · Active' : 'Free · Active · $0';
-  let detail = paid ? `Your Pro access is verified through ${provider}.` : 'Your first job, matches, and interview messaging are included. A second job requires Pro.';
+  let detail = paid ? `Your Pro access is verified through ${provider}.` : 'Your first job is free for 30 days. A second job or reopening an expired post requires Pro. Existing matches and interview messaging stay included.';
   if (subscription.status === 'grace') detail = `Your Pro access remains active while ${provider} retries payment. Review your payment method.`;
   if (subscription.status === 'payment_required') detail = 'Your subscription needs payment attention. Review your existing subscription before purchasing again.';
   if (subscription.status === 'pending') detail = 'A purchase is still being confirmed. Open Café plans to restore purchases or contact support.';

@@ -83,7 +83,7 @@ test('all result pages are read before applying geography, including when the se
   const profiles = Array.from({ length: 140 }, (_, index) => ({ id: `other-${index}`, location: 'Orlando, FL' }));
   profiles.push({ id: 'local-after-100', location: 'Miami, FL' });
   const ranges = [];
-  const ctx = context({ currentRole: 'cafe_owner_manager', currentUser: { id: 'cafe' }, currentProfile: { location: 'Miami, FL' }, activeClient: { from(table) {
+  const ctx = context({ currentRole: 'cafe_owner_manager', currentUser: { id: 'cafe' }, currentProfile: { location: 'Miami, FL' }, activeClient: { rpc: async () => ({ data: { has_paid_access: false, server_time: new Date().toISOString() }, error: null }), from(table) {
     const query = { select() { return this; }, eq() { return this; }, order() { return this; }, async range(from, to) { ranges.push({ table, from, to }); return { data: table === 'profiles' ? profiles.slice(from, Math.min(to + 1, from + 100)) : [], error: null }; } }; return query;
   } } }, ['loadAllRows', 'loadLegacyMarketplaceData']);
   await ctx.loadLegacyMarketplaceData();

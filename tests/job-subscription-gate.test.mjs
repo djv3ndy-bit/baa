@@ -289,7 +289,7 @@ test('a plain Dashboard return from Stripe Portal restores the pending draft on 
 });
 
 test('website copy and handlers describe and enforce the lifetime-job boundary', () => {
-  assert.match(dashboard, /first lifetime job post is free/i); assert.match(dashboard, /second distinct job can be published/i);
+  assert.match(dashboard, /first job post is free for 30 days/i); assert.match(dashboard, /Pro is required for a second distinct job or to reopen an expired post/i);
   assert.match(dashboard, /data-post-job[^\n]+requestNewJobEditor|requestNewJobEditor\(button\)/);
   const save = source('saveJobPost'); assert.ok(save.indexOf('loadJobCreationAccess()') < save.indexOf("from('jobs').insert"));
   assert.doesNotMatch(source('toggleJob'), /loadJobCreationAccess|billing-status/);
