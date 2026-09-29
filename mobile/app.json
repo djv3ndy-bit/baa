@@ -61,7 +61,8 @@
         }
       ],
       "expo-iap",
-      "./plugins/with-android-font-layout.cjs"
+      "./plugins/with-android-font-layout.cjs",
+      "./plugins/with-ios-bundled-code.cjs"
     ],
     "experiments": {
       "typedRoutes": true

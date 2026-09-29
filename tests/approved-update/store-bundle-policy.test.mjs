@@ -15,6 +15,7 @@ test('release configuration and locked dependency graph contain no downloadable-
   assert.ok(!Object.keys(lock.packages).some(p => /(?:^|\/)node_modules\/(?:expo-updates|expo-dev-client|expo-dev-launcher|react-native-code-push)$/.test(p)));
 });
 for (const [label, change] of [
+  ['missing native source policy', a => { a[0].plugins = a[0].plugins.filter(p => p !== './plugins/with-ios-bundled-code.cjs'); }],
   ['automatic updates', a => { a[0].updates.enabled = true; }],
   ['omitted update disablement', a => { delete a[0].updates; }],
   ['remote manifest URL', a => { a[0].updates.url = 'https://updates.example.invalid'; }],

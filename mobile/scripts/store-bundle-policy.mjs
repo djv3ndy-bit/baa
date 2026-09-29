@@ -1,6 +1,9 @@
 // App code changes ship in a reviewed store binary. Data/media APIs remain available.
 export function validateBundleOnlyConfiguration(app, pkg, eas) {
   const errors = [];
+  if (!app?.plugins?.includes('./plugins/with-ios-bundled-code.cjs')) {
+    errors.push('The iOS bundled-code source policy must be included in store builds.');
+  }
   if (app?.updates?.enabled !== false) errors.push('Remote app updates must be explicitly disabled.');
   if (app?.updates?.url || app?.runtimeVersion) errors.push('Remove remote update URLs and runtime mappings from store configuration.');
   for (const dependencies of [pkg?.dependencies, pkg?.devDependencies, pkg?.optionalDependencies]) {

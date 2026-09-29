@@ -37,6 +37,8 @@ jobs:
           callback_module="$(find "$callback_dir" -type f -name authCallback.js -print -quit)"
           test -n "$callback_module"
           AUTH_CALLBACK_MODULE="$callback_module" npm test
+      - name: Verify iOS dependency policy and archive regression fixtures
+        run: node --test tests/approved-update/ios-source-policy.test.mjs tests/approved-update/ios-bundled-code.test.mjs tests/approved-update/store-bundle-policy.test.mjs
   native-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
