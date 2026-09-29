@@ -4,3 +4,8 @@
 /scripts/native-release/
 # The Apple refund driver belongs only in the disposable native test build.
 /tests/native/apple-refund/
+
+# SEO review evidence and local checks are repository-only artifacts.
+/docs/seo/
+/scripts/seo-baseline.py
+/tests/seo.test.mjs

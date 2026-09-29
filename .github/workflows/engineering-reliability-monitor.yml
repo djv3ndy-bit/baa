@@ -245,16 +245,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Raise the review-only alert
+      - name: Classify reliability result
         if: always()
         shell: bash
         run: |
-          if [[ '${{ github.event_name }}' == 'push' && '${{ steps.deployment_revision.outputs.exit_code }}' != '0' ]]; then
-            exit 1
+          # Exit code 2 means the monitor collected evidence successfully and found
+          # something for owner review. That is a review state, not an Actions failure.
+          # Exit code 3+ means the monitor/configuration itself failed and should stay red.
+          failed=0
+          classify() {
+            local label="$1"
+            local code="$2"
+            if [[ -z "$code" || "$code" == "0" ]]; then
+              return
+            fi
+            if [[ "$code" == "2" ]]; then
+              echo "::notice title=Reliability review requested::$label found a review-only condition. The workflow remains successful."
+              return
+            fi
+            echo "::error title=Reliability monitor failure::$label returned exit code $code."
+            failed=1
+          }
+
+          if [[ '${{ github.event_name }}' == 'push' ]]; then
+            classify "Deployment verification" '${{ steps.deployment_revision.outputs.exit_code }}'
           fi
-          if [[ '${{ steps.public_monitor.outputs.exit_code }}' != '0' ]]; then
-            exit 1
+          classify "Public monitor" '${{ steps.public_monitor.outputs.exit_code }}'
+          if [[ '${{ vars.ERA_PRIVATE_MONITORING_ENABLED }}' == 'true' ]]; then
+            classify "Private-provider monitor" '${{ steps.private_monitor.outputs.exit_code }}'
           fi
-          if [[ '${{ vars.ERA_PRIVATE_MONITORING_ENABLED }}' == 'true' && '${{ steps.private_monitor.outputs.exit_code }}' != '0' ]]; then
-            exit 1
-          fi
+          exit "$failed"

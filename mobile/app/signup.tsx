@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
 import { createExplicitProfile, getCurrentContext, savedAppRole } from '@/lib/session';
 import { normalizeUSLocation, normalizeUSState } from '@/lib/usLocation';
+import { trackProductEvent } from '@/lib/productEvents';
 
 type Role = 'barista' | 'cafe_owner_manager';
 
@@ -60,6 +61,7 @@ export default function SignupScreen() {
       if (setupUserId) {
         if (context.user?.id !== setupUserId) throw new Error('Your session changed. Return to login before continuing.');
         await createExplicitProfile(setupUserId, draft);
+        void trackProductEvent('signup_completed', { surface: 'mobile', role });
         if (active.current) router.replace('/profile');
         return;
       }
@@ -80,6 +82,7 @@ export default function SignupScreen() {
       if (data.session && data.user) {
         setSetupUserId(data.user.id);
         await createExplicitProfile(data.user.id, draft);
+        void trackProductEvent('signup_completed', { surface: 'mobile', role });
         if (active.current) router.replace('/profile');
       } else {
         // With email confirmation enabled the server trigger creates the profile.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { triageSupportTicket, supportDraft } from '../api/_support-agent.js';
+import { triageSupportTicket, supportDraft, triageBusinessInboxEmail, privateEscalationSummary } from '../api/_support-agent.js';
 
 function ticket(issue_type, subject, description='Please help me with this request.') {
   return { ticket_id:'BM-TEST-001', name:'Test User', issue_type, subject, description };
@@ -52,4 +52,23 @@ test('draft is only text and reflects protected review', () => {
   const draft=supportDraft(sample,triage);
   assert.match(draft,/additional review/i);
   assert.match(draft,/BaristaMatch Support/);
+});
+
+
+test('business inbox routes Stripe delivery problems to billing without autonomous action', () => {
+  const x=triageBusinessInboxEmail({from:'Stripe <notifications@stripe.com>',subject:'Stripe webhook delivery issues',snippet:'We had trouble delivering requests.'});
+  assert.equal(x.route,'billing'); assert.equal(x.priority,'P1'); assert.equal(x.notify_owner,true); assert.equal(x.autonomous_send_allowed,false);
+});
+test('business inbox routes security alerts to security and owner approval', () => {
+  const x=triageBusinessInboxEmail({from:'no-reply@accounts.google.com',subject:'Security alert',snippet:'A new sign-in was detected'});
+  assert.equal(x.route,'security'); assert.equal(x.priority,'P1'); assert.equal(x.approval_required,true);
+});
+test('routine verification code does not notify unless suspicious', () => {
+  const x=triageBusinessInboxEmail({from:'noreply@account.tiktok.com',subject:'123456 is your 6-digit code',snippet:'Use this verification code'});
+  assert.equal(x.notify_owner,false); assert.equal(x.email_write_allowed,false);
+});
+test('private escalation summary contains no message body and no execution authority', () => {
+  const email={from:'person@example.com',subject:'Need help with application',snippet:'private long message'};
+  const x=triageBusinessInboxEmail(email), summary=privateEscalationSummary(email,x);
+  assert.match(summary.task,/Need help/); assert.doesNotMatch(summary.summary,/private long message/);
 });

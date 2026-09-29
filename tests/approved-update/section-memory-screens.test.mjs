@@ -27,6 +27,7 @@ function mount(name, f) {
   react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   'expo-router': { router: { replace() {}, push() {}, navigate() {}, back() {} }, useFocusEffect: cb => { focusCallback = cb; }, useLocalSearchParams: () => f.params },
   '@/features/section-memory/useSectionMemory': memory, '@/lib/dashboardPrism': { dashboardPrism: {}, prismPanel: {} }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' },
+  '@/lib/productEvents': { trackProductEvent: async () => {} },
   '@/lib/supabase': { supabase }, '../../lib/supabase': { supabase }, '@/lib/session': session, '../../lib/session': session,
   '@/lib/marketplace': market, '@/lib/discovery': {}, '@/lib/usLocation': { cityFromUSLocation: s => s || '', parseUSLocation: () => ({ city: 'Miami', state: 'FL' }) }, '@/lib/floridaLocation': { workAreaLabel: () => 'Miami', floridaCityFromLocation: s => s || '' },
   '@/lib/profilePrivacy': { getProfileReadiness: () => ({ complete: true, missing: [] }) }, 'expo-image-picker': {},
