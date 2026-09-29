@@ -56,14 +56,14 @@ const releaseWorkflow = read('.eas/workflows/authentication-ios-testflight.yml')
 check(app.expo?.scheme === 'baristamatch', 'The registered mobile scheme must remain baristamatch.');
 check(app.expo?.ios?.bundleIdentifier === 'com.baristajobmatch.app', 'The iOS bundle identifier must remain com.baristajobmatch.app.');
 check(app.expo?.extra?.eas?.projectId === 'faef8923-6780-4373-bb0b-c789e3eb1bcc', 'The release must target the existing BaristaMatch EAS project.');
-check(app.expo?.updates?.url === 'https://u.expo.dev/faef8923-6780-4373-bb0b-c789e3eb1bcc', 'The Expo Updates URL must target the existing BaristaMatch EAS project.');
-check(app.expo?.runtimeVersion?.policy === 'appVersion', 'The runtime version policy must remain appVersion.');
+check(app.expo?.updates?.enabled === false && !app.expo?.updates?.url, 'Store builds must load bundled code only; remote updates must be disabled with no update URL.');
+check(!packageJson.dependencies?.['expo-updates'] && !app.expo?.runtimeVersion, 'The downloadable-code module and its runtime mapping must not be included.');
 check(app.expo?.ios?.infoPlist?.ITSAppUsesNonExemptEncryption === false, 'The existing iOS export-compliance declaration must remain explicit.');
 check(app.expo?.version === packageJson.version, 'app.json and package.json must use the same public app version.');
 
 check(eas.cli?.appVersionSource === 'remote', 'EAS must manage the iOS build number remotely.');
 check(eas.build?.production?.autoIncrement === true, 'The production build must auto-increment its build number.');
-check(eas.build?.production?.channel === 'production', 'The production build must remain on the production update channel.');
+check(!eas.build?.production?.channel, 'Store builds must not select a remote update channel.');
 check(eas.build?.production?.environment === 'production', 'The production build must use the production EAS environment.');
 check(eas.submit?.production?.ios?.ascAppId === '6807117736', 'The TestFlight submission must target the existing App Store Connect app.');
 
