@@ -54,6 +54,11 @@ async function initialize(){
     client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
     const {data:{user},error:userError}=await client.auth.getUser();
     if(userError||!user){location.replace(safeLoginRedirect());return}
+    const {data:{session}}=await client.auth.getSession();
+    if(!session?.access_token){location.replace(safeLoginRedirect());return}
+    const ownerCheck=await fetch('/api/oauth-owner',{headers:{Authorization:`Bearer ${session.access_token}`},cache:'no-store'});
+    if(ownerCheck.status===403){setStatus('This authorization page is restricted to the BaristaMatch owner.',true);return}
+    if(!ownerCheck.ok)throw new Error('owner_gate_unavailable');
     if(!client.auth.oauth||typeof client.auth.oauth.getAuthorizationDetails!=='function')throw new Error('oauth_unavailable');
     const {data,error}=await client.auth.oauth.getAuthorizationDetails(authorizationId);
     if(error||!data)throw error||new Error('invalid_request');
