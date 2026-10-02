@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32-v2.png">
+<title>Authorize access — BaristaMatch</title>
+<style>
+:root{--brown:#321708;--caramel:#a95820;--cream:#fff4e8;--muted:#746a61;--line:#ded7d1;--danger:#9b2c2c}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 10%,#fffaf3 0,#f6e7d9 48%,#ead3c1 100%);color:#1c130e;font-family:Arial,sans-serif}
+.card{width:min(560px,100%);background:#fff;border:1px solid #decfc2;border-radius:28px;box-shadow:0 26px 80px #32170822;padding:34px}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:#4a2412}.brand img{width:54px;height:54px;object-fit:contain}.brand strong{font:700 28px/1 Georgia,serif}.brand b{color:#b86525}
+h1{font:700 32px/1.1 Georgia,serif;margin:28px 0 10px}.lead{color:var(--muted);line-height:1.55;margin:0 0 22px}
+.panel{border:1px solid var(--line);border-radius:16px;padding:18px;margin:18px 0}.label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}.value{font-weight:700;word-break:break-word}.scopes{margin:8px 0 0;padding-left:20px;color:#40362f}.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}
+button{border-radius:10px;padding:15px;border:1px solid #cfc7c0;background:#fff;font:800 14px Arial,sans-serif;cursor:pointer}.approve{background:linear-gradient(90deg,#a9561f,#b66a2d);color:#fff;border:0}button:disabled{opacity:.55;cursor:wait}
+.status{min-height:22px;margin:16px 0 0;font-size:13px;font-weight:700;color:var(--muted)}.status.error{color:var(--danger)}
+.note{font-size:11px;line-height:1.5;color:#8b8078;margin:18px 0 0}
+@media(max-width:560px){body{padding:0;background:var(--cream)}.card{min-height:100vh;border:0;border-radius:0;padding:26px 22px}.actions{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="card">
+<a class="brand" href="/"><img src="/assets/favicon-transparent-v2.png" alt=""><strong>Barista<b>Match</b></strong></a>
+<h1>Authorize secure access</h1>
+<p class="lead">Review this request before allowing an application to access your BaristaMatch account.</p>
+<section class="panel" id="details" hidden>
+<div class="label">Application</div><div class="value" id="client-name">Loading…</div>
+<div class="label" style="margin-top:16px">Requested permissions</div><ul class="scopes" id="scopes"></ul>
+</section>
+<div class="actions" id="actions" hidden>
+<button id="deny" type="button">Deny</button>
+<button class="approve" id="approve" type="button">Approve</button>
+</div>
+<p class="status" id="status" role="status" aria-live="polite">Checking authorization request…</p>
+<p class="note">Only approve requests you recognize. BaristaMatch will never ask you to paste a password, API key, or database secret into this page.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+<script>
+const statusEl=document.getElementById('status');
+const detailsEl=document.getElementById('details');
+const actionsEl=document.getElementById('actions');
+const params=new URLSearchParams(location.search);
+const authorizationId=params.get('authorization_id');
+let client;
+const setStatus=(message,error=false)=>{statusEl.textContent=message;statusEl.classList.toggle('error',error)};
+const safeLoginRedirect=()=>'/login.html?returnTo='+encodeURIComponent('/oauth/consent?authorization_id='+encodeURIComponent(authorizationId||''));
+async function initialize(){
+  if(!authorizationId){setStatus('This authorization request is missing or invalid.',true);return}
+  try{
+    const response=await fetch('/api/config',{cache:'no-store'});
+    const config=await response.json().catch(()=>({}));
+    if(!response.ok||!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('config');
+    client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
+    const {data:{user},error:userError}=await client.auth.getUser();
+    if(userError||!user){location.replace(safeLoginRedirect());return}
+    if(!client.auth.oauth||typeof client.auth.oauth.getAuthorizationDetails!=='function')throw new Error('oauth_unavailable');
+    const {data,error}=await client.auth.oauth.getAuthorizationDetails(authorizationId);
+    if(error||!data)throw error||new Error('invalid_request');
+    if(!('authorization_id' in data)){
+      if(data.redirect_url)location.replace(data.redirect_url);
+      else setStatus('This authorization request has already been handled.',true);
+      return;
+    }
+    document.getElementById('client-name').textContent=data.client?.name||'Authorized application';
+    const scopes=String(data.scope||'').trim().split(/\s+/).filter(Boolean);
+    const list=document.getElementById('scopes');
+    list.replaceChildren(...(scopes.length?scopes:['Basic account access']).map(scope=>{const li=document.createElement('li');li.textContent=scope;return li}));
+    detailsEl.hidden=false;actionsEl.hidden=false;setStatus('Signed in. Choose Approve or Deny.');
+  }catch{setStatus('We could not load this authorization request. Please try again.',true)}
+}
+async function decide(decision){
+  if(!client||!authorizationId)return;
+  const buttons=[document.getElementById('approve'),document.getElementById('deny')];
+  buttons.forEach(button=>button.disabled=true);setStatus(decision==='approve'?'Approving secure access…':'Denying request…');
+  try{
+    const method=decision==='approve'?'approveAuthorization':'denyAuthorization';
+    const {data,error}=await client.auth.oauth[method](authorizationId);
+    if(error||!data?.redirect_url)throw error||new Error('missing_redirect');
+    location.assign(data.redirect_url);
+  }catch{
+    setStatus('We could not complete this authorization request. Please try again.',true);
+    buttons.forEach(button=>button.disabled=false);
+  }
+}
+document.getElementById('approve').onclick=()=>decide('approve');
+document.getElementById('deny').onclick=()=>decide('deny');
+initialize();
+</script>
+</body></html>

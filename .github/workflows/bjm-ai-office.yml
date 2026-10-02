@@ -1,7 +1,8 @@
 name: BJM AI Office
 on:
-  pull_request:
-    paths: ['bjm-ai-office/**','.github/workflows/bjm-ai-office.yml']
+  # `validate` is a repository-wide required status check for protected `main`,
+  # so every pull request must produce it even when the PR does not touch AI Office files.
+  pull_request: {}
   push:
     branches: [main]
     paths: ['bjm-ai-office/**']
