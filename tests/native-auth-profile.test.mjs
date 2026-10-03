@@ -388,3 +388,67 @@ test('callback completing after the screen loses focus cannot replace a newer de
   ui.blur(); gate.resolve({ data: { user: { id: 'user-a' } }, error: null }); await flush();
   assert.equal(ui.routes.length, 0);
 });
+
+for (const delivery of ['cold', 'warm-hash', 'warm-query']) {
+  for (const role of ['barista', 'cafe_owner_manager']) {
+    test(`${delivery} confirmed email callback records ${role} signup without waiting for analytics`, async () => {
+      const gate = deferred(), writes = [];
+      const user = { id: 'user-a', email_confirmed_at: '2026-09-28T00:00:00Z', email: 'private@example.invalid' };
+      const backend = sessionClient({ role });
+      backend.client.auth.setSession = async () => ({ data: { user }, error: null });
+      backend.client.auth.getUser = async () => ({ data: { user }, error: null });
+      const originalFrom = backend.client.from;
+      backend.client.from = table => table === 'product_events' ? { insert: row => { writes.push(plain(row)); return gate.promise; } } : originalFrom(table);
+      const fragment = 'access_token=secret&refresh_token=secret&type=signup';
+      const url = `baristamatch://auth/callback#${fragment}`;
+      const params = delivery === 'warm-hash' ? { '#': fragment } : delivery === 'warm-query' ? { access_token: 'secret', refresh_token: 'secret', type: 'signup' } : {};
+      let onUrl;
+      const ui = screen('app/auth/callback.tsx', { client: backend.client, params, native: { Linking: {
+        getInitialURL: async () => delivery === 'cold' ? url : 'baristamatch://home',
+        addEventListener: (_, handler) => { onUrl = handler; return { remove() {} }; },
+      } } });
+      await flush();
+      assert.deepEqual(ui.routes, ['/home']); // INSERT is still unresolved.
+      assert.deepEqual(writes, [{ user_id: user.id, event_name: 'signup_completed', metadata: { surface: 'mobile', role } }]);
+      onUrl({ url }); await flush(); assert.equal(writes.length, 1);
+      gate.resolve({ error: { code: 'PGRST204', message: 'private@example.invalid' } });
+      await flush(); ui.render(); ui.blur();
+      assert.deepEqual(ui.routes, ['/home']);
+      assert.equal(ui.alerts.length, 0);
+      assert.equal(ui.nodes().some(node => node.props.children === 'Sign-in could not finish.'), false);
+    });
+  }
+}
+
+test('callback exchange and account-context failures never emit a completion', async () => {
+  for (const scenario of ['exchange-error', 'wrong-user', 'profile-error']) {
+    let eventWrites = 0;
+    const user = { id: 'user-a', email_confirmed_at: '2026-09-28T00:00:00Z' };
+    const backend = sessionClient({ role: 'barista', ...(scenario === 'wrong-user' ? { sessions: ['user-b'] } : {}), ...(scenario === 'profile-error' ? { profileError: new Error('offline') } : {}) });
+    backend.client.auth.setSession = async () => ({ data: { user }, error: scenario === 'exchange-error' ? new Error('expired') : null });
+    backend.client.auth.getUser = async () => { eventWrites++; return { data: { user }, error: null }; };
+    const ui = screen('app/auth/callback.tsx', { client: backend.client, params: { '#': 'access_token=secret&refresh_token=secret&type=signup' }, native: { Linking: { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) } } });
+    await flush(); ui.render(); ui.blur();
+    assert.equal(eventWrites, 0); assert.equal(ui.routes.length, 0);
+  }
+});
+
+test('immediate-session signup records the saved role and navigates even while the event insert is pending', async () => {
+  const gate = deferred(), writes = [];
+  const backend = sessionClient({ sessions: [null] });
+  const user = { id: 'user-a', email_confirmed_at: '2026-09-28T00:00:00Z' };
+  backend.client.auth.signUp = async () => {
+    // The email-signup DB trigger has already created the saved profile.
+    const signedIn = sessionClient({ role: 'barista' });
+    backend.client.auth.getSession = signedIn.client.auth.getSession;
+    backend.client.auth.getUser = async () => ({ data: { user }, error: null });
+    backend.client.from = table => table === 'product_events' ? { insert: row => { writes.push(plain(row)); return gate.promise; } } : signedIn.client.from(table);
+    return { data: { user, session: { user } }, error: null };
+  };
+  const ui = screen('app/signup.tsx', { client: backend.client });
+  await flush(); ui.render(); fillSignup(ui); await ui.button('Create account').props.onPress(); await flush();
+  assert.deepEqual(ui.routes, ['/profile']);
+  assert.deepEqual(writes, [{ user_id: user.id, event_name: 'signup_completed', metadata: { surface: 'mobile', role: 'barista' } }]);
+  gate.reject(new Error('offline')); await flush();
+  assert.equal(ui.alerts.length, 0);
+});

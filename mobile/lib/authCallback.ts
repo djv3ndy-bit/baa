@@ -52,6 +52,12 @@ export function parseMobileAuthCallback(url: string | null): MobileAuthCallbackR
   return { ok: true, accessToken, refreshToken };
 }
 
+// Confirmation is identified by the auth server's callback type, never by
+// account age or a generic SIGNED_IN event (which also occurs on later logins).
+export function isSignupConfirmationCallback(url: string | null): boolean {
+  return parseMobileAuthCallback(url).ok && callbackParameters(url!).get('type') === 'signup';
+}
+
 // Expo can deliver the same callback to both the browser result and the deep-link
 // route. Share the in-flight exchange so a one-use refresh token is not replayed.
 export function createMobileCallbackExchange<T>(exchange: (tokens: { access_token: string; refresh_token: string }) => Promise<T>) {
@@ -77,5 +83,7 @@ export function mobileCallbackUrlFromParams(params: Record<string, unknown>): st
   if (typeof params['#'] === 'string' && params['#']) return `${MOBILE_AUTH_CALLBACK_PREFIX}#${params['#']}`;
   if (params.error || params.error_code || params.error_description) return `${MOBILE_AUTH_CALLBACK_PREFIX}?error=provider_error`;
   if (typeof params.access_token !== 'string' || typeof params.refresh_token !== 'string') return null;
-  return `${MOBILE_AUTH_CALLBACK_PREFIX}?${new URLSearchParams({ access_token: params.access_token, refresh_token: params.refresh_token })}`;
+  const query = new URLSearchParams({ access_token: params.access_token, refresh_token: params.refresh_token });
+  if (params.type === 'signup') query.set('type', 'signup');
+  return `${MOBILE_AUTH_CALLBACK_PREFIX}?${query}`;
 }
