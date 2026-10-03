@@ -61,7 +61,8 @@
         }
       ],
       "expo-iap",
-      "./plugins/with-android-font-layout.cjs"
+      "./plugins/with-android-font-layout.cjs",
+      "./plugins/with-ios-bundled-code.cjs"
     ],
     "experiments": {
       "typedRoutes": true
@@ -73,11 +74,8 @@
       }
     },
     "owner": "tovendy",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
     "updates": {
-      "url": "https://u.expo.dev/faef8923-6780-4373-bb0b-c789e3eb1bcc"
+      "enabled": false
     }
   }
 }

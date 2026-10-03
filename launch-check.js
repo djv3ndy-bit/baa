@@ -154,7 +154,7 @@ if(!mobileLogin.includes('useWindowDimensions') || !mobileLogin.includes('useSaf
 if(!mobileLogin.includes("pathname: '/signup'")) throw new Error('New mobile OAuth accounts must complete signup');
 const mobileSignup=fs.readFileSync('mobile/app/signup.tsx','utf8');
 for(const token of ['ageConfirmed','at least 16','parent or legal guardian','/terms.html','/privacy.html'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup legal consent is missing ${token}`);
-for(const token of ['normalizeFloridaLocation','Florida (FL)','Florida is selected automatically'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup structured Florida location is missing ${token}`);
+for(const token of ['normalizeUSLocation','locationState','all 50 U.S. states'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup structured U.S. location is missing ${token}`);
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
 for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.replaceAll("'", '"').includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
@@ -179,7 +179,7 @@ for(const token of ['blockUser','reportUser','isMessageAllowed'])if(!mobileSafet
 for(const token of ['openSafetyMenu','Report conversation','Block account','isMessageAllowed'])if(!mobileChat.includes(token))throw new Error(`Mobile chat safety flow missing ${token}`);
 const mobileProfile=fs.readFileSync('mobile/app/profile.tsx','utf8') + fs.readFileSync('mobile/lib/profilePrivacy.ts','utf8');
 if(!mobileProfile.includes('requestMediaLibraryPermissionsAsync')||!mobileProfile.includes('launchImageLibraryAsync'))throw new Error('Mobile profile media does not use the phone photo library');
-for(const token of ['normalizeFloridaLocation','locationCity','Florida (FL)'])if(!mobileProfile.includes(token))throw new Error(`Mobile profile structured Florida location is missing ${token}`);
+for(const token of ['normalizeUSLocation','locationCity','locationState'])if(!mobileProfile.includes(token))throw new Error(`Mobile profile structured U.S. location is missing ${token}`);
 for(const token of ['date_of_birth','isEligibleBirthDate','getProfileReadiness','"female"','"male"','never shown to cafés'])if(!mobileProfile.includes(token))throw new Error(`Mobile private barista demographics missing ${token}`);
 for(const stale of ['AGE_RANGES','non_binary','another_identity','prefer_not_to_say'])if(mobileProfile.includes(stale))throw new Error(`Mobile barista demographics retain stale option ${stale}`);
 const privateDemographicsMigration='supabase/migrations/20260902025028_require_private_barista_demographics.sql';
@@ -209,7 +209,8 @@ const pricingTokens=['$9.99','3 active jobs','first job','second job','schedule 
 for(const file of pricingFiles){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
   for(const token of pricingTokens)if(!source.includes(token.toLowerCase()))throw new Error(`${file}: pricing is missing ${token}`);
-  for(const stale of ['1 month free','30-day free','30 days'])if(source.includes(stale))throw new Error(`${file}: stale trial copy remains (${stale})`);
+  if(!source.includes('30 days'))throw new Error(`${file}: first-job expiration is missing`);
+  for(const stale of ['1 month free','30-day free trial','30 days free Pro'])if(source.includes(stale))throw new Error(`${file}: stale trial copy remains (${stale})`);
 }
 for(const file of ['mobile/app/home.tsx','mobile/app/settings.tsx']){
   const source=fs.readFileSync(file,'utf8').toLowerCase();
@@ -230,7 +231,7 @@ if(!mobileSubscription.includes('useCafeAccess')||!mobileSubscription.includes('
 if(mobileSubscription.includes('/create-checkout-session')||!mobileSubscription.includes('Pro purchases are not available in this app'))throw new Error('Mobile subscription screen can bypass the App Store-safe web purchase boundary');
 for(const file of ['terms.html','privacy.html']){
   const source=fs.readFileSync(file,'utf8');
-  const effectiveDate='Effective September 15, 2026';
+  const effectiveDate=file==='terms.html'?'Effective September 28, 2026':'Effective September 15, 2026';
   if(!source.includes('BaristaMatch LLC')||!source.includes(effectiveDate))throw new Error(`${file}: LLC operator or effective date is missing`);
 }
 

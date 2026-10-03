@@ -68,6 +68,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     return nested.exports;
   }
   const require = (name, fromFile = file) => {
+    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
     if (name === 'react') return react;
     if (name === 'react/jsx-runtime') return { jsx: element, jsxs: element, Fragment: 'Fragment' };
     if (name === 'react-native') return native;
@@ -81,6 +82,7 @@ function render(file, { states = {}, props = {}, platform = 'ios', width = 393, 
     if (name.endsWith('/useCafeAccess')) return { useCafeAccess: () => cafeAccess };
     if (name.endsWith('/useConversation')) return { useConversation: () => ({ loading: false, refreshing: false, ready: true, messages: [], body: '', setBody() {}, me: 'test-user', otherUserId: 'other-user', name: 'A very long café and barista conversation display name for checking wrapping', sending: false, error: '', send() {}, retry() {} }) };
     if (name.endsWith('/profilePrivacy')) return { getProfileReadiness: () => ({ complete: false, missing: ['Profile picture'], visible: false }), normalizeOptionalGender: () => null };
+    if (name.endsWith('/usLocation')) return { cityFromUSLocation: () => 'Miami', parseUSLocation: () => ({ city: 'Miami', state: 'FL' }) };
     if (name.endsWith('/floridaLocation')) return { workAreaLabel: () => 'Miami, FL', floridaCityFromLocation: () => 'Miami' };
     if (name.endsWith('/jobEditor')) return { blankJobDraft: { title: '', description: '', street_address: '', city: '', postal_code: '', pay_min: '', pay_max: '' } };
     if (name.endsWith('/marketplace')) return { applicationStatus: () => 'Awaiting review', formatJobPay: () => '$18–22/hr', interestState: () => ({ disabled: false, label: 'Send interest' }) };
@@ -457,7 +459,7 @@ const cases = [
   { name: 'candidate empty', file: 'mobile/app/candidates.tsx', states: { 0: false } },
   { name: 'job posts', file: 'mobile/app/jobs.tsx', states: { 0: false } },
   { name: 'account settings', file: 'mobile/app/settings.tsx' },
-  { name: 'post job', file: 'mobile/app/post-job.tsx', states: { 3: false } },
+  { name: 'post job', file: 'mobile/app/post-job.tsx', states: { 4: false } },
   { name: 'café plans', file: 'mobile/app/subscription.tsx', states: { 0: false } },
   { name: 'conversation', file: 'mobile/app/chat/[id].tsx', states: { 0: false, 5: 'A very long café and barista conversation display name for checking wrapping' } },
 ];

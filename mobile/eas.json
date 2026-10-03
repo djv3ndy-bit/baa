@@ -8,13 +8,11 @@
       "node": "22.23.2",
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development",
       "environment": "development"
     },
     "preview": {
       "node": "22.23.2",
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "ios": {
         "simulator": false
@@ -27,7 +25,6 @@
     "preview-simulator": {
       "node": "22.23.2",
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "ios": {
         "simulator": true
@@ -36,7 +33,6 @@
     "production": {
       "node": "22.23.2",
       "autoIncrement": true,
-      "channel": "production",
       "environment": "production",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
@@ -50,7 +46,6 @@
       "extends": "production",
       "distribution": "store",
       "environment": "preview",
-      "channel": "payment-review",
       "env": {
         "EXPO_NO_DOTENV": "1",
         "EXPO_PUBLIC_API_BASE_URL": "https://testing.baristajobmatch.com/api",

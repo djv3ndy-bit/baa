@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  floridaCityFromLocation,
-  normalizeFloridaLocation,
-} from "../mobile/lib/floridaLocation.ts";
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+// Keep this root-only CI test independent of the mobile dependency installation.
+const moduleSource = readFileSync(new URL('../mobile/lib/floridaLocation.ts', import.meta.url), 'utf8')
+  .replace("'./usLocation'", JSON.stringify(new URL('../mobile/lib/usLocation.ts', import.meta.url).href));
+const moduleUrl = `data:text/javascript;base64,${Buffer.from(stripTypeScriptTypes(moduleSource)).toString('base64')}`;
+const { floridaCityFromLocation, normalizeFloridaLocation } = await import(moduleUrl);
 
 test("accepts a city without requiring the user to type the state", () => {
   assert.equal(normalizeFloridaLocation("Miami"), "Miami, FL");

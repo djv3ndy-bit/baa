@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { validateBundleOnlyConfiguration } from './store-bundle-policy.mjs';
 
 export function validateStoreConfiguration(app, pkg, eas) {
   const errors = [];
@@ -40,7 +41,7 @@ export function main(environment = process.env) {
   const app = JSON.parse(readFileSync(new URL('app.json', root), 'utf8')).expo;
   const pkg = JSON.parse(readFileSync(new URL('package.json', root), 'utf8'));
   const eas = JSON.parse(readFileSync(new URL('eas.json', root), 'utf8'));
-  const errors = validateStoreConfiguration(app, pkg, eas);
+  const errors = [...validateStoreConfiguration(app, pkg, eas), ...validateBundleOnlyConfiguration(app, pkg, eas)];
   if (errors.length) throw new Error(errors.join('\n'));
   if (environment.EAS_BUILD_PROFILE === 'production' && environment.EAS_BUILD_PLATFORM === 'ios') {
     console.log('Verified Apple build tools:', verifyAppleToolchain());

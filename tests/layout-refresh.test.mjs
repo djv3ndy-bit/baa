@@ -84,7 +84,7 @@ test('native dashboard keeps settings, pricing, and real account activity routes
 
   assert.match(home, /router\.push\('\/settings'\)/);
   assert.match(home, /getCurrentContext/);
-  assert.match(home, /Your first job, matches, and interview messaging are included\./);
+  assert.match(home, /Your first job is free for 30 days\. Existing matches and interview messaging stay included\./);
   for (const route of ['/subscription', '/discover', '/profile', '/matches', '/messages']) {
     assert.ok(quietHome.includes(`router.push('${route}')`), `Missing native route ${route}`);
   }

@@ -1,3 +1,4 @@
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,24 +11,28 @@ import { ApprovedDashboard } from './ApprovedDashboard';
 import { Action } from './DashboardPrimitives';
 import { dashboardTheme as t } from './theme';
 
-export default function ApprovedHomeScreen() {
-  const [data, setData] = useState<DashboardData | null>(null);
+function ApprovedHomeScreen() {
+  const memory = useSectionMemory<DashboardData>('home');
+  const [data, setData] = useState<DashboardData | null>(memory.initial ?? null);
+  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true), [error, setError] = useState('');
   const reload = useRef<() => void>(() => {});
-  const account = useRef<string | null>(null);
+  const account = useRef<string | null>(memory.initial?.accountId ?? null);
   useFocusEffect(useCallback(() => {
     let live = true, running = false, revision = 0;
     let channel: ReturnType<typeof supabase.channel> | undefined;
-    async function load() {
+    async function load(manual = false) {
       if (!live || running) return;
       running = true;
       const version = ++revision;
-      setLoading(true);
+      setLoading(true); if (manual) setRefreshing(true);
       try {
         const next = await loadDashboard();
-        if (!live || version !== revision) return;
+        if (!live || version !== revision || !memory.current()) return;
         if (account.current && account.current !== next.accountId) setData(null);
         account.current = next.accountId;
+        memory.save(next.accountId, next.role, next);
+        if (!memory.current()) return;
         setData(next); setError('');
         if (!channel) {
           channel = supabase.channel(`approved-home-${next.accountId}`)
@@ -36,12 +41,12 @@ export default function ApprovedHomeScreen() {
             .subscribe();
         }
       } catch (cause) {
-        if (!live || version !== revision) return;
-        if (cause instanceof DashboardSessionError) { setData(null); router.replace(cause.destination); }
+        if (!live || version !== revision || !memory.current()) return;
+        if (cause instanceof DashboardSessionError) { memory.forget(); setData(null); router.replace(cause.destination); }
         else setError(safeDashboardError(cause));
-      } finally { running = false; if (live && version === revision) setLoading(false); }
+      } finally { running = false; if (live && version === revision) { setLoading(false); setRefreshing(false); } }
     }
-    reload.current = () => { void load(); };
+    reload.current = () => { void load(true); };
     void load();
     const state = AppState.addEventListener('change', value => { if (value === 'active') void load(); });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -50,13 +55,13 @@ export default function ApprovedHomeScreen() {
       }
     });
     return () => { live = false; revision++; state.remove(); subscription.unsubscribe(); if (channel) void supabase.removeChannel(channel); reload.current = () => {}; };
-  }, []));
+  }, [memory]));
   const navigate = async (destination: Destination) => {
     if (!account.current) return;
     try { await requireCurrentUser(account.current); router.navigate(destination as never); }
-    catch { setData(null); account.current = null; router.replace('/login'); }
+    catch { memory.forget(); setData(null); account.current = null; router.replace('/login'); }
   };
-  if (data) return <ApprovedDashboard data={data} error={error} refreshing={loading} onRefresh={() => reload.current()} navigate={destination => { void navigate(destination); }} />;
+  if (data) return <ApprovedDashboard data={data} error={error} refreshing={refreshing} onRefresh={() => reload.current()} navigate={destination => { void navigate(destination); }} />;
   return <SafeAreaView edges={Platform.OS === 'android' ? [] : ['top', 'left', 'right', 'bottom']} style={s.safe}><View style={s.center}>
     {loading ? <><ActivityIndicator color={t.accent} size="large" /><Text style={s.copy}>Loading your dashboard…</Text></> : <>
       <Text accessibilityRole="header" style={s.title}>Your dashboard is unavailable</Text><Text accessibilityRole="alert" style={s.copy}>{error}</Text>
@@ -65,3 +70,5 @@ export default function ApprovedHomeScreen() {
   </View></SafeAreaView>;
 }
 const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: t.background }, center: { flex: 1, padding: 24, justifyContent: 'center', gap: 16 }, title: { fontSize: 26, fontFamily: t.headingFont, fontWeight: '700', color: t.ink }, copy: { color: t.muted, fontSize: 16, lineHeight: 23 } });
+
+export default withSectionMemory(ApprovedHomeScreen);

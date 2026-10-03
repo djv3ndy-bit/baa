@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
 const html=readFileSync(new URL('../signup.html',import.meta.url),'utf8');
 const script=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('function signupDetails'));
 function element(value=''){return {value,checked:true,disabled:false,required:true,hidden:false,textContent:'',placeholder:'',firstChild:{textContent:''},classList:{toggle(){}},listeners:{},addEventListener(event,fn){this.listeners[event]=fn},closest(){return this.label||(this.label={hidden:false})}}}
@@ -15,10 +17,20 @@ async function harness({role='barista',session=null,existing=null,pending=null,a
  const auth={getSession:async()=>({data:{session}}),onAuthStateChange:fn=>{handler=fn},signInWithOAuth:async()=>({}),signUp:async()=>({data:{user:{id:'new'}}}),...authOverrides};
  const client={auth,from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>readProfile?readProfile():({data:existing})})}),insert:payload=>({select:()=>({single:async()=>{writes.push(payload);return insertProfile?insertProfile(payload):{data:insertError?null:payload,error:insertError}}})})})};
  const context={document:{getElementById:id=>ids[id]},location:{search:'',replace:url=>redirects.push(url),assign:url=>redirects.push(url)},URLSearchParams,Date,setTimeout,localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},window:{supabase:{createClient:()=>client}},fetch:async()=>({ok:true,json:async()=>({supabaseUrl:'https://example.invalid',supabasePublishableKey:'test'})})};
+ Object.assign(context.window, locationWindow);
  vm.createContext(context);vm.runInContext(script,context);await new Promise(resolve=>setImmediate(resolve));
  return {context,ids,inputs,roleInputs,selectRole:nextRole=>{const input=roleInputs.find(input=>input.value===nextRole);if(input.disabled)return false;input.checked=true;return true},submit,writes,redirects,storage,client,form,authEvent:()=>handler,send:()=>form.listeners.submit({preventDefault(){}})};
 }
 const signupSession={user:{id:'social-test',user_metadata:{name:'Social Person'}}};
+for (const location of ['Brooklyn, NY', 'Seattle, WA', 'Washington, DC', 'Honolulu, HI', 'Anchorage, AK']) {
+ test(`both website account roles save ${location} after social signup`, async () => {
+  for (const role of ['barista', 'cafe_owner_manager']) {
+   const h=await harness({session:signupSession,role});h.inputs.location.value=location;await h.send();
+   assert.equal(h.writes.length,1);assert.equal(h.writes[0].location,location);assert.equal(h.writes[0].role,role);
+   assert.equal(h.redirects.length,1);
+  }
+ });
+}
 test('new social member without pending details chooses a role instead of becoming a barista automatically',async()=>{
  const h=await harness({session:signupSession,role:null});assert.equal(h.writes.length,0);assert.equal(h.redirects.length,0);assert.match(h.ids['signup-title'].textContent,/Finish/);assert.equal(h.inputs.password.disabled,true);assert.equal(h.inputs.password.closest().hidden,true);
  await h.send();assert.equal(h.writes.length,0);assert.match(h.ids.status.textContent,/choose Barista or Café/);

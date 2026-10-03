@@ -1461,6 +1461,7 @@ body.prism-dashboard-page {
   .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav .quiet-icon { width:20px;height:20px; }
 }
 @media(max-width:390px) {
+  .prism-dashboard-shell #dashboard-mobile-navigation .quiet-mobile-nav { grid-template-columns:repeat(5,minmax(max-content,1fr)); }
   .quiet-prism .quiet-primary-column>.quiet-section-heading { flex-wrap:wrap;gap:0; }
   .quiet-prism .quiet-feature-card,
   .quiet-prism.quiet-guided .quiet-empty-feature { grid-template-columns:1fr;gap:13px; }

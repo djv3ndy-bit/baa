@@ -13,6 +13,7 @@ function compile(name, mocks = {}, cache = new Map()) {
   const exports = {};
   cache.set(name, exports);
   const load = dependency => {
+    if (dependency.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
     if (dependency in mocks) return mocks[dependency];
     if (dependency === './supabase' || dependency === '@/lib/supabase') return { supabase: mocks.client };
     const file = dependency.startsWith('@/') ? `${dependency.slice(2)}.ts` : dependency.startsWith('.') ? `${name.slice(0, name.lastIndexOf('/') + 1)}${dependency.replace(/^\.\//, '')}.ts` : null;
@@ -305,6 +306,7 @@ function fillSignup(ui) {
   ui.nodes().find(node => node.type === 'Pressable' && node.props.children?.props?.children === '☕ Barista').props.onPress(); ui.render();
   ui.nodes().find(node => node.props.placeholder === 'Your full name').props.onChangeText('Sample Person');
   ui.nodes().find(node => node.props.accessibilityLabel === 'City').props.onChangeText('Miami');
+  ui.nodes().find(node => node.props.accessibilityLabel === 'State (two-letter code)').props.onChangeText('FL');
   const email = ui.nodes().find(node => node.props.placeholder === 'you@example.com');
   if (email) {
     email.props.onChangeText('sample@example.invalid');
@@ -344,6 +346,22 @@ test('signup rejected by the network preserves the completed form and enables re
   assert.equal(ui.nodes().find(node => node.props.placeholder === 'Your full name').props.value, 'Sample Person');
   assert.equal(ui.alerts.at(-1)[0], 'Unable to finish account setup');
 });
+
+for (const [city, state] of [['Brooklyn', 'NY'], ['Seattle', 'WA'], ['Washington', 'DC']]) {
+  test(`native signup sends ${city}, ${state} with the chosen role to authentication`, async () => {
+    for (const role of ['barista', 'cafe_owner_manager']) {
+      const submitted = [];
+      const client = { auth: { getSession: async () => ({ data: { session: null }, error: null }), signUp: async input => { submitted.push(input); return { data: { user: { id: 'synthetic' }, session: null } }; } } };
+      const ui = screen('app/signup.tsx', { client }); await flush(); ui.render(); fillSignup(ui);
+      if (role === 'cafe_owner_manager') ui.nodes().find(node => node.type === 'Pressable' && node.props.children?.props?.children === '🏪 Café').props.onPress();
+      ui.nodes().find(node => node.props.accessibilityLabel === 'City').props.onChangeText(city);
+      ui.nodes().find(node => node.props.accessibilityLabel === 'State (two-letter code)').props.onChangeText(state);ui.render();
+      await ui.button('Create account').props.onPress();
+      assert.equal(submitted.length, 1);assert.equal(submitted[0].options.data.location, `${city}, ${state}`);assert.equal(submitted[0].options.data.role, role);
+      assert.equal(ui.routes.at(-1).pathname, '/verify-email');
+    }
+  });
+}
 
 test('reset request prevents duplicate sends and does not navigate or alert over a screen opened later', async () => {
   const gate = deferred(); let requests = 0;

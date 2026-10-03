@@ -13,7 +13,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(resol
 const deferred = () => { let resolve; return { promise: new Promise(done => resolve = done), resolve: value => resolve(value) }; };
 function clientFor(handler) {
   const calls = [];
-  const client = { auth: { getSession: async () => ({ data: { session: { user: { id: 'self' }, access_token: 'mock' } } }) }, from(table) {
+  const client = { rpc: async () => ({ data: { free_job_id: null, free_job_expires_at: null, has_paid_access: false, can_create: true, active_job_count: 0, server_time: new Date().toISOString() }, error: null }), auth: { getSession: async () => ({ data: { session: { user: { id: 'self' }, access_token: 'mock' } } }) }, from(table) {
     const call = { table, operation: 'select', filters: [], orders: [] };
     const run = async kind => { calls.push({ ...call, kind }); const result = await handler(call, kind); return kind === 'range' && Array.isArray(result.data) ? { ...result, data: result.data.slice(call.range[0], call.range[1] + 1) } : result; };
     const q = { select(fields) { call.fields = fields; return q; }, insert(payload) { call.operation = 'insert'; call.payload = payload; return q; }, update(payload) { call.operation = 'update'; call.payload = payload; return q; }, eq(key, value) { call.filters.push(['eq', key, value]); return q; }, neq(key, value) { call.filters.push(['neq', key, value]); return q; }, in(key, value) { call.filters.push(['in', key, value]); return q; }, or(value) { call.or = value; return q; }, order(key) { call.orders.push(key); return q; }, range(from, to) { call.range = [from, to]; return run('range'); }, maybeSingle() { return run('maybeSingle'); }, single() { return run('single'); }, then(resolve, reject) { return run('await').then(resolve, reject); } };
@@ -31,6 +31,7 @@ function sourceLoader({ client = clientFor(() => ({ data: [] })).client, api = a
     const source = readFileSync(file, 'utf8');
     const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
     function localRequire(name) {
+      if (name === './usLocation') return load('mobile/lib/usLocation.ts');
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
       if (name === 'react-native') return native;
@@ -38,6 +39,7 @@ function sourceLoader({ client = clientFor(() => ({ data: [] })).client, api = a
       if (name.endsWith('/supabase') || name === './supabase') return { supabase: client };
       if (name.endsWith('/api') || name === './api') return { authenticatedApi: api };
       if (name.endsWith('/session') || name === './session') return { getCurrentContext: context };
+    if (name.endsWith('/useSectionMemory')) return { withSectionMemory: component => component, useSectionMemory: () => ({ initial: undefined, current: () => true, save() {}, forget() {} }) };
       if (name.endsWith('/AppBottomNav')) return { AppBottomNav: () => null };
       // Preserve form children while native keyboard layout is tested on devices.
       if (name.endsWith('/ConversationKeyboardView')) return { ConversationKeyboardView: 'KeyboardAvoidingView' };
@@ -45,7 +47,7 @@ function sourceLoader({ client = clientFor(() => ({ data: [] })).client, api = a
       if (name.startsWith('./')) return load(resolve(dirname(file), `${name}.ts`));
       throw new Error(`Unexpected module ${name}`);
     }
-    vm.runInNewContext(output, { module, exports: module.exports, require: localRequire, console, Date, Set, Map, Promise, Error }, { filename: file });
+    vm.runInNewContext(output, { module, exports: module.exports, require: localRequire, console, Date, Set, Map, Promise, Error, setTimeout, clearTimeout }, { filename: file });
     return module.exports;
   }
   return load;
@@ -134,7 +136,7 @@ test('job editor blocks duplicate publishes before the account lookup resolves',
   const db = clientFor(call => { if (call.operation === 'insert') { inserts++; return { data: { id: 'new-job', active: true } }; } return { data: [] }; });
   const h = screen('mobile/app/post-job.tsx', { ...db, context: () => pause ? gate.promise : Promise.resolve(readyCafe) });
   h.focus(); await settle(); h.render();
-  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
+  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['State', 'FL'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
   h.press('Full-time'); h.render(); pause = true;
   const publish = h.all('Pressable').find(node => node.props.accessibilityRole === 'button' && node.props.onPress && !node.props.accessibilityLabel && !node.props.disabled);
   assert.ok(publish); publish.props.onPress(); publish.props.onPress();
@@ -219,4 +221,36 @@ test('profile video access uses a short-lived signed URL and surfaces storage de
   const market = sourceLoader(db)('mobile/lib/marketplace.ts');
   assert.equal(await market.profileVideoUrl('barista/video.mp4'), 'https://example.invalid/signed-video'); assert.deepEqual(requests[0], { bucket: 'coffee-videos', path: 'barista/video.mp4', seconds: 300 });
   allowed = false; await assert.rejects(market.profileVideoUrl('other/video.mp4'), /Access denied/);
+});
+
+test('second-job mobile entry shows Pro before rendering any publishing form', async () => {
+ const db=clientFor(()=>({data:[]}));db.client.rpc=async()=>({data:{free_job_id:'first',free_job_expires_at:'2099-01-01',has_paid_access:false,can_create:false,active_job_count:1,server_time:new Date().toISOString()}});
+ const h=screen('mobile/app/post-job.tsx',{...db,context:async()=>readyCafe});h.focus();await settle();h.render();
+ assert.match(h.text(),/one free job has already been used/);assert.equal(h.all('TextInput').length,0);
+ h.press('View café plans');assert.deepEqual(h.routes,['/subscription']);assert.equal(db.calls.length,0);
+});
+test('failed mobile job access lookup provides retry without rendering a publish form', async () => {
+ const db=clientFor(()=>({data:[]}));const normal=db.client.rpc;db.client.rpc=async()=>({error:{message:'Internal failure'}});
+ const h=screen('mobile/app/post-job.tsx',{...db,context:async()=>readyCafe});h.focus();await settle();h.render();
+ assert.match(h.text(),/could not verify your job access/);assert.equal(h.all('TextInput').length,0);assert.doesNotMatch(h.text(),/Internal failure/);
+ db.client.rpc=normal;h.press('Retry loading job');await settle();h.render();assert.ok(h.field('Job title'));assert.equal(db.calls.length,0);
+});
+test('three active mobile jobs offer management instead of another purchase', async () => {
+ const db=clientFor(()=>({data:[]}));db.client.rpc=async()=>({data:{free_job_id:'first',free_job_expires_at:'2000-01-01',has_paid_access:true,can_create:false,active_job_count:3,server_time:new Date().toISOString()}});
+ const h=screen('mobile/app/post-job.tsx',{...db,context:async()=>readyCafe});h.focus();await settle();h.render();
+ assert.match(h.text(),/3 active jobs/);assert.equal(h.all('TextInput').length,0);h.press('Manage jobs');assert.deepEqual(h.routes,['/jobs']);
+});
+test('expired mobile job retains edit and applicant controls and routes reopen to plans without a write',async()=>{
+ const db=clientFor(call=>({data:call.table==='jobs'?[{...job,owner_id:'self',active:true}]:[]}));
+ db.client.rpc=async()=>({data:{free_job_id:'job',free_job_expires_at:'2000-01-01',has_paid_access:false,can_create:false,active_job_count:0,server_time:new Date().toISOString()}});
+ const h=screen('mobile/app/jobs.tsx',{...db,context:async()=>readyCafe});h.focus();await settle();h.render();
+ assert.match(h.text(),/Expired/);assert.match(h.text(),/Applicants and conversations stay saved/);h.press('View café plans');assert.deepEqual(h.routes,['/subscription']);assert.ok(db.calls.every(c=>c.operation==='select'));
+ h.press('Edit');assert.equal(h.routes.at(-1).pathname,'/post-job');h.press('Review applicants');assert.equal(h.routes.at(-1),'/candidates');
+});
+test('expired free post can be edited as a retained record without reinserting or purchasing',async()=>{
+ const db=clientFor(call=>({data:call.operation==='update'?{id:'job',active:false}:{...job,owner_id:'self',active:false}}));
+ db.client.rpc=async()=>({data:{free_job_id:'job',free_job_expires_at:'2000-01-01',has_paid_access:false,can_create:false,active_job_count:0,server_time:new Date().toISOString()}});
+ const h=screen('mobile/app/post-job.tsx',{...db,params:{jobId:'job'},context:async()=>readyCafe});h.focus();await settle();h.render();
+ assert.match(h.text(),/Free post expired/);h.field('Job title').props.onChangeText('Saved expired role');h.render();h.press('Save changes');await settle();
+ assert.equal(db.calls.filter(c=>c.operation==='insert').length,0);assert.equal(db.calls.filter(c=>c.operation==='update').length,1);assert.match(h.alerts.at(-1)[1],/remains paused/);
 });

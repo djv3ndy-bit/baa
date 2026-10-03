@@ -122,7 +122,9 @@ export class SubscriptionController {
   private async refreshOutcome(result: PurchaseOutcome) {
     const subscription = await this.status();
     if (subscription.access === 'pro' && ['pending', 'verification_pending', 'failed'].includes(result.kind)) {
-      this.publish({ notice: 'Your Pro access is active. We could not finish checking this purchase. Complete any store sign-in, then use Restore purchases to retry if needed.' });
+      this.publish({ notice: subscription.provider === 'stripe' && result.kind === 'verification_pending'
+        ? 'Your website subscription is active. We could not finish restoring this in-app purchase. Use the BaristaMatch account originally used for the purchase. If this is that account, try again or contact support.'
+        : 'Your Pro access is active. We could not finish checking this purchase. Complete any store sign-in, then use Restore purchases to retry if needed.' });
     }
   }
   async buy() {

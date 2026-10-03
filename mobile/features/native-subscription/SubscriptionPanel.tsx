@@ -38,11 +38,11 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
     <View style={s.header}><Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={props.onBack} style={s.back}><Icon name="chevron-back" /></Pressable><Text accessibilityRole="header" style={s.headerTitle}>Café plans</Text></View>
     <ScrollView contentContainerStyle={s.content}>
       <Text style={s.title}>Your next hire starts here.</Text>
-      <Text style={s.copy}>Your first job, matching, and interview messaging stay included.</Text>
+      <Text style={s.copy}>Your first job is free for 30 days. Matching and interview messaging stay included.</Text>
       {props.error ? <View style={s.feedback}><Text accessibilityRole="alert" style={s.error}>{props.error}</Text><Action label="Try again" disabled={busy} onPress={props.onRetry} /></View> : null}
       {props.notice ? <Text accessibilityLiveRegion="polite" style={s.notice}>{props.notice}</Text> : null}
       {busy && !subscription ? <Text accessibilityLiveRegion="polite" style={s.copy}>Checking your subscription…</Text> : null}
-      <View style={s.card}><Text style={s.eyebrow}>FREE</Text><Text style={s.price}>$0</Text><Text style={s.copy}>Post your first job free. View applicants, message your matches, and schedule interviews.</Text><Text style={s.included}>Included with your café account</Text></View>
+      <View style={s.card}><Text style={s.eyebrow}>FREE</Text><Text style={s.price}>$0</Text><Text style={s.copy}>Post your first job free for 30 days. A second job or reopening an expired post requires Pro. View applicants, message your matches, and schedule interviews.</Text><Text style={s.included}>Included with your café account</Text></View>
       <View style={s.card}><Text style={s.eyebrow}>CAFÉ PRO</Text>
         {subscribed ? <Text style={s.current}>Your Pro access is active</Text> : product ? <View style={s.priceRow}><Text style={s.price}>{product.displayPrice}</Text><Text style={s.period}>per month</Text></View> : <Text style={s.copy}>Purchase pricing is not available yet.</Text>}
         <Text style={s.copy}>For cafés that are growing their team.</Text>

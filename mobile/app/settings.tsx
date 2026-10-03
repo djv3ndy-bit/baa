@@ -451,7 +451,7 @@ function SubscriptionCard({ billing, error, opening, onPress }: { billing: Billi
   else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
   else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
-  else if (billing) detail = "Your first job, matches, and interview messaging are included. A second job requires Pro.";
+  else if (billing) detail = "Your first job is free for 30 days. A second job or reopening an expired post requires Pro. Existing matches and interview messaging stay included.";
   const action = error ? "Retry subscription status" : canManage(billing) ? "Manage subscription" : "View Free and Pro plans";
   return <View style={s.card}>
     <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : paymentAttention ? `Payment needs attention · ${statusLabel}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
