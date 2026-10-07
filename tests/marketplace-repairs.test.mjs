@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(fs.readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 
 const dashboard = fs.readFileSync(new URL('../dashboard.html', import.meta.url), 'utf8');
 const quietFocus = fs.readFileSync(new URL('../dashboard-quiet-focus.js', import.meta.url), 'utf8');
@@ -15,6 +18,7 @@ function source(name) {
 const baseFunctions = ['normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
 function context(extra = {}, functions = []) {
   const ctx = { currentRole: 'barista', currentUser: { id: 'barista' }, currentProfile: { id: 'barista', location: 'Miami, FL' }, applications: [], discoveryInterests: [], discoveryMatches: [], discoveryProfiles: {}, candidateProfiles: [], marketJobs: [], marketplaceRefreshMessage: '', editingJobId: null, window: {}, ...extra };
+  ctx.window.BaristaMatchLocation = locationWindow.BaristaMatchLocation;
   vm.createContext(ctx);
   vm.runInContext([...new Set([...baseFunctions, ...functions])].map(source).join('\n'), ctx);
   return ctx;
@@ -134,9 +138,9 @@ test('editing updates the original owner-scoped post without replacing ID, visib
   assert.equal(Object.hasOwn(payload, 'owner_id'), false);
 });
 
-test('job form rejects invalid Florida geography, zero pay and reversed pay ranges before any write', () => {
+test('job form rejects invalid U.S. geography, zero pay and reversed pay ranges before any write', () => {
   const ctx = context({}, ['jobPayloadFromForm']);
-  for (const invalid of [{ state: 'NY' }, { postal_code: 'abc' }, { hourly_pay: '0' }, { max_hourly_pay: '20' }]) assert.throws(() => ctx.jobPayloadFromForm(validJobForm(invalid)));
+  for (const invalid of [{ state: 'ZZ' }, { postal_code: 'abc' }, { hourly_pay: '0' }, { max_hourly_pay: '20' }]) assert.throws(() => ctx.jobPayloadFromForm(validJobForm(invalid)));
 });
 
 test('filtering updates a visible count, announces no matches, and clearing restores results', () => {
@@ -205,19 +209,21 @@ function jobEditorContext() {
   return { ctx, form, elements, button, status, dialog, content, navigations, writes, submit: () => ctx.submitJobForm({ preventDefault() {}, currentTarget: form }) };
 }
 
-test('first and subsequent new job editors retain the required read-only Florida state after reset', async () => {
+test('first and subsequent new job editors preserve an explicitly chosen U.S. state without forcing Florida', async () => {
   const h = jobEditorContext();
+  h.ctx.currentProfile={location:'Seattle, WA'};
   for (let post = 0; post < 2; post++) {
     h.ctx.openJobEditor();
-    assert.equal(h.elements.state.readOnly, true);
-    assert.equal(h.elements.state.value, 'FL');
+    assert.equal(h.elements.state.readOnly, false);
+    assert.equal(h.elements.state.value, 'WA');
+    h.elements.state.value = 'NY';
     await h.submit();
   }
   h.ctx.openJobEditor(job.id);
   h.dialog.close();
   h.ctx.openJobEditor();
-  assert.equal(h.elements.state.value, 'FL', 'editing another post must not change the new-post default');
-  assert.deepEqual(h.writes.map(write => write.state), ['FL', 'FL']);
+  assert.equal(h.elements.state.value, 'WA', 'editing another post must not change the home-state default');
+  assert.deepEqual(h.writes.map(write => write.state), ['NY', 'NY']);
 });
 
 test('an earlier job save cannot close or reset a newer editor during either the write or refresh', async () => {
@@ -359,4 +365,42 @@ test('marketplace refresh only rerenders its original unchanged view and never r
 test('all dashboard inline scripts and the homepage helper parse', () => {
   for (const [, attributes, body] of dashboard.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)) if (!attributes.includes('src=')) new vm.Script(body);
   new vm.Script(quietFocus);
+});
+
+const nationwideStates='AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+test('dashboard saves jobs and applies local discovery in every U.S. state and DC',()=>{
+ const ctx=context({},['jobPayloadFromForm']);
+ for(const state of nationwideStates){
+  const payload=ctx.jobPayloadFromForm(validJobForm({city:'Example City',state:state.toLowerCase()}));
+  assert.equal(payload.state,state);assert.equal(payload.city,'Example City');assert.match(payload.location,new RegExp(`Example City, ${state}.*33101`));
+  ctx.currentProfile={location:`Example City, ${state}`};assert.equal(ctx.jobMatchesBaristaLocation(payload),true,state);
+  assert.equal(ctx.candidateMatchesCafeLocation({location:`Example City, ${state}`}),true,state);
+  const other=state==='FL'?'NY':'FL';assert.equal(ctx.jobMatchesBaristaLocation({...payload,state:other}),false);assert.equal(ctx.candidateMatchesCafeLocation({location:`Example City, ${other}`}),false);
+ }
+});
+
+test('job form rejects conflicting or invalid city text even with a valid selected state',()=>{
+ const ctx=context({},['jobPayloadFromForm']);
+ for(const city of ['Miami, FL','12345','<script>bad</script>'])assert.throws(()=>ctx.jobPayloadFromForm(validJobForm({city,state:'NY'})),city);
+ for(const [city,state] of [['Port Washington','NY'],['Washington','DC'],['New York','NY']]){
+  const payload=ctx.jobPayloadFromForm(validJobForm({city,state}));assert.equal(payload.city,city);assert.equal(payload.state,state);
+ }
+});
+
+test('editing jobs restores structured and legacy nationwide states without changing the original record',()=>{
+ for(const [stored,state,city] of [
+  [{state:'NY',city:'Albany',location:'Albany, NY, 12207'},'NY','Albany'],
+  [{state:null,city:null,location:'Seattle, WA, 98101'},'WA','seattle'],
+  [{state:null,city:null,location:'Miami, FL 33101'},'FL','miami'],
+ ]){
+  const h=jobEditorContext();h.ctx.marketJobs=[{...job,...stored}];const before=JSON.stringify(h.ctx.marketJobs[0]);h.ctx.openJobEditor(job.id);
+  assert.equal(h.elements.state.value,state);assert.equal(h.elements.city.value,city);assert.equal(JSON.stringify(h.ctx.marketJobs[0]),before);assert.equal(h.ctx.editingJobId,job.id);
+ }
+});
+
+test('job city containing an explicit state and ZIP is normalized once and rejects a conflicting state',()=>{
+ const ctx=context({},['jobPayloadFromForm']);
+ assert.throws(()=>ctx.jobPayloadFromForm(validJobForm({city:'Austin TX 78701',state:'NY'})));
+ const payload=ctx.jobPayloadFromForm(validJobForm({city:'Austin TX 78701',state:'TX',postal_code:'78701'}));
+ assert.equal(payload.city,'Austin');assert.equal(payload.state,'TX');assert.equal(payload.postal_code,'78701');assert.equal((payload.location.match(/78701/g)||[]).length,1);
 });

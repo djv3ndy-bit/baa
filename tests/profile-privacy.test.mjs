@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 import { floridaCityFromLocation, normalizeFloridaLocation } from '../mobile/lib/floridaLocation.ts';
 const privacySource = readFileSync(new URL('../mobile/lib/profilePrivacy.ts', import.meta.url), 'utf8');
 const privacyCode = stripTypeScriptTypes(privacySource.replace(/^import .*$/gm, '').replace(/^export /gm, ''));
@@ -71,6 +74,7 @@ function webHarness(gender, previousGender = null) {
   const values = { location:'Miami, FL', date_of_birth:'2000-01-01', gender_identity:gender, name:'Test barista', bio:'Coffee experience', skills:'Espresso', experience:'2 years', pay_expectation:'20' };
   const profile = { display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
   const context = {
+    window:locationWindow,
     document:{getElementById:id => id==='profile-form' ? form : id==='profile-dialog'?dialog:status},
     profileSaveInProgress:false,currentSection:'My Profile',currentView:{},openSection(){},
     currentRole:'barista', currentUser:{id:'test-user'}, currentProfile:profile,
