@@ -134,7 +134,7 @@ test('job editor blocks duplicate publishes before the account lookup resolves',
   const db = clientFor(call => { if (call.operation === 'insert') { inserts++; return { data: { id: 'new-job', active: true } }; } return { data: [] }; });
   const h = screen('mobile/app/post-job.tsx', { ...db, context: () => pause ? gate.promise : Promise.resolve(readyCafe) });
   h.focus(); await settle(); h.render();
-  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
+  for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Miami'], ['State', 'FL'], ['ZIP code', '33101'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
   h.press('Full-time'); h.render(); pause = true;
   const publish = h.all('Pressable').find(node => node.props.accessibilityRole === 'button' && node.props.onPress && !node.props.accessibilityLabel && !node.props.disabled);
   assert.ok(publish); publish.props.onPress(); publish.props.onPress();
@@ -219,4 +219,35 @@ test('profile video access uses a short-lived signed URL and surfaces storage de
   const market = sourceLoader(db)('mobile/lib/marketplace.ts');
   assert.equal(await market.profileVideoUrl('barista/video.mp4'), 'https://example.invalid/signed-video'); assert.deepEqual(requests[0], { bucket: 'coffee-videos', path: 'barista/video.mp4', seconds: 300 });
   allowed = false; await assert.rejects(market.profileVideoUrl('other/video.mp4'), /Access denied/);
+});
+
+
+test('actual job publishing honors every U.S. state and DC with no Florida default', async () => {
+  for (const state of Object.keys(sourceLoader()('mobile/lib/usLocation.ts').US_STATES)) {
+    let saved;
+    const db = clientFor(call => { if (call.operation === 'insert') { saved = call.payload; return { data: { ...call.payload, id: 'new-job', active: true } }; } return { data: [] }; });
+    const h = screen('mobile/app/post-job.tsx', { ...db, context: async () => readyCafe });
+    h.focus(); await settle(); h.render();
+    assert.equal(h.field('State').props.value, '');
+    for (const [label, value] of [['Job title', 'Lead Barista'], ['Street address', '12 Main Street'], ['City', 'Example City'], ['State', state.toLowerCase()], ['ZIP code', '12345'], ['Minimum hourly pay', '20'], ['Description', 'A complete role']]) h.field(label).props.onChangeText(value);
+    h.press('Full-time'); h.render();
+    await h.press('Publish job'); await settle(); h.render();
+    assert.equal(saved?.state, state); assert.equal(saved?.location, `Example City, ${state} 12345`);
+    assert.deepEqual(h.routes, ['/jobs']);
+  }
+});
+
+
+test('editing a paused Washington job retains state, identity, pay and custom schedule', async () => {
+  const saved = { ...job, owner_id: 'self', active: false, location: 'Seattle, WA 98101', city: 'Seattle', state: 'WA', postal_code: '98101', schedule: 'Rotating evenings' };
+  const db = clientFor(call => ({ data: call.operation === 'update' ? { id: 'job', active: false } : saved }));
+  const h = screen('mobile/app/post-job.tsx', { ...db, params: { jobId: 'job' }, context: async () => readyCafe });
+  h.focus(); await settle(); h.render();
+  assert.equal(h.field('State').props.value, 'WA'); assert.equal(h.field('City').props.value, 'Seattle');
+  h.field('Job title').props.onChangeText('Updated Washington role'); h.render(); h.press('Save changes'); await settle();
+  const writes = db.calls.filter(call => call.operation !== 'select'); assert.equal(writes.length, 1);
+  assert.equal(writes[0].operation, 'update'); assert.equal(writes[0].payload.state, 'WA');
+  assert.equal(writes[0].payload.location, 'Seattle, WA 98101'); assert.equal(writes[0].payload.pay_min, 20); assert.equal(writes[0].payload.pay_max, 25);
+  assert.equal(writes[0].payload.schedule, 'Rotating evenings'); assert.equal('active' in writes[0].payload, false);
+  assert.ok(writes[0].filters.some(row => row[1] === 'id' && row[2] === 'job')); assert.match(h.alerts.at(-1)[1], /remains paused/);
 });
