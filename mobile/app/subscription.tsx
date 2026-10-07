@@ -52,7 +52,7 @@ function PreservedSubscriptionScreen() {
               <Text style={styles.freeLabel}>FREE</Text>
               <View style={styles.priceRow}>
                 <Text style={styles.freePrice}>$0</Text>
-                <Text style={styles.pricePeriod}> forever</Text>
+                <Text style={styles.pricePeriod}> for your first job</Text>
               </View>
             </View>
             <View style={styles.currentPill}><Text style={styles.currentText}>START HERE</Text></View>

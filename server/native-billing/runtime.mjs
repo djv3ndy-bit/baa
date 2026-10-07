@@ -46,6 +46,12 @@ export function readProviderConfiguration(provider, env = process.env) {
   const productId = value(env, 'GOOGLE_PLAY_PRODUCT_ID', /^[a-z0-9][a-z0-9_.]{0,254}$/);
   const basePlanId = value(env, 'GOOGLE_PLAY_BASE_PLAN_ID', /^[a-z0-9][a-z0-9-]{0,62}$/);
   const audience = value(env, 'GOOGLE_PLAY_PUSH_AUDIENCE', /^https:\/\/[^\s]{1,2000}$/);
+  // OIDC audiences are public identifiers. Reject malformed URLs and embedded
+  // credentials/fragments before initializing any authenticated Google client.
+  try {
+    const url = new URL(audience);
+    check(url.protocol === 'https:' && !url.username && !url.password && !url.hash);
+  } catch { throw new PurchaseVerificationError('SERVER_CONFIGURATION'); }
   const serviceAccountEmail = value(env, 'GOOGLE_PLAY_PUSH_SERVICE_ACCOUNT_EMAIL', /^[a-z0-9._-]+@[a-z0-9.-]+\.iam\.gserviceaccount\.com$/);
   let credentials;
   try { credentials = JSON.parse(value(env, 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', /^[\s\S]{1,32768}$/)); }
@@ -54,6 +60,12 @@ export function readProviderConfiguration(provider, env = process.env) {
     && /^[a-z0-9._-]+@[a-z0-9.-]+\.iam\.gserviceaccount\.com$/.test(credentials.client_email)
     && typeof credentials.private_key === 'string' && credentials.private_key.startsWith('-----BEGIN PRIVATE KEY-----')
     && (!credentials.token_uri || credentials.token_uri === 'https://oauth2.googleapis.com/token'));
+  // Google service-account JWTs use RSA keys. A PEM prefix alone can accept a
+  // truncated or wrong-kind key and defer failure until purchase verification.
+  try {
+    const key = createPrivateKey(credentials.private_key);
+    check(key.asymmetricKeyType === 'rsa' && key.asymmetricKeyDetails?.modulusLength >= 2048);
+  } catch { throw new PurchaseVerificationError('SERVER_CONFIGURATION'); }
   // Do not pass arbitrary external-account credential fields into Google's SDK.
   return { provider, environment, productId, basePlanId, audience, serviceAccountEmail, packageName: bundleId,
     credentials: { type: 'service_account', client_email: credentials.client_email, private_key: credentials.private_key } };
