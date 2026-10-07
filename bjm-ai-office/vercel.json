@@ -16,5 +16,10 @@
   "functions": {
     "api/mcp.ts": { "maxDuration": 60 },
     "api/health.ts": { "maxDuration": 10 }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "fix/activation-analytics-confirmed-signup": false
+    }
   }
 }

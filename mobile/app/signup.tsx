@@ -59,8 +59,8 @@ export default function SignupScreen() {
       if (!active.current) return;
       if (setupUserId) {
         if (context.user?.id !== setupUserId) throw new Error('Your session changed. Return to login before continuing.');
-        await createExplicitProfile(setupUserId, draft);
-        void trackProductEvent('signup_completed', { surface: 'mobile', role });
+        const saved = await createExplicitProfile(setupUserId, draft);
+        void trackProductEvent('signup_completed', { surface: 'mobile', role: saved.role }, setupUserId);
         if (active.current) router.replace('/profile');
         return;
       }
@@ -80,8 +80,8 @@ export default function SignupScreen() {
       if (!active.current) return;
       if (data.session && data.user) {
         setSetupUserId(data.user.id);
-        await createExplicitProfile(data.user.id, draft);
-        void trackProductEvent('signup_completed', { surface: 'mobile', role });
+        const saved = await createExplicitProfile(data.user.id, draft);
+        void trackProductEvent('signup_completed', { surface: 'mobile', role: saved.role }, data.user.id);
         if (active.current) router.replace('/profile');
       } else {
         // With email confirmation enabled the server trigger creates the profile.
