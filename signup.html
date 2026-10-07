@@ -33,7 +33,7 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
       </div>
       <div class="grid">
         <label class="field wide" id="name-label">Your name<input name="name" autocomplete="name" required placeholder="Your full name"></label>
-        <label class="field wide">Florida city<input name="location" autocomplete="address-level2" required placeholder="Miami, FL"><small>BaristaMatch is currently available in Florida only.</small></label>
+        <label class="field wide">City and state<input name="location" autocomplete="address-level2" required placeholder="Miami, FL"><small>Available in all 50 U.S. states and Washington, D.C. Include your city and two-letter state code.</small></label>
         <label class="field wide">Email address<input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
         <label class="field">Password<input name="password" type="password" autocomplete="new-password" minlength="10" required placeholder="At least 10 characters"></label>
         <label class="field">Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="10" required placeholder="Enter it again"></label>
@@ -47,6 +47,7 @@ body{background:radial-gradient(circle at 50% 8%,#fffaf3 0,#f6e7d9 48%,#ead3c1 1
     <p class="privacy">Secure sign-up. Your password stays private.</p>
   </section>
 </main>
+<script src="/us-location.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <script>
 const form=document.getElementById('signup-form'),status=document.getElementById('status'),googleButton=document.getElementById('google-signup'),appleButton=document.getElementById('apple-signup');
@@ -57,10 +58,10 @@ const supportedRole=role=>['barista','cafe_owner_manager'].includes(role);
 function updateNameLabel(){const cafe=selectedRole()==='cafe_owner_manager';document.getElementById('name-label').firstChild.textContent=cafe?'Café name':'Your name';form.elements.name.placeholder=cafe?'Your café name':'Your full name';document.getElementById('signup-headline').textContent=cafe?'Build your café team with the right people.':'A better coffee career starts with a great profile.';document.getElementById('signup-intro').textContent=cafe?'Create your café profile, discover nearby baristas, and connect when there’s mutual interest.':'Create your profile, discover nearby cafés, and connect when the fit feels right.'}
 form.querySelectorAll('[name="role"]').forEach(input=>input.addEventListener('change',updateNameLabel));
 const requestedRole=new URLSearchParams(location.search).get('role');if(supportedRole(requestedRole)){form.querySelector(`[value="${requestedRole}"]`).checked=true;updateNameLabel()}
-const isFloridaLocation=value=>/^.+(?:,\s*|\s+)(?:fl|florida)(?:\s+\d{5}(?:-\d{4})?)?$/i.test(String(value||'').trim());
-function signupDetails(){const role=selectedRole(),name=form.elements.name.value.trim(),locationValue=form.elements.location.value.trim();if(!supportedRole(role))throw new Error('Please choose Barista or Café.');if(!name)throw new Error(role==='barista'?'Enter your name.':'Enter your café name.');if(!isFloridaLocation(locationValue))throw new Error('Enter a Florida location, such as Miami, FL.');if(!form.elements.terms.checked)throw new Error('Please review and accept the terms and age confirmation to continue.');return {role,name,location:locationValue}}
+const isUSLocation=value=>Boolean(window.BaristaMatchLocation.normalizeUSLocation(value));
+function signupDetails(){const role=selectedRole(),name=form.elements.name.value.trim(),locationValue=form.elements.location.value.trim();if(!supportedRole(role))throw new Error('Please choose Barista or Café.');if(!name)throw new Error(role==='barista'?'Enter your name.':'Enter your café name.');if(!isUSLocation(locationValue))throw new Error('Enter a U.S. city and state, such as Miami, FL or Austin, TX.');if(!form.elements.terms.checked)throw new Error('Please review and accept the terms and age confirmation to continue.');return {role,name,location:window.BaristaMatchLocation.normalizeUSLocation(locationValue)}}
 function clearPendingSignup(){try{['baristamatch_pending_signup','baristamatch_pending_role','baristamatch_pending_name','baristamatch_pending_location'].forEach(key=>localStorage.removeItem(key))}catch{}}
-function readPendingSignup(){try{const pending=JSON.parse(localStorage.getItem('baristamatch_pending_signup')||'null');if(!pending||!supportedRole(pending.role)||!pending.name||!isFloridaLocation(pending.location)||pending.termsAccepted!==true||typeof pending.createdAt!=='number'||Date.now()-pending.createdAt>30*60*1000||pending.createdAt>Date.now())return null;return pending}catch{return null}}
+function readPendingSignup(){try{const pending=JSON.parse(localStorage.getItem('baristamatch_pending_signup')||'null');if(!pending||!supportedRole(pending.role)||!pending.name||!isUSLocation(pending.location)||pending.termsAccepted!==true||typeof pending.createdAt!=='number'||Date.now()-pending.createdAt>30*60*1000||pending.createdAt>Date.now())return null;return pending}catch{return null}}
 async function findProfile(user){const {data,error}=await client.from('profiles').select('id,role').eq('id',user.id).maybeSingle();if(error)throw new Error('We could not check your profile. Please try again.');return data}
 async function saveStarterProfile(user,role,name,locationValue){
   const existing=await findProfile(user);if(existing)return existing;

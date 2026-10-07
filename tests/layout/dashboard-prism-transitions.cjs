@@ -13,6 +13,7 @@ const repo=path.resolve(__dirname,'../..');
  const page=await browser.newPage({viewport:{width:1512,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname!=='preview.invalid')return route.abort();if(u.pathname==='/dashboard')return route.fulfill({contentType:'text/html',body:raw.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')});if(u.pathname.startsWith('/assets/')||['/checkout.css','/dashboard-quiet-focus.css'].includes(u.pathname)){const p=repo+u.pathname;return fs.existsSync(p)?route.fulfill({path:p}):route.fulfill({status:404,body:''});}return route.fulfill({contentType:'application/json',body:'{}'});});
  await page.goto('https://preview.invalid/dashboard');
+ await page.addScriptTag({content:fs.readFileSync(repo+'/us-location.js','utf8')});
  await page.addScriptTag({content:fs.readFileSync(repo+'/dashboard-quiet-focus.js','utf8')});
  for(const content of scripts)await page.addScriptTag({content});
  // Keep the real navigation dispatcher, renderers, and bindContentActions.

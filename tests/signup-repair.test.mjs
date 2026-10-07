@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 const html=readFileSync(new URL('../signup.html',import.meta.url),'utf8');
 const script=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('function signupDetails'));
 function element(value=''){return {value,checked:true,disabled:false,required:true,hidden:false,textContent:'',placeholder:'',firstChild:{textContent:''},classList:{toggle(){}},listeners:{},addEventListener(event,fn){this.listeners[event]=fn},closest(){return this.label||(this.label={hidden:false})}}}
@@ -11,12 +14,13 @@ async function harness({role='barista',session=null,existing=null,pending=null,a
  const roleInputs=['barista','cafe_owner_manager'].map(value=>{const input=element(value);Object.defineProperty(input,'checked',{get:()=>role===value,set:checked=>{if(checked)role=value;else if(role===value)role=null}});return input});
  const submit=element(),form=element();form.elements=inputs;form.querySelector=selector=>selector==='[type="submit"]'?submit:selector==='[name="role"]:checked'?roleInputs.find(input=>input.checked)||null:roleInputs.find(input=>selector===`[value="${input.value}"]`)||null;form.querySelectorAll=selector=>selector==='[name="role"]'?roleInputs:selector==='input,button'?[...roleInputs,...Object.values(inputs),submit]:[];form.reset=()=>{};
  for(const id of ['status','google-signup','apple-signup','name-label','signup-headline','signup-intro','signup-title','signup-copy','signup-divider','social-options'])ids[id]=element();ids['signup-form']=form;
- const redirects=[],writes=[],storage=new Map(pending?[['baristamatch_pending_signup',JSON.stringify(pending)]]:[]);let handler;
+ const timers=[],redirects=[],writes=[],storage=new Map(pending?[['baristamatch_pending_signup',JSON.stringify(pending)]]:[]);let handler;
  const auth={getSession:async()=>({data:{session}}),onAuthStateChange:fn=>{handler=fn},signInWithOAuth:async()=>({}),signUp:async()=>({data:{user:{id:'new'}}}),...authOverrides};
  const client={auth,from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>readProfile?readProfile():({data:existing})})}),insert:payload=>({select:()=>({single:async()=>{writes.push(payload);return insertProfile?insertProfile(payload):{data:insertError?null:payload,error:insertError}}})})})};
- const context={document:{getElementById:id=>ids[id]},location:{search:'',replace:url=>redirects.push(url),assign:url=>redirects.push(url)},URLSearchParams,Date,setTimeout,localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},window:{supabase:{createClient:()=>client}},fetch:async()=>({ok:true,json:async()=>({supabaseUrl:'https://example.invalid',supabasePublishableKey:'test'})})};
+ const context={document:{getElementById:id=>ids[id]},location:{search:'',replace:url=>redirects.push(url),assign:url=>redirects.push(url)},URLSearchParams,Date,setTimeout:callback=>timers.push(callback),localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},window:{supabase:{createClient:()=>client}},fetch:async()=>({ok:true,json:async()=>({supabaseUrl:'https://example.invalid',supabasePublishableKey:'test'})})};
+ Object.assign(context.window, locationWindow);
  vm.createContext(context);vm.runInContext(script,context);await new Promise(resolve=>setImmediate(resolve));
- return {context,ids,inputs,roleInputs,selectRole:nextRole=>{const input=roleInputs.find(input=>input.value===nextRole);if(input.disabled)return false;input.checked=true;return true},submit,writes,redirects,storage,client,form,authEvent:()=>handler,send:()=>form.listeners.submit({preventDefault(){}})};
+ return {context,ids,inputs,roleInputs,timers,selectRole:nextRole=>{const input=roleInputs.find(input=>input.value===nextRole);if(input.disabled)return false;input.checked=true;return true},submit,writes,redirects,storage,client,form,authEvent:()=>handler,send:()=>form.listeners.submit({preventDefault(){}})};
 }
 const signupSession={user:{id:'social-test',user_metadata:{name:'Social Person'}}};
 test('new social member without pending details chooses a role instead of becoming a barista automatically',async()=>{
@@ -93,4 +97,48 @@ test('signup waits for session initialization and preserves pending OAuth detail
  assert.equal(signups,0);assert.equal(providers,0);assert.equal(h.writes.length,0);assert.equal(h.storage.size,1);assert.match(h.ids.status.textContent,/still loading/);
  session.resolve({data:{session:signupSession}});await settle();
  assert.equal(h.writes.length,1);assert.equal(h.writes[0].role,'cafe_owner_manager');assert.equal(h.writes[0].cafe_name,'Pending Cafe');assert.deepEqual(h.redirects,['/cafe-trial.html']);
+});
+
+const nationwideStates='AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+for(const role of ['barista','cafe_owner_manager']){
+ test(`${role}: email signup carries all 50 states and DC through metadata and email verification`,async()=>{
+  for(const state of nationwideStates){
+   const requests=[],h=await harness({role,authOverrides:{signUp:async payload=>{requests.push(payload);return {data:{user:{id:'email-test'}}}}}});
+   h.inputs.location.value=`Example City, ${state.toLowerCase()}`;await h.send();
+   assert.equal(requests.length,1,state);assert.equal(requests[0].options.data.location,`Example City, ${state}`);assert.equal(requests[0].options.data.role,role);
+   assert.equal(requests[0].options.data[role==='barista'?'display_name':'cafe_name'],'Test Person');
+   assert.equal(requests[0].options.emailRedirectTo,'https://www.baristajobmatch.com/login.html');
+   assert.equal(h.writes.length,0);assert.deepEqual(h.redirects,['/verify-email.html']);
+  }
+ });
+ test(`${role}: email signup with an immediate session saves the nationwide profile`,async()=>{
+  const session={user:{id:'email-session'}},h=await harness({role,authOverrides:{signUp:async()=>({data:{user:session.user,session}})}});
+  h.inputs.location.value='Seattle, Washington';await h.send();assert.equal(h.writes.length,1);assert.equal(h.writes[0].location,'Seattle, WA');assert.equal(h.writes[0].role,role);
+  assert.deepEqual(h.redirects,[role==='barista'?'/dashboard.html':'/cafe-trial.html']);
+ });
+ for(const provider of ['google','apple'])test(`${role}: ${provider} preserves every U.S. state through pending signup and callback`,async()=>{
+  for(const state of nationwideStates){
+   const calls=[],started=await harness({role,authOverrides:{signInWithOAuth:async payload=>{calls.push(payload);return {}}}});
+   started.inputs.location.value=`Example City, ${state.toLowerCase()}`;await started.ids[`${provider}-signup`].listeners.click();
+   assert.equal(calls.length,1,state);assert.equal(calls[0].provider,provider);assert.equal(calls[0].options.redirectTo,'https://www.baristajobmatch.com/signup.html?oauth=complete');
+   const pending=JSON.parse(started.storage.get('baristamatch_pending_signup'));
+   assert.equal(pending.role,role);assert.equal(pending.provider,provider);assert.equal(pending.location,`Example City, ${state}`);assert.equal(pending.termsAccepted,true);assert.equal(started.writes.length,0);
+   const completed=await harness({session:signupSession,pending});assert.equal(completed.writes.length,1,state);assert.equal(completed.writes[0].role,role);assert.equal(completed.writes[0].location,`Example City, ${state}`);
+   assert.equal(completed.storage.size,0);assert.deepEqual(completed.redirects,[role==='barista'?'/dashboard.html':'/cafe-trial.html']);
+  }
+ });
+}
+
+test('OAuth auth-event completion defers the profile write outside the callback and preserves DC',async()=>{
+ const h=await harness({pending:{role:'cafe_owner_manager',name:'Capital Cafe',location:'Washington, DC',provider:'google',termsAccepted:true,createdAt:Date.now()}});
+ h.authEvent()('SIGNED_IN',signupSession);assert.equal(h.writes.length,0);assert.equal(h.timers.length,1);
+ await h.timers.shift()();assert.equal(h.writes.length,1);assert.equal(h.writes[0].location,'Washington, DC');assert.equal(h.writes[0].role,'cafe_owner_manager');assert.equal(h.storage.size,0);
+});
+
+test('unsupported or missing states block email and OAuth before requests or pending storage',async()=>{
+ for(const value of ['Brooklyn','Toronto, ON','San Juan, PR','City, ZZ','NY'])for(const role of ['barista','cafe_owner_manager']){
+  let calls=0;const h=await harness({role,authOverrides:{signUp:async()=>{calls++;return{}},signInWithOAuth:async()=>{calls++;return{}}}});h.inputs.location.value=value;
+  await h.send();await h.ids['google-signup'].listeners.click();await h.ids['apple-signup'].listeners.click();
+  assert.equal(calls,0,`${role}: ${value}`);assert.equal(h.storage.size,0);assert.equal(h.writes.length,0);assert.match(h.ids.status.textContent,/U.S. city and state/);
+ }
 });

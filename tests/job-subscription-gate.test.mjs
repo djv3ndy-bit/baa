@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+const locationWindow = {};
+vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
+
 
 const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 const dashboard = read('dashboard.html');
@@ -16,7 +19,7 @@ function source(name) {
 }
 
 function context(names, extra = {}) {
-  const value = { console, Date, URLSearchParams, ...extra };
+  const value = { console, Date, URLSearchParams, window: locationWindow, ...extra };
   vm.createContext(value);
   vm.runInContext(names.map(source).join('\n'), value);
   return value;
@@ -169,7 +172,7 @@ test('a PJB01 race returns to the preserved Pro prompt instead of leaking a data
   await assert.rejects(raced.ctx.saveJobPost(validJobForm(), null), error => error.code === 'JOB_SUBSCRIPTION_REQUIRED' && /still a draft/.test(error.message));
 });
 
-test('pending drafts are account-scoped, safely restored, and forced back to Florida', () => {
+test('pending drafts are account-scoped, safely restored, and retain their chosen U.S. state', () => {
   const values = new Map(), sessionStorage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   const schedules = [{ value: 'Full-time', checked: false }, { value: 'Part-time', checked: true }];
   const form = { elements: { title: { value: '' }, state: { value: '' }, description: { value: '' } }, querySelectorAll: () => schedules };
@@ -178,7 +181,7 @@ test('pending drafts are account-scoped, safely restored, and forced back to Flo
   });
   assert.equal(ctx.persistPendingJobDraft([['title', 'Weekend barista'], ['state', 'NY'], ['schedule', 'Full-time'], ['description', 'Saved before Checkout']]), true);
   assert.match([...values.keys()][0], /cafe$/);
-  assert.equal(ctx.applyPendingJobDraft(form), true); assert.equal(form.elements.title.value, 'Weekend barista'); assert.equal(form.elements.state.value, 'FL');
+  assert.equal(ctx.applyPendingJobDraft(form), true); assert.equal(form.elements.title.value, 'Weekend barista'); assert.equal(form.elements.state.value, 'NY');
   assert.equal(schedules[0].checked, true); assert.equal(schedules[1].checked, false);
   ctx.currentUser = { id: 'another-cafe' }; assert.equal(ctx.readPendingJobDraft(), null);
   ctx.currentUser = { id: 'cafe' }; ctx.clearPendingJobDraft(); assert.equal(values.size, 0);
@@ -291,4 +294,15 @@ test('website copy and handlers describe and enforce the lifetime-job boundary',
   const save = source('saveJobPost'); assert.ok(save.indexOf('loadJobCreationAccess()') < save.indexOf("from('jobs').insert"));
   assert.doesNotMatch(source('toggleJob'), /loadJobCreationAccess|billing-status/);
   assert.match(cafeTrial, /first lifetime job/i); assert.match(cafeTrial, /second job[^<]+second distinct lifetime post[^<]+requires active Pro/i);
+});
+
+test('pending nationwide job drafts retain state and ZIP through storage and account-scoped restoration',()=>{
+ for(const state of ['NY','WA','DC','AK','HI','FL']){
+  const values=new Map(),sessionStorage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+  const form={elements:Object.fromEntries(['title','city','state','postal_code'].map(key=>[key,{value:''}])),querySelectorAll:()=>[]};
+  const ctx=context(['normalizePendingJobEntries','pendingJobDraftKey','readPendingJobDraft','persistPendingJobDraft','applyPendingJobDraft'],{pendingJobDraftMemory:null,currentUser:{id:'synthetic-cafe'},currentRole:'cafe_owner_manager',sessionStorage});
+  assert.equal(ctx.persistPendingJobDraft([['title','Draft role'],['city','Example City'],['state',state],['postal_code','12345-6789']]),true);
+  assert.equal(ctx.applyPendingJobDraft(form),true);assert.equal(form.elements.state.value,state);assert.equal(form.elements.city.value,'Example City');assert.equal(form.elements.postal_code.value,'12345-6789');
+  ctx.currentUser={id:'different-cafe'};assert.equal(ctx.readPendingJobDraft(),null);
+ }
 });
