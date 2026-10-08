@@ -15,7 +15,7 @@ export type VerifiedSubscription = {
   gracePeriodEnd?: string | null;
   subscriptions?: { provider: BillingProvider; canManage: boolean; access: 'free' | 'pro' }[];
 };
-export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google' };
+export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google'; basePlanId?: string };
 export type StorePurchase = { id: string; productId: string; provider: 'apple' | 'google'; proof: string };
 export type PurchaseResult = { kind: 'cancelled' | 'pending' } | { kind: 'purchased'; purchase: StorePurchase };
 export type PurchaseOutcome =
