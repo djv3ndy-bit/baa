@@ -1,4 +1,5 @@
 import { PurchaseVerificationError } from './verifiedStatus.mjs';
+import {createGoogleAuthClient} from './googleAuth.mjs';
 
 const requireConfiguration=value=> { if(!value) throw new PurchaseVerificationError('SERVER_CONFIGURATION'); };
 
@@ -21,7 +22,7 @@ export function validateGoogleCheckoutCatalog(subscription,config) {
     && unavailable(plan.otherRegionsConfig?.newSubscriberAvailability));
 }
 
-export async function verifyGoogleCheckoutCatalog(config,{loadGoogle=()=>import('google-auth-library'),timeoutMs=15_000}={}) {
+export async function verifyGoogleCheckoutCatalog(config,{loadGoogle=()=>import('google-auth-library'),loadOidc=()=>import('@vercel/oidc'),timeoutMs=15_000}={}) {
   requireConfiguration(config?.provider==='google' && config.packageName==='com.baristajobmatch.app'
     && /^[a-z0-9][a-z0-9_.]{0,39}$/.test(config.productId || '') && /^[a-z0-9][a-z0-9-]{0,62}$/.test(config.basePlanId || ''));
   let deadline;
@@ -30,9 +31,7 @@ export async function verifyGoogleCheckoutCatalog(config,{loadGoogle=()=>import(
   const timeout=new Promise((_,reject)=> { deadline=setTimeout(()=>reject(new PurchaseVerificationError('SERVER_CONFIGURATION')),timeoutMs); });
   try {
     const response=await Promise.race([timeout,(async()=> {
-      const {GoogleAuth}=await loadGoogle();
-      const auth=new GoogleAuth({credentials:config.credentials,scopes:['https://www.googleapis.com/auth/androidpublisher']});
-      const client=await auth.getClient();
+      const client=await createGoogleAuthClient(config,{loadGoogle,loadOidc});
       return client.request({
         url:`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(config.packageName)}/subscriptions/${encodeURIComponent(config.productId)}`,
         method:'GET',timeout:timeoutMs,

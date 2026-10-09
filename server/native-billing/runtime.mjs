@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { appleProvider, googleProvider, verifiedGoogleNotification } from './providers.mjs';
 import { PurchaseVerificationError } from './verifiedStatus.mjs';
+import {createGoogleAuthClient,readGoogleWifConfiguration} from './googleAuth.mjs';
 
 // These identities are the existing app.json bundle/package and eas.json app.
 const bundleId = 'com.baristajobmatch.app';
@@ -47,6 +48,10 @@ export function readProviderConfiguration(provider, env = process.env) {
   const basePlanId = value(env, 'GOOGLE_PLAY_BASE_PLAN_ID', /^[a-z0-9][a-z0-9-]{0,62}$/);
   const audience = value(env, 'GOOGLE_PLAY_PUSH_AUDIENCE', /^https:\/\/[^\s]{1,2000}$/);
   const serviceAccountEmail = value(env, 'GOOGLE_PLAY_PUSH_SERVICE_ACCOUNT_EMAIL', /^[a-z0-9._-]+@[a-z0-9.-]+\.iam\.gserviceaccount\.com$/);
+  if(env.GOOGLE_PLAY_AUTH_MODE==='vercel_oidc') {
+    return {provider,environment,productId,basePlanId,audience,serviceAccountEmail,packageName:bundleId,...readGoogleWifConfiguration(env)};
+  }
+  check(env.GOOGLE_PLAY_AUTH_MODE===undefined || env.GOOGLE_PLAY_AUTH_MODE==='service_account_json');
   let credentials;
   try { credentials = JSON.parse(value(env, 'GOOGLE_PLAY_SERVICE_ACCOUNT_JSON', /^[\s\S]{1,32768}$/)); }
   catch { throw new PurchaseVerificationError('SERVER_CONFIGURATION'); }
@@ -62,6 +67,7 @@ export function readProviderConfiguration(provider, env = process.env) {
 export async function createProviderRuntime(config, {
   loadApple = () => import('@apple/app-store-server-library'),
   loadGoogle = () => import('google-auth-library'),
+  loadOidc = () => import('@vercel/oidc'),
 } = {}) {
   if (config.provider === 'apple') {
     const { AppStoreServerAPIClient, SignedDataVerifier, Environment } = await loadApple();
@@ -71,9 +77,9 @@ export async function createProviderRuntime(config, {
     return { environment: config.environment, provider: appleProvider({ ...config, client, verifier }) };
   }
   check(config.provider === 'google');
-  const { GoogleAuth, OAuth2Client } = await loadGoogle();
-  const auth = new GoogleAuth({ credentials: config.credentials, scopes: ['https://www.googleapis.com/auth/androidpublisher'] });
-  const authClient = await auth.getClient();
+  const google = await loadGoogle();
+  const { OAuth2Client } = google;
+  const authClient = await createGoogleAuthClient(config,{loadGoogle:async()=>google,loadOidc});
   const oauthClient = new OAuth2Client();
   return { environment: config.environment, provider: googleProvider({ ...config, authClient }),
     notification: (authorization, body) => verifiedGoogleNotification({ authorization, body, oauthClient,

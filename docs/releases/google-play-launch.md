@@ -1,10 +1,10 @@
 # BaristaMatch Google Play launch
 
-Prepared October 8, 2026. Publisher: **BaristaMatch LLC**. The Android launch must include **Pro purchases**.
+Prepared October 9, 2026. Publisher: **BaristaMatch LLC**. The Android launch must include **Pro purchases**.
 
 ## Current status
 
-The app is not submitted to Google Play. The owner still needs a verified organization developer account. Android billing code is prepared on `codex/google-play-pro-release`, based on the existing iOS release branch at `5ccc56dcfac5aac80c080f14c0b194db1abad304` (PR #80). The Android changes require review and deployment; source tests alone do not establish store approval or successful purchases.
+The organization developer account is verified, the US monthly Café Pro product/base plan is active, and Android 1.0.5 (3) is on the internal testing track with purchases disabled. That first bundle predates the dedicated Android backend pins and must not be promoted to production. Android source remains separate in draft PR #86 on `codex/google-play-pro-release`, based on the existing iOS release branch at `5ccc56dcfac5aac80c080f14c0b194db1abad304` (PR #80). The dedicated Android Sandbox backend and database are initialized; public access checks pass. Optional keyless authentication code is prepared, but its custom environment, Google trust and runtime acceptance remain pending. No Google private key exists. Source tests and public GET checks do not establish successful purchases, device compatibility or public-release approval.
 
 Existing app identity:
 
@@ -51,7 +51,7 @@ Store these values in the appropriate managed environment. The two `EXPO_PUBLIC_
 | --- | --- |
 | Mobile/EAS production environment | `EXPO_PUBLIC_GOOGLE_PLAY_PRODUCT_ID`, `EXPO_PUBLIC_GOOGLE_PLAY_BASE_PLAN_ID`, and `EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED=true` after setup is validated |
 | Server environment | Matching `GOOGLE_PLAY_PRODUCT_ID` and `GOOGLE_PLAY_BASE_PLAN_ID` |
-| Server Android Publisher credential | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`, with the Play API permissions required for verification and acknowledgement |
+| Server Android Publisher credential | Existing `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`; the isolated Android Custom Environment also supports the explicit [keyless WIF mode](google-play-wif.md). Play API permissions are required for verification and acknowledgement. |
 | Server notification authentication | `GOOGLE_PLAY_PUSH_AUDIENCE` and `GOOGLE_PLAY_PUSH_SERVICE_ACCOUNT_EMAIL` |
 | Server release flags | `NATIVE_BILLING_ENVIRONMENT=Production`, `VERCEL_ENV=production`, `NATIVE_PURCHASES_ENABLED=true`, and `BILLING_ENABLED=true` only in the intended production environment |
 | Android app notification configuration | EAS production **file** variable `GOOGLE_SERVICES_JSON` for the Firebase Android app with package `com.baristajobmatch.app` |
@@ -62,6 +62,10 @@ Google Play real-time developer notifications use the existing endpoint:
 `https://www.baristajobmatch.com/api/native-purchases?action=google-events`
 
 Configure authenticated Pub/Sub push delivery with an audience and service-account identity matching the server settings. Test lifecycle updates, including renewals and cancellation. Firebase's client `google-services.json`, the FCM delivery credential, and the Play API/server notification credentials serve different purposes.
+
+Select **Get notifications for subscriptions and all voided purchases** in Play Console. Subscription voids re-fetch the current subscription state; a refunded order alone does not revoke Pro. Valid one-time-product voids are acknowledged and deduplicated without changing subscription access, because the app does not sell one-time products. Malformed, mixed, and unknown notification payloads are rejected.
+
+Public-release limitation: `pendingRefundReviewNotification` is not implemented. Google's current [RTDN reference](https://developer.android.com/google/play/billing/rtdn-reference#pendingrefundreviewnotification) describes a separate chargeback-review response within 24 hours through `orders.reviewrefund`. Confirm delivery eligibility and the required operational response before public paid release; this candidate does not submit refund preferences or usage evidence. Owner-only Sandbox tests do not establish that workflow or successful end-to-end refund handling.
 
 - [ ] Confirm the existing native ledger and checkout functions are deployed in the target database.
 - [ ] Apply the additive service-role-only function in `server/native-billing/sql/checkout_provider.sql` **before** deploying the updated server. It selects the provider from the saved account-bound reservation before authorizing store startup. Its absence prevents startup.
@@ -115,7 +119,7 @@ Sources: [Expo Android submission](https://docs.expo.dev/submit/android/), [Targ
 
 ## Evidence still required
 
-A verified LLC developer account, real Play product/base plan and credentials, deployed additive database function/server changes, current privacy/deletion review, store assets, a signed AAB, and successful Android device/billing tests. Local unit and database fixture tests validate code behavior; they do not replace these release gates.
+Dedicated Publisher authentication and RTDN setup, deployed keyless/notification source acceptance, current privacy/deletion review, store assets, a newly isolated signed Android AAB, and successful device/billing tests remain required. Production database/configuration and release approval remain separate gates. The verified LLC account, active product/base plan, initialized Android Sandbox database/backend and first purchases-disabled AAB do not establish these remaining outcomes. Local unit and database fixture tests validate code behavior; they do not replace release acceptance.
 
 ## Local validation
 
