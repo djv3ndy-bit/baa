@@ -38,6 +38,16 @@ test('Google rejects different accounts, environments, products and base plans',
   for (const config of [{ ...googleExpected, binding: 'another' }, { ...googleExpected, environment: 'Production' }, { ...googleExpected, productId: 'other' }, { ...googleExpected, basePlanId: 'annual' }]) assert.throws(() => verifiedGoogleStatus(google, config, now));
   assert.throws(() => verifiedGoogleStatus({ ...google, subscriptionState: 'NEW_UNKNOWN_STATE' }, googleExpected, now));
 });
+test('Sandbox Google verification rejects a purchase without the provider testPurchase marker', () => {
+  const productionPurchase={...google};delete productionPurchase.testPurchase;
+  assert.throws(()=>verifiedGoogleStatus(productionPurchase,googleExpected,now),{code:'ENVIRONMENT_MISMATCH'});
+});
+test('Production Google verification rejects test purchases and accepts only a non-test purchase', () => {
+  const productionExpected={...googleExpected,environment:'Production'};
+  assert.throws(()=>verifiedGoogleStatus(google,productionExpected,now),{code:'ENVIRONMENT_MISMATCH'});
+  const productionPurchase={...google};delete productionPurchase.testPurchase;
+  assert.equal(verifiedGoogleStatus(productionPurchase,productionExpected,now).access,'pro');
+});
 test('Google verification queries only the configured package and encodes the purchase token', async () => {
   const calls = []; const provider = googleProvider({ ...googleExpected, packageName: expected.bundleId, now: () => now, authClient: { request: async args => { calls.push(args); return { data: google }; } } });
   assert.equal((await provider.verify('opaque/token', expected.binding)).access, 'pro');

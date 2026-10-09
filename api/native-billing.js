@@ -1,7 +1,8 @@
 import existingBilling from './billing.js';
 import {adminRows,authenticatedCafe,subscriptionFor,stripeClient,stripeMode} from './_billing.js';
 import {nativeBillingRepository} from '../server/native-billing/repository.mjs';
-import {nativeCheckoutService,websiteBillingAllowsNative} from '../server/native-billing/checkoutService.mjs';
+import {nativeCheckoutService} from '../server/native-billing/checkoutService.mjs';
+import {inspectNativeWebsiteBilling} from '../server/native-billing/websiteCheckoutInspection.mjs';
 import {checkoutHandler} from '../server/native-billing/checkoutHandler.mjs';
 import {createCheckoutReadiness} from '../server/native-billing/checkoutReadiness.mjs';
 import {captureBillingStatus} from '../server/native-billing/accountBillingHandler.mjs';
@@ -19,8 +20,8 @@ export function nativeAccountService(){
     return nativeCheckoutService({repository,environment,productId,googlePlan,
       enabled:process.env.NATIVE_PURCHASES_ENABLED==='true' && process.env.BILLING_ENABLED==='true',
       ready:readiness.get(readinessKey),
-      async inspectWebsiteBilling(userId){
-        return websiteBillingAllowsNative({userId,subscription:await subscriptionFor(userId),stripe:await stripeClient(),liveMode:stripeMode()==='live'});
+      async inspectWebsiteBilling(userId,provider='apple'){
+        return inspectNativeWebsiteBilling({provider,userId,readSubscription:subscriptionFor,createStripe:stripeClient,readStripeMode:stripeMode});
       },
     });
 }

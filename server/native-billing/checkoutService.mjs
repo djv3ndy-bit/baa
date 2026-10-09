@@ -39,7 +39,9 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       try {
         // A durable DB reservation already blocks a new website Checkout. Check
         // Stripe itself for older sessions/subscriptions, including legacy plans.
-        requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
+        const websiteAllowsNative=provider==='google'
+          ? await inspectWebsiteBilling(account.id,'google') : await inspectWebsiteBilling(account.id);
+        requireValue(websiteAllowsNative,'WEBSITE_BILLING_EXISTS');
         return attempt;
       } catch(error) {
         try { await repository.cancelCheckout(account.id,environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
