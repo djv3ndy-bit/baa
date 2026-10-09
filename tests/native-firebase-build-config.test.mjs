@@ -12,7 +12,10 @@ const valid = {
 };
 const production = { EAS_BUILD_PROFILE: 'production', EAS_BUILD_PLATFORM: 'android' };
 const eas = JSON.parse(fs.readFileSync(new URL('../mobile/eas.json', import.meta.url), 'utf8'));
-const androidReview = { ...eas.build['android-payment-review'].env, EAS_BUILD_PROFILE: 'android-payment-review', EAS_BUILD_PLATFORM: 'android' };
+const androidKeyName = 'EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY';
+const androidPublicKey = 'sb_publishable_SYNTHETIC_ANDROID_TEST_ONLY';
+const androidLocal = { ...eas.build['android-payment-review'].env, [androidKeyName]: androidPublicKey };
+const androidReview = { ...androidLocal, EAS_BUILD_PROFILE: 'android-payment-review', EAS_BUILD_PLATFORM: 'android' };
 function resolveConfig(env = {}, files = {}) {
   const module = { exports: {} };
   vm.runInNewContext(source, { module, __dirname: '/project/mobile', process: { env }, require(name) {
@@ -69,9 +72,16 @@ test('the Android license-testing profile is a separate isolated Play store buil
   const profile = eas.build['android-payment-review'];
   assert.equal(profile.extends, 'production'); assert.equal(profile.environment, 'preview');
   assert.equal(profile.distribution, 'store'); assert.equal(profile.android.buildType, 'app-bundle');
-  for (const name of ['EXPO_NO_DOTENV', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED']) {
+  for (const name of ['EXPO_NO_DOTENV', 'EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED']) {
     assert.equal(profile.env[name], eas.build['payment-review'].env[name]);
   }
+  assert.equal(profile.env.EXPO_PUBLIC_API_BASE_URL, 'https://android-testing.baristajobmatch.com/api');
+  assert.equal(profile.env.EXPO_PUBLIC_SUPABASE_URL, 'https://ojvjlvojvozvhktbclcg.supabase.co');
+  assert.equal(profile.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, undefined);
+  assert.equal(profile.env[androidKeyName], undefined); // Supplied explicitly through EAS preview.
+  assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_API_BASE_URL, 'https://testing.baristajobmatch.com/api');
+  assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_SUPABASE_URL, 'https://iqtpsxxlpncaeabbcxht.supabase.co');
+  assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x');
   assert.equal(profile.env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, 'true');
   assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, undefined);
   assert.equal(eas.build.production.env?.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, undefined);
@@ -88,7 +98,7 @@ test('known builder metadata rejects license testing in another profile or platf
 });
 
 test('EAS local resolution accepts the pinned profile env without unavailable builder metadata or secret files', () => {
-  const localEnv = eas.build['android-payment-review'].env;
+  const localEnv = androidLocal;
   assert.equal(localEnv.EAS_BUILD_PROFILE, undefined); assert.equal(localEnv.EAS_BUILD_PLATFORM, undefined);
   assert.equal(resolveConfig(localEnv), app);
   assert.equal(resolveConfig({ ...localEnv, GOOGLE_SERVICES_JSON: '/eas/unavailable-secret-file.json' }), app);
@@ -98,14 +108,25 @@ test('EAS local resolution accepts the pinned profile env without unavailable bu
 });
 
 test('both local and remote license-testing config reject live, missing or changed isolated connections', () => {
-  for (const env of [androidReview, eas.build['android-payment-review'].env]) {
-    for (const name of ['EXPO_NO_DOTENV', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_SUPABASE_URL', 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY', 'EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED']) {
+  for (const env of [androidReview, androidLocal]) {
+    for (const name of ['EXPO_NO_DOTENV', 'EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_SUPABASE_URL', androidKeyName, 'EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED']) {
       for (const value of [undefined, 'unexpected']) {
         assert.throws(() => resolveConfig({ ...env, [name]: value }), /pinned isolated test API and database/);
       }
     }
   }
   assert.throws(() => resolveConfig({ ...androidReview, EXPO_PUBLIC_API_BASE_URL: 'https://www.baristajobmatch.com/api' }), /pinned isolated/);
+});
+
+test('the Android build cannot reuse the Apple key or silently use a generic key', () => {
+  for (const key of [undefined, '', 'sb_secret_SYNTHETIC_NEVER_CLIENT', eas.build['payment-review'].env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY]) {
+    assert.throws(() => resolveConfig({ ...androidLocal, [androidKeyName]: key,
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: androidPublicKey }), /pinned isolated/);
+  }
+  assert.equal(resolveConfig({ ...androidLocal, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'generic-production-public' }), app);
+  for (const name of ['EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_SUPABASE_URL']) {
+    assert.throws(() => resolveConfig({ ...androidLocal, [name]: eas.build['payment-review'].env[name] }), /pinned isolated/);
+  }
 });
 
 test('the Android license-testing build also requires the registered Firebase Android client file', () => {

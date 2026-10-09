@@ -3,8 +3,15 @@ import assert from 'node:assert/strict';
 import { loadTypescript } from './load-typescript.mjs';
 
 const timeout = { storeResponse: promise => promise };
-const guards = loadTypescript('mobile/features/review-mode/reviewPurchaseGuard.ts', { '../native-subscription/storeTimeout': timeout });
+const androidKeyName = 'EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY';
+const androidPublicKey = 'sb_publishable_SYNTHETIC_ANDROID_TEST_ONLY';
+const guards = loadTypescript('mobile/features/review-mode/reviewPurchaseGuard.ts', { '../native-subscription/storeTimeout': timeout },
+  { process: { env: { [androidKeyName]: androidPublicKey } } });
 const isolated = {
+  review: true, apiBase: 'https://android-testing.baristajobmatch.com/api', supabaseUrl: 'https://ojvjlvojvozvhktbclcg.supabase.co',
+  publishableKey: androidPublicKey,
+};
+const appleIsolated = {
   review: true, apiBase: 'https://testing.baristajobmatch.com/api', supabaseUrl: 'https://iqtpsxxlpncaeabbcxht.supabase.co',
   publishableKey: 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x',
 };
@@ -37,6 +44,7 @@ test('live, configured, absent flag, non-Android or mismatched connections canno
     { enabled: false, platform: 'android', environment: isolated },
     { platform: 'android', environment: isolated },
     { enabled: true, platform: 'ios', environment: isolated },
+    { enabled: true, platform: 'android', environment: appleIsolated },
     ...['review', 'apiBase', 'supabaseUrl', 'publishableKey'].map(key => ({ enabled: true, platform: 'android', environment: { ...isolated, [key]: key === 'review' ? false : 'different' } })),
   ]) assert.throws(() => guards.googleLicenseTestingStore(h.sdk, options), /isolated Android test build/);
   assert.deepEqual(h.calls, []);
@@ -56,7 +64,17 @@ test('the Google wrapper rechecks isolation and rejects Apple or other purchase 
   assert.deepEqual(h.calls, []);
 });
 
-function entryHarness({ platform = 'android', environment = isolated, flag } = {}) {
+test('the Google wrapper requires its explicit dedicated key and rejects an Apple or generic key fallback', () => {
+  for (const key of [undefined, '', 'sb_secret_SYNTHETIC_NEVER_CLIENT', appleIsolated.publishableKey]) {
+    const h = sdkHarness();
+    const guard = loadTypescript('mobile/features/review-mode/reviewPurchaseGuard.ts', { '../native-subscription/storeTimeout': timeout },
+      { process: { env: { [androidKeyName]: key, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: androidPublicKey } } });
+    assert.throws(() => guard.googleLicenseTestingStore(h.sdk, { enabled: true, platform: 'android', environment: isolated }), /isolated Android test build/);
+    assert.deepEqual(h.calls, []);
+  }
+});
+
+function entryHarness({ platform = 'android', environment = platform === 'ios' ? appleIsolated : isolated, flag } = {}) {
   const h = sdkHarness();
   const env = { EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED: 'true', EXPO_PUBLIC_GOOGLE_PLAY_PRODUCT_ID: 'synthetic.monthly',
     EXPO_PUBLIC_GOOGLE_PLAY_BASE_PLAN_ID: 'monthly', ...(flag === undefined ? {} : { EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING: flag }) };

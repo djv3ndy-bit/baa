@@ -18,10 +18,12 @@ module.exports = ({ config }) => {
     if (licenseTesting !== 'true' || (hasBuilderMetadata && (!androidReview || platform !== 'android'))) {
       throw new Error('Google Play license testing requires the android-payment-review profile and Android platform.');
     }
+    const androidKey = process.env.EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY || '';
     if (process.env.EXPO_NO_DOTENV !== '1' || process.env.EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED !== 'true'
-      || process.env.EXPO_PUBLIC_API_BASE_URL !== 'https://testing.baristajobmatch.com/api'
-      || process.env.EXPO_PUBLIC_SUPABASE_URL !== 'https://iqtpsxxlpncaeabbcxht.supabase.co'
-      || process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY !== 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x') {
+      || process.env.EXPO_PUBLIC_API_BASE_URL !== 'https://android-testing.baristajobmatch.com/api'
+      || process.env.EXPO_PUBLIC_SUPABASE_URL !== 'https://ojvjlvojvozvhktbclcg.supabase.co'
+      || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(androidKey)
+      || androidKey === 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x') {
       throw new Error('The Android payment-review build must use its pinned isolated test API and database configuration.');
     }
   }

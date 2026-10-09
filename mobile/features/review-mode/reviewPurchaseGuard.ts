@@ -37,10 +37,13 @@ export function googleLicenseTestingStore<P extends NativePurchase>(sdk: NativeP
 }): NativePurchaseApi<P> {
   const requireIsolatedBuild = () => {
     const environment = options.environment;
+    const expectedKey = process.env.EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY || '';
     if (options.enabled !== true || options.platform !== 'android' || environment.review !== true
-      || environment.apiBase !== 'https://testing.baristajobmatch.com/api'
-      || environment.supabaseUrl !== 'https://iqtpsxxlpncaeabbcxht.supabase.co'
-      || environment.publishableKey !== 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x') {
+      || environment.apiBase !== 'https://android-testing.baristajobmatch.com/api'
+      || environment.supabaseUrl !== 'https://ojvjlvojvozvhktbclcg.supabase.co'
+      || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(expectedKey)
+      || expectedKey === 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x'
+      || environment.publishableKey !== expectedKey) {
       throw new Error('Google Play testing requires the isolated Android test build.');
     }
   };
