@@ -29,8 +29,8 @@
       "package": "com.baristajobmatch.app",
       "versionCode": 2,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#fbf7f1"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#ffffff"
       },
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
@@ -61,6 +61,7 @@
         }
       ],
       "expo-iap",
+      "./plugins/with-android-icon-inset.cjs",
       "./plugins/with-android-font-layout.cjs",
       "./plugins/with-ios-bundled-code.cjs"
     ],
