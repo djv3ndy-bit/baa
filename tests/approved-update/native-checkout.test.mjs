@@ -4,15 +4,18 @@ import {nativeCheckoutService,websiteBillingAllowsNative} from '../../server/nat
 import {checkoutHandler} from '../../server/native-billing/checkoutHandler.mjs';
 const id='10000000-0000-4000-8000-000000000001',binding='20000000-0000-4000-8000-000000000001';
 const account={id:'cafe-a',role:'cafe_owner_manager'},request={provider:'apple',productId:'actual.monthly',storefront:'USA'};
+const googlePlan={productId:'google.monthly',basePlanId:'monthly'};
+const googleRequest={provider:'google',...googlePlan,storefront:'US'};
 function setup(overrides={}){
  const calls=[];
  const repository={
  claimCheckout:async(...args)=>{calls.push(['claim',...args]);return {attemptId:id,accountBinding:binding};},
  startCheckout:async(...args)=>{calls.push(['start',...args]);return true;},
+ checkoutProvider:async(...args)=>{calls.push(['provider',...args]);return 'apple';},
  cancelCheckout:async(...args)=>{calls.push(['cancel',...args]);return true;},
  settleVerifiedCheckout:async()=>true,summary:async()=>({accountId:account.id,environment:'Production',subscriptions:[]}),checkoutPending:async()=>false,...overrides.repository};
- const service=nativeCheckoutService({repository,environment:'Production',enabled:true,productId:'actual.monthly',createId:()=>id,
- ready:async()=>calls.push(['ready']),inspectWebsiteBilling:async()=>{calls.push(['inspect']);return true;},...overrides,repository});
+ const service=nativeCheckoutService({repository,environment:'Production',enabled:true,productId:'actual.monthly',googlePlan,createId:()=>id,
+ ready:async provider=>calls.push(['ready',provider]),inspectWebsiteBilling:async()=>{calls.push(['inspect']);return true;},...overrides,repository});
  return {service,calls};
 }
 test('native preflight verifies server readiness, reserves atomically, then checks the existing provider',async()=>{
@@ -21,6 +24,58 @@ test('native preflight verifies server readiness, reserves atomically, then chec
 });
 test('verification misconfiguration prevents both reservation and store launch',async()=>{
  const h=setup({ready:async()=>{throw Error('missing key');}});await assert.rejects(h.service.prepare(account,request));assert.deepEqual(h.calls,[]);
+});
+test('Google preflight checks the configured monthly base plan and reserves the Google provider',async()=>{
+ const h=setup();assert.deepEqual(await h.service.prepare(account,googleRequest),{attemptId:id,accountBinding:binding});
+ assert.deepEqual(h.calls,[['ready','google'],['claim',account.id,'google','Production',id],['inspect']]);
+});
+test('Google wrong or missing catalog fields and non-US Play accounts never reach readiness or reserve',async()=>{
+ for(const mutation of [{productId:'other'},{basePlanId:'other'},{basePlanId:undefined},{storefront:'USA'},{storefront:'CA'},{provider:'unknown'}]){
+  const h=setup();await assert.rejects(h.service.prepare(account,{...googleRequest,...mutation}),error=>error.code==='PRODUCT_UNAVAILABLE');assert.deepEqual(h.calls,[]);
+ }
+ for(const plan of [undefined,{productId:googlePlan.productId},{...googlePlan,productId:'a'.repeat(41)},{...googlePlan,basePlanId:'not.valid'}]){
+  const h=setup({googlePlan:plan});await assert.rejects(h.service.prepare(account,googleRequest));assert.deepEqual(h.calls,[]);
+ }
+});
+test('Google provider misconfiguration prevents reservation and startup without requiring Apple readiness',async()=>{
+ const selected=[];
+ const h=setup({ready:async provider=>{selected.push(provider);throw Error('Google credentials unavailable');},repository:{checkoutProvider:async()=> 'google'}});
+ await assert.rejects(h.service.prepare(account,googleRequest));assert.deepEqual(h.calls,[]);
+ await assert.rejects(h.service.start(account,id,googleRequest));assert.deepEqual(h.calls,[]);assert.deepEqual(selected,['google','google']);
+});
+test('Google preserves shared reservation conflicts and existing website subscription guards',async()=>{
+ const conflicted=setup({repository:{claimCheckout:async()=>null}});await assert.rejects(conflicted.service.prepare(account,googleRequest),error=>error.code==='CHECKOUT_BLOCKED');
+ assert.deepEqual(conflicted.calls,[['ready','google']]);
+ for(const inspectWebsiteBilling of [async()=>false,async()=>{throw Error('provider unavailable');}]){
+  const h=setup({inspectWebsiteBilling});await assert.rejects(h.service.prepare(account,googleRequest));
+  assert.deepEqual(h.calls[1],['claim',account.id,'google','Production',id]);assert.deepEqual(h.calls.at(-1),['cancel',account.id,'Production',id,true]);
+ }
+});
+test('startup derives the provider from the account-bound reservation and retains atomic rejection',async()=>{
+ const h=setup({repository:{checkoutProvider:async()=> 'google'}});assert.deepEqual(await h.service.start(account,id,googleRequest),{started:true});
+ assert.deepEqual(h.calls,[['ready','google'],['start',account.id,'Production',id]]);
+ for(const provider of [null,undefined,'unknown']){
+  const blocked=setup({repository:{checkoutProvider:async()=>provider}});await assert.rejects(blocked.service.start(account,id),error=>error.code==='CHECKOUT_BLOCKED');assert.deepEqual(blocked.calls,[]);
+ }
+ const rejected=setup({repository:{checkoutProvider:async()=> 'google',startCheckout:async()=>false}});
+ await assert.rejects(rejected.service.start(account,id,googleRequest),error=>error.code==='CHECKOUT_BLOCKED');assert.deepEqual(rejected.calls,[['ready','google']]);
+});
+test('Google startup rejects missing, stale and forged prepared plan metadata before readiness or store authorization',async()=>{
+ for(const metadata of [undefined,{}, {...googleRequest,productId:'old.product'},{...googleRequest,basePlanId:'old-plan'},
+  {...googleRequest,storefront:'USA'},{...googleRequest,provider:'apple'}]){
+  const h=setup({repository:{checkoutProvider:async()=> 'google'}});
+  await assert.rejects(h.service.start(account,id,metadata),error=>error.code==='PRODUCT_UNAVAILABLE');assert.deepEqual(h.calls,[]);
+ }
+ for(const changed of [{...googlePlan,productId:'changed.monthly'},{...googlePlan,basePlanId:'changed-monthly'}]){
+  const h=setup({googlePlan:changed,repository:{checkoutProvider:async()=> 'google'}});
+  await assert.rejects(h.service.start(account,id,googleRequest),error=>error.code==='PRODUCT_UNAVAILABLE');assert.deepEqual(h.calls,[]);
+ }
+});
+test('Apple old-client startup remains attemptId-only and cannot be redirected to Google by request metadata',async()=>{
+ for(const metadata of [undefined,googleRequest]){
+  const h=setup();assert.deepEqual(await h.service.start(account,id,metadata),{started:true});
+  assert.deepEqual(h.calls,[['provider',account.id,'Production',id],['ready','apple'],['start',account.id,'Production',id]]);
+ }
 });
 test('existing web billing and failed provider requests release only the unused native reservation',async()=>{
  for(const inspect of [async()=>false,async()=>{throw Error('offline');}]){
@@ -34,6 +89,7 @@ test('lost cleanup response leaves a safely expiring unused reservation and no s
 });
 test('purchase startup and cancellation are scoped to the authenticated account and attempt',async()=>{
  const h=setup();await h.service.start(account,id);await h.service.cancel(account,id,'user-cancelled');
+ assert.deepEqual(h.calls.slice(0,3),[['provider',account.id,'Production',id],['ready','apple'],['start',account.id,'Production',id]]);
  assert.deepEqual(h.calls.at(-1),['cancel',account.id,'Production',id,false]);
  for(const reason of ['network-error','pending','no-purchases',''])await assert.rejects(h.service.cancel(account,id,reason));
 });
@@ -82,6 +138,17 @@ test('checkout HTTP validates method, action, auth, JSON size and saved café ro
 test('HTTP ignores caller-supplied account identity and exposes no underlying provider errors',async()=>{
  const result=await http({body:{...request,accountId:'other'}});assert.equal(result.code,200);assert.equal(result.calls.find(row=>row[0]==='claim')[1],account.id);
  const failed=await http({overrides:{inspectWebsiteBilling:async()=>{throw Error('private secret token');}}});assert.equal(failed.code,503);assert.equal(JSON.stringify(failed.body).includes('private'),false);
+});
+test('HTTP Google preflight and startup use the saved café account and original prepared plan',async()=>{
+ const prepared=await http({body:{...googleRequest,accountId:'other'}});assert.equal(prepared.code,200);
+ assert.deepEqual(prepared.calls.find(row=>row[0]==='claim'),['claim',account.id,'google','Production',id]);
+ const started=await http({action:'start',body:{...googleRequest,attemptId:id,accountId:'other'},overrides:{repository:{checkoutProvider:async()=> 'google'}}});
+ assert.equal(started.code,200);assert.deepEqual(started.calls,[['ready','google'],['start',account.id,'Production',id]]);
+ const stale=await http({action:'start',body:{...googleRequest,attemptId:id,basePlanId:'old-plan'},overrides:{repository:{checkoutProvider:async()=> 'google'}}});
+ assert.equal(stale.code,409);assert.deepEqual(stale.calls,[]);
+ const forged=await http({action:'start',body:{...googleRequest,attemptId:id,provider:'apple'},overrides:{repository:{checkoutProvider:async()=> 'google'}}});
+ assert.equal(forged.code,409);assert.deepEqual(forged.calls,[]);
+ const apple=await http({action:'start',body:{attemptId:id}});assert.equal(apple.code,200);assert.deepEqual(apple.body,{started:true});
 });
 test('status is read through the existing website status contract plus the private native ledger',async()=>{
  const result=await http({method:'GET',action:'status'});assert.equal(result.code,200);assert.equal(result.body.accountId,account.id);assert.equal(result.headers['Cache-Control'],'no-store');

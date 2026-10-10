@@ -54,6 +54,22 @@
         "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
         "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
       }
+    },
+    "android-payment-review": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "preview",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://android-testing.baristajobmatch.com/api",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ojvjlvojvozvhktbclcg.supabase.co",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      }
     }
   },
   "submit": {

@@ -7,6 +7,12 @@ const binding = '11111111-1111-4111-8111-111111111111';
 const plan = { id: 'test.monthly', provider: 'apple', storefront: 'US', prices: { USD: 9.99 } };
 const product = { id: plan.id, platform: 'ios', type: 'subs', currency: 'USD', price: 9.99, displayPrice: '$9.99', subscriptionPeriodNumberIOS: '1', subscriptionPeriodUnitIOS: 'month' };
 const purchase = { id: 'transaction-a', productId: plan.id, store: 'apple', purchaseState: 'purchased', purchaseToken: 'signed-test-proof', appAccountToken: binding };
+const googlePlan = { ...plan, provider: 'google', basePlanId: 'monthly' };
+// Expo-IAP's normalized base plan: OpenIAP maps offerId ?? basePlanId to id.
+const googleOffer = { id: 'monthly', type: 'introductory', displayPrice: '$9.99', price: 9.99, currency: 'USD',
+  basePlanIdAndroid: 'monthly', offerTokenAndroid: 'store-offer',
+  pricingPhasesAndroid: { pricingPhaseList: [{ billingCycleCount: 0, billingPeriod: 'P1M', recurrenceMode: 1, formattedPrice: '$9.99', priceAmountMicros: '9990000', priceCurrencyCode: 'USD' }] } };
+const googleProduct = { ...product, platform: 'android', subscriptionOffers: [googleOffer] };
 function harness(options = {}) {
   const calls = [], unfinished = []; let update, error;
   const api = {
@@ -31,11 +37,68 @@ for (const mutation of [{ price: 19.99 }, { subscriptionPeriodUnitIOS: 'year' },
   test(`unexpected product terms are blocked: ${JSON.stringify(mutation)}`, () => assert.throws(() => selectMonthlyProduct({ ...product, ...mutation }, plan)));
 }
 test('Google uses the approved monthly base plan and its real offer token/phase price', () => {
-  const offer = { basePlanIdAndroid: 'monthly', offerTokenAndroid: 'store-offer', pricingPhasesAndroid: { pricingPhaseList: [{ billingPeriod: 'P1M', recurrenceMode: 1, formattedPrice: '$9.99', priceAmountMicros: '9990000', priceCurrencyCode: 'USD' }] } };
+  const offer = googleOffer;
   const row = { ...product, platform: 'android', subscriptionOffers: [offer] }, config = { ...plan, provider: 'google', basePlanId: 'monthly' };
   assert.equal(selectMonthlyProduct(row, config).offerToken, 'store-offer');
   assert.throws(() => selectMonthlyProduct({ ...row, subscriptionOffers: [offer, offer] }, config), /terms/);
   assert.throws(() => selectMonthlyProduct(row, { ...config, basePlanId: 'annual' }), /terms/);
+});
+test('Google selects only the configured regular base plan when discounted offers are also returned', () => {
+  const row = { ...googleProduct, subscriptionOffers: [
+    { ...googleOffer, id: 'discount', type: 'promotional', offerTokenAndroid: 'discount-token' },
+    { ...googleOffer, id: 'annual', basePlanIdAndroid: 'annual', offerTokenAndroid: 'different-plan-token' },
+    googleOffer,
+  ] };
+  const selected = selectMonthlyProduct(row, googlePlan);
+  assert.equal(selected.product.basePlanId, 'monthly');
+  assert.equal(selected.offerToken, 'store-offer');
+});
+test('Google rejects unapproved price, currency, trial, prepaid, installment and promotional terms', () => {
+  const phase = googleOffer.pricingPhasesAndroid.pricingPhaseList[0];
+  const offers = [
+    { ...googleOffer, id: 'discount', type: 'promotional' },
+    { ...googleOffer, id: 'monthly', type: 'promotional' },
+    { ...googleOffer, id: undefined },
+    { ...googleOffer, type: undefined },
+    { ...googleOffer, installmentPlanDetailsAndroid: { commitmentPaymentsCount: 3 } },
+    { ...googleOffer, pricingPhasesAndroid: { pricingPhaseList: [{ ...phase, billingPeriod: 'P1Y' }] } },
+    { ...googleOffer, pricingPhasesAndroid: { pricingPhaseList: [{ ...phase, recurrenceMode: 3 }] } },
+    { ...googleOffer, pricingPhasesAndroid: { pricingPhaseList: [{ ...phase, priceAmountMicros: '19990000' }] } },
+    { ...googleOffer, pricingPhasesAndroid: { pricingPhaseList: [{ ...phase, priceCurrencyCode: 'CAD' }] } },
+    { ...googleOffer, pricingPhasesAndroid: { pricingPhaseList: [{ ...phase, priceAmountMicros: '0' }, phase] } },
+  ];
+  for (const offer of offers) assert.throws(() => selectMonthlyProduct({ ...googleProduct, subscriptionOffers: [offer] }, googlePlan));
+  for (const offerTokenAndroid of ['', '   ', 123]) {
+    assert.throws(() => selectMonthlyProduct({ ...googleProduct, subscriptionOffers: [{ ...googleOffer, offerTokenAndroid }] }, googlePlan), /offer/);
+  }
+});
+test('Google native checkout uses the selected offer token and server account binding without early acknowledgement', async () => {
+  const h = harness({ plan: googlePlan, api: { getStorefront: async () => 'US', fetchProducts: async () => [googleProduct] } });
+  const p = await h.gateway.product();
+  await assert.rejects(h.gateway.buy({ ...p, basePlanId: 'annual' }, binding), /price/);
+  assert.equal(h.calls.some(call => call[0] === 'request'), false);
+  const result = h.gateway.buy(p, binding); await flush();
+  assert.deepEqual(plain(h.calls.find(call => call[0] === 'request')[1]), { type: 'subs', request: {
+    google: { skus: [googlePlan.id], obfuscatedAccountId: binding, subscriptionOffers: [{ sku: googlePlan.id, offerToken: 'store-offer' }] },
+  } });
+  h.emit({ ...purchase, store: 'google', appAccountToken: undefined, obfuscatedAccountIdAndroid: binding });
+  assert.equal((await result).kind, 'purchased');
+  assert.equal(h.calls.some(call => call[0] === 'finish'), false);
+  await h.gateway.dispose();
+});
+test('a Google store account change blocks checkout while restore and management stay available', async () => {
+  let country = 'US';
+  const googlePurchase = { ...purchase, store: 'google', appAccountToken: undefined, obfuscatedAccountIdAndroid: binding };
+  const h = harness({ plan: googlePlan, api: {
+    getStorefront: async () => country, fetchProducts: async () => [googleProduct], getAvailablePurchases: async () => [googlePurchase],
+  } });
+  const p = await h.gateway.product(); country = 'CA';
+  await assert.rejects(h.gateway.buy(p, binding), error => error.reason === 'outside_us');
+  assert.equal(h.calls.some(call => call[0] === 'request'), false);
+  assert.equal((await h.gateway.restore())[0].provider, 'google');
+  await h.gateway.manage();
+  assert.deepEqual(plain(h.calls.find(call => call[0] === 'manage')[1]), { skuAndroid: googlePlan.id, packageNameAndroid: 'com.baristajobmatch.app' });
+  await h.gateway.dispose();
 });
 test('native request binds the account and leaves finishing to verified backend coordination', async () => {
   const h = harness(); const p = await h.gateway.product(); const result = h.gateway.buy(p, binding); await flush();
@@ -135,7 +198,7 @@ test('closing while country lookup is pending cannot open checkout later', async
 });
 test('Google uses the Play account country code rather than the Apple code', async () => {
   const googlePlan = { ...plan, provider: 'google', basePlanId: 'monthly' };
-  const row = { ...product, platform: 'android', subscriptionOffers: [{ basePlanIdAndroid: 'monthly', offerTokenAndroid: 'store-offer', pricingPhasesAndroid: { pricingPhaseList: [{ billingPeriod: 'P1M', recurrenceMode: 1, formattedPrice: '$9.99', priceAmountMicros: '9990000', priceCurrencyCode: 'USD' }] } }] };
+  const row = googleProduct;
   for (const [country, allowed] of [['US', true], ['CA', false], ['USA', false]]) {
     const h = harness({ plan: googlePlan, api: { getStorefront: async () => country, fetchProducts: async () => [row] } });
     if (allowed) assert.equal((await h.gateway.product()).provider, 'google');
@@ -143,7 +206,7 @@ test('Google uses the Play account country code rather than the Apple code', asy
     await h.gateway.dispose();
   }
 });
-test('only the actual U.S. Apple product is enabled in the app catalog', () => {
+test('the Apple catalog stays configured while Android waits for real Play IDs', () => {
   const { approvedStorePlan } = loadTypescript('mobile/features/native-subscription/storeCatalog.ts');
   assert.deepEqual(plain(approvedStorePlan('ios')), { id: 'com.baristajobmatch.cafe.pro.monthly', provider: 'apple', storefront: 'US', prices: { USD: 9.99 } });
   assert.equal(approvedStorePlan('android'), null); assert.equal(approvedStorePlan('web'), null);

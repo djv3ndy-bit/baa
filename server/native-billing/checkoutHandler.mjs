@@ -18,7 +18,7 @@ export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
       if(!body || typeof body!=='object' || Array.isArray(body) || Buffer.byteLength(JSON.stringify(body))>4096)return res.status(400).json({error:'Purchase request is invalid.'});
       const result=action==='prepare'?await service.prepare(account(user),body)
         :action==='resume'?await service.resume(account(user),body,await websiteStatus(req))
-        :action==='start'?await service.start(account(user),body.attemptId)
+        :action==='start'?await service.start(account(user),body.attemptId,body)
         :await service.cancel(account(user),body.attemptId,body.reason);
       return res.status(200).json(result);
     }catch(error){

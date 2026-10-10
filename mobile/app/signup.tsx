@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
+import { getMobileAuthWebBridge } from '@/features/review-mode/environment';
 import { createExplicitProfile, getCurrentContext, savedAppRole } from '@/lib/session';
 import { normalizeUSLocation, normalizeUSState } from '@/lib/usLocation';
 import { trackProductEvent } from '@/lib/productEvents';
@@ -75,7 +75,7 @@ export default function SignupScreen() {
       const { data, error } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
-        options: { emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE, data: draft },
+        options: { emailRedirectTo: getMobileAuthWebBridge(), data: draft },
       });
       if (error) throw error;
       if (!active.current) return;

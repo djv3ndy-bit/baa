@@ -5,9 +5,18 @@ export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, googlePlan, ready, createId=randomUUID }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
+  const checkProduct=request=> {
+    const apple=request?.provider==='apple' && request.productId===productId && request.storefront==='USA';
+    const google=request?.provider==='google' && googlePlan
+      && /^[a-z0-9][a-z0-9_.]{0,39}$/.test(googlePlan.productId || '')
+      && /^[a-z0-9][a-z0-9-]{0,62}$/.test(googlePlan.basePlanId || '')
+      && request.productId===googlePlan.productId && request.basePlanId===googlePlan.basePlanId && request.storefront==='US';
+    requireValue(apple || google,'PRODUCT_UNAVAILABLE');
+    return request.provider;
+  };
   return {
     async status(account,website) {
       accountCheck(account);
@@ -22,15 +31,17 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     async prepare(account,request) {
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
-      requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
+      const provider=checkProduct(request);
       // Fail before opening the store if server verification is not configured.
-      await ready();
-      const attempt=await repository.claimCheckout(account.id,'apple',environment,createId());
+      await ready(provider);
+      const attempt=await repository.claimCheckout(account.id,provider,environment,createId());
       requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
       try {
         // A durable DB reservation already blocks a new website Checkout. Check
         // Stripe itself for older sessions/subscriptions, including legacy plans.
-        requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
+        const websiteAllowsNative=provider==='google'
+          ? await inspectWebsiteBilling(account.id,'google') : await inspectWebsiteBilling(account.id);
+        requireValue(websiteAllowsNative,'WEBSITE_BILLING_EXISTS');
         return attempt;
       } catch(error) {
         try { await repository.cancelCheckout(account.id,environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
@@ -41,7 +52,7 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
-      await ready();
+      await ready('apple');
       requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
       // Reuse the original Apple reservation. Never release it or allocate a
       // second checkout while the first store result is uncertain.
@@ -50,9 +61,18 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
       return attempt;
     },
-    async start(account,attemptId) {
+    async start(account,attemptId,request) {
       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
-      await ready();
+      // Derive the store from the durable reservation, never from a caller's
+      // provider field. The atomic start operation still rechecks eligibility,
+      // expiry and duplicate billing after provider readiness completes.
+      const provider=await repository.checkoutProvider(account.id,environment,attemptId);
+      requireValue(['apple','google'].includes(provider),'CHECKOUT_BLOCKED');
+      // Google sends its original prepared plan. If server configuration changed
+      // before launch, reject the stale client before authorizing a charge.
+      // Apple clients retain their existing attemptId-only startup contract.
+      if(provider==='google') requireValue(checkProduct(request)==='google','PRODUCT_UNAVAILABLE');
+      await ready(provider);
       requireValue(await repository.startCheckout(account.id,environment,attemptId),'CHECKOUT_BLOCKED');
       return {started:true};
     },
