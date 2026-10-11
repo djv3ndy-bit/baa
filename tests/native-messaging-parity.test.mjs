@@ -195,7 +195,10 @@ function pushHarness(options = {}) {
     addNotificationResponseReceivedListener(fn) { listeners.response = fn; return { remove() {} }; },
   };
   const client = { auth: { getSession: async () => ({ data: { session }, error: null }), onAuthStateChange(fn) { listeners.auth = fn; return { data: { subscription: { unsubscribe() {} } } }; } }, from() { return { upsert: async row => { calls.push(['upsert', row]); return { error: null }; }, delete() { calls.push('delete'); return this; }, eq() { return this; }, then(resolve) { return Promise.resolve({ error: null }).then(resolve); } }; } };
-  const module = loadTs('lib/pushNotifications.ts', { 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: { setItem: async (key, value) => stored.set(key, value), getItem: async key => stored.get(key) || null, removeItem: async key => stored.delete(key) } }, 'expo-constants': { default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } } }, 'expo-device': { isDevice: true }, 'expo-notifications': notification, 'expo-router': { router: { push: route => routes.push(route) } }, './supabase': { supabase: client }, './notificationRouting': routing });
+  const module = loadTs('lib/pushNotifications.ts', { 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: { setItem: async (key, value) => stored.set(key, value), getItem: async key => stored.get(key) || null, removeItem: async key => stored.delete(key) } }, 'expo-constants': { default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } } }, 'expo-device': { isDevice: true }, 'expo-notifications': notification, 'expo-router': { router: { push: route => routes.push(route) } }, './supabase': { supabase: client }, './notificationRouting': routing,
+    '../features/review-mode/environment': { getAppEnvironment: () => assert.fail('The iOS notification path must not read Android review configuration.') },
+    './androidFcmRegistration': loadTs('lib/androidFcmRegistration.ts'),
+  });
   return { module, calls, routes, listeners, stored, permission, setSession(value) { session = value; } };
 }
 test('automatic registration never prompts and explicit enable reports the actual permission result', async () => {
