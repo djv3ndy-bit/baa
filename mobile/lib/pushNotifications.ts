@@ -121,7 +121,7 @@ export async function clearAndroidNotificationsAfterDeletion(expectedUserId: str
   return clearSession();
 }
 
-export function listenForPhoneNotifications() {
+export function listenForPhoneNotifications(options: { isNavigationReady?: () => boolean } = {}) {
   const direct = directAndroid();
   const stopAndroidFcm = direct ? androidFcm.listen() : () => {};
   let live = true, received = false, pending: Notifications.NotificationResponse | null = null;
@@ -132,20 +132,31 @@ export function listenForPhoneNotifications() {
     const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
     if (handled.has(key)) return;
     pending = response;
+    // A restored Android session can resolve before the startup screen's home
+    // redirect. Keep the native response until that redirect has completed.
+    if (direct && options.isNavigationReady?.() === false) return;
     const { data, error } = await supabase.auth.getSession();
     if (!live || error || !data.session || pending !== response || handled.has(key)) return;
     if (direct) {
       const latest = await supabase.auth.getSession();
-      if (!live || latest.error || pending !== response || latest.data.session?.user.id !== data.session.user.id
+      if (!live || pending !== response || handled.has(key)) return;
+      if (latest.error || latest.data.session?.user.id !== data.session.user.id
         || response.notification.request.content.data.recipientUserId !== latest.data.session.user.id) { pending = null; return; }
+      if (options.isNavigationReady?.() === false) return;
+      // A failed navigation must not consume the only cold-start response.
+      try { router.push(destination as never); } catch { return; }
     }
     handled.add(key); if (handled.size > 100) handled.delete(handled.values().next().value!);
     pending = null;
-    router.push(destination as never);
+    if (!direct) router.push(destination as never);
     void Notifications.clearLastNotificationResponseAsync().catch(() => {});
   }
   void Notifications.getLastNotificationResponseAsync().then(response => { if (!received) return open(response); }).catch(() => {});
   const listener = Notifications.addNotificationResponseReceivedListener(response => { received = true; void open(response).catch(() => {}); });
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(event => { if (event === 'SIGNED_IN' && pending) setTimeout(() => { if (live && pending) void open(pending).catch(() => {}); }, 0); });
-  return () => { live = false; pending = null; listener.remove(); subscription.unsubscribe(); stopAndroidFcm(); };
+  const retryPending = () => { if (live && pending) void open(pending).catch(() => {}); };
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+    if ((event === 'SIGNED_IN' || (direct && event === 'INITIAL_SESSION')) && pending) setTimeout(retryPending, 0);
+  });
+  const stop = () => { live = false; pending = null; listener.remove(); subscription.unsubscribe(); stopAndroidFcm(); };
+  return Object.assign(stop, { retryPending: () => { if (direct) retryPending(); } });
 }

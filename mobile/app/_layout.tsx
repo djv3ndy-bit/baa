@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { Stack, usePathname } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { Stack, usePathname, useRootNavigationState } from 'expo-router';
 import { Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -17,13 +17,19 @@ export default function RootLayout() {
 
 function ReadyRootLayout() {
   const pathname=usePathname();
+  const rootNavigation = useRootNavigationState();
+  const notificationNavigationReady = useRef(false);
+  const phoneNotifications = useRef<ReturnType<typeof listenForPhoneNotifications> | null>(null);
+  notificationNavigationReady.current = !!rootNavigation?.key && !['/', '/login', '/signup', '/auth/callback'].includes(pathname);
   const isLogin = pathname === '/login';
   useEffect(() => {
-    const stopListening=listenForPhoneNotifications();
+    const stopListening=listenForPhoneNotifications({ isNavigationReady: () => notificationNavigationReady.current });
+    phoneNotifications.current = stopListening;
     registerForPhoneNotifications().catch(error=>console.warn('Phone notification registration failed',error?.message||error));
     const {data:{subscription}}=supabase.auth.onAuthStateChange(event=>{if(event==='SIGNED_IN')registerForPhoneNotifications().catch(error=>console.warn('Phone notification registration failed',error?.message||error))});
-    return()=>{stopListening();subscription.unsubscribe()};
+    return()=>{stopListening();if (phoneNotifications.current === stopListening) phoneNotifications.current = null;subscription.unsubscribe()};
   }, []);
+  useEffect(() => { phoneNotifications.current?.retryPending(); }, [pathname, rootNavigation?.key]);
   useEffect(()=>{
     let cancelled=false;
     supabase.auth.getSession().then(({data})=>{

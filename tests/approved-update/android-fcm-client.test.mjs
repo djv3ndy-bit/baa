@@ -192,8 +192,8 @@ test('confirmed deletion waits an issued registration and blocks refresh while r
   fails = false; h.account(null, false); await h.controller.confirmedDeletion('cafe-a'); assert.equal(h.saved(), null); stop();
 });
 
-function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError } = {}) {
-  let user = 'cafe-a', responseCallback, tokenCallback;
+function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError, initialUser = 'cafe-a', initialResponse = null, responseRead, pushRoute } = {}) {
+  let user = initialUser, responseCallback, tokenCallback;
   const calls = [], routes = [], storage = new Map(), authCallbacks = [];
   const notifications = {
     AndroidImportance: { HIGH: 4 }, IosAuthorizationStatus: { PROVISIONAL: 3 },
@@ -204,7 +204,7 @@ function adapter({ platform = 'android', flag = 'true', environment = isolated, 
     async setAutoServerRegistrationEnabledAsync(enabled) { calls.push(['expo-auto', enabled]); },
     async getExpoPushTokenAsync() { calls.push('expo'); if (expoError) throw new Error(expoError); return { data: 'ExponentPushToken[synthetic]' }; },
     addPushTokenListener(callback) { tokenCallback = callback; return { remove() { calls.push('token-stop'); tokenCallback = null; } }; },
-    async getLastNotificationResponseAsync() { return null; },
+    async getLastNotificationResponseAsync() { return responseRead ? responseRead() : initialResponse; },
     addNotificationResponseReceivedListener(callback) { responseCallback = callback; return { remove() { calls.push('response-stop'); } }; },
     async clearLastNotificationResponseAsync() { calls.push('clear-response'); },
   };
@@ -221,11 +221,11 @@ function adapter({ platform = 'android', flag = 'true', environment = isolated, 
     'react-native': { Platform: { OS: platform } }, '@react-native-async-storage/async-storage': { default: {
       async getItem(k) { if (storageError) throw new Error(storageError); return storage.get(k) || null; }, async setItem(k, value) { storage.set(k, value); }, async removeItem(k) { storage.delete(k); },
     } }, 'expo-constants': { default: { easConfig: { projectId: 'synthetic-expo-project' } } },
-    'expo-device': { isDevice: device }, 'expo-notifications': notifications, 'expo-router': { router: { push: route => routes.push(route) } },
+    'expo-device': { isDevice: device }, 'expo-notifications': notifications, 'expo-router': { router: { push: route => { pushRoute?.(route); routes.push(route); } } },
     './supabase': { supabase }, './notificationRouting': routing, './androidFcmRegistration': module,
     '../features/review-mode/environment': { getAppEnvironment: () => environment },
   }, { process: { env: { EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: flag, EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY: key } } });
-  return { push, calls, routes, storage, token: token => tokenCallback?.(token), account(id) { user = id; authCallbacks.forEach(callback => callback(id ? 'SIGNED_IN' : 'SIGNED_OUT', id ? { user: { id } } : null)); },
+  return { push, calls, routes, storage, token: token => tokenCallback?.(token), account(id, event = id ? 'SIGNED_IN' : 'SIGNED_OUT') { user = id; authCallbacks.forEach(callback => callback(event, id ? { user: { id } } : null)); },
     response(data, id = 'notification-one') { responseCallback({ actionIdentifier: 'default', notification: { request: { identifier: id, content: { data } } } }); } };
 }
 
@@ -278,6 +278,99 @@ test('direct notification navigation rechecks session after asynchronous ownersh
   const stop = h.push.listenForPhoneNotifications();
   h.response({ route: '/messages', recipientUserId: 'cafe-a' });
   gate.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle(); assert.deepEqual(h.routes, []); stop();
+});
+
+const tap = (recipientUserId = 'cafe-a', id = 'cold-notification') => ({ actionIdentifier: 'default',
+  notification: { request: { identifier: id, content: { data: { route: '/messages', type: 'message', recipientUserId } } } } });
+
+test('restored Android cold tap waits for the startup home redirect, then routes and consumes once', async () => {
+  let ready = false, screen = '/';
+  const h = adapter({ initialResponse: tap(), pushRoute: route => { screen = route; } });
+  const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  await settle(); assert.equal(screen, '/'); assert.deepEqual(h.routes, []); assert.ok(!h.calls.includes('clear-response'));
+  // Index has now finished its account lookup and accepted the home redirect.
+  screen = '/home'; ready = true; stop.retryPending(); await settle();
+  assert.equal(screen, '/messages'); assert.deepEqual(h.routes, ['/messages']);
+  assert.equal(h.calls.filter(call => call === 'clear-response').length, 1);
+  stop.retryPending(); h.response(tap().notification.request.content.data, 'cold-notification'); await settle();
+  assert.deepEqual(h.routes, ['/messages']); stop();
+});
+
+test('Android pending signed-out cold tap retries on INITIAL_SESSION without needing another SIGNED_IN', async () => {
+  const h = adapter({ initialUser: null, initialResponse: tap() }), stop = h.push.listenForPhoneNotifications();
+  await settle(); assert.deepEqual(h.routes, []);
+  h.account('cafe-a', 'INITIAL_SESSION'); await settle(); assert.deepEqual(h.routes, ['/messages']);
+  h.account('cafe-a', 'INITIAL_SESSION'); await settle(); assert.deepEqual(h.routes, ['/messages']); stop();
+});
+
+test('pending cold tap cannot route after a different account finishes startup or signs in', async () => {
+  let ready = false;
+  const h = adapter({ initialUser: null, initialResponse: tap() });
+  const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  await settle(); h.account('barista-b'); await settle();
+  ready = true; stop.retryPending(); await settle(); assert.deepEqual(h.routes, []);
+  h.account('cafe-a'); stop.retryPending(); await settle(); assert.deepEqual(h.routes, []); stop();
+});
+
+test('navigation becoming unready during session lookup retains the response for a fresh guarded retry', async () => {
+  const gate = deferred(); let ready = true, reads = 0;
+  const h = adapter({ initialResponse: tap(), sessionRead: async () => ++reads === 2 ? gate.promise
+    : { data: { session: { user: { id: 'cafe-a' } } } } });
+  const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  await settle(); ready = false; gate.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle();
+  assert.deepEqual(h.routes, []); assert.ok(!h.calls.includes('clear-response'));
+  ready = true; stop.retryPending(); await settle(); assert.deepEqual(h.routes, ['/messages']); assert.ok(reads >= 4); stop();
+});
+
+test('concurrent Android readiness retries route a pending response only once', async () => {
+  let ready = false;
+  const h = adapter({ initialResponse: tap() }), stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  await settle(); ready = true; stop.retryPending(); stop.retryPending(); stop.retryPending(); await settle();
+  assert.deepEqual(h.routes, ['/messages']); assert.equal(h.calls.filter(call => call === 'clear-response').length, 1); stop();
+});
+
+test('failed Android router intent retains the cold response instead of marking it handled or clearing it', async () => {
+  let fails = true;
+  const h = adapter({ initialResponse: tap(), pushRoute: () => { if (fails) throw new Error('root navigator not ready'); } });
+  const stop = h.push.listenForPhoneNotifications(); await settle();
+  assert.deepEqual(h.routes, []); assert.ok(!h.calls.includes('clear-response'));
+  fails = false; stop.retryPending(); await settle(); assert.deepEqual(h.routes, ['/messages']); stop();
+});
+
+test('a live Android tap wins over a delayed old persisted response', async () => {
+  const last = deferred(), h = adapter({ responseRead: () => last.promise }), stop = h.push.listenForPhoneNotifications();
+  h.response({ route: '/matches', recipientUserId: 'cafe-a' }, 'new-tap'); await settle();
+  last.resolve(tap()); await settle(); assert.deepEqual(h.routes, ['/matches']); stop();
+});
+
+test('an older ownership lookup cannot discard a newer pending Android tap', async () => {
+  const older = deferred(), newer = deferred(); let reads = 0;
+  const h = adapter({ sessionRead: async () => ++reads === 2 ? older.promise : reads === 3 ? newer.promise
+    : { data: { session: { user: { id: 'cafe-a' } } } } });
+  const stop = h.push.listenForPhoneNotifications();
+  h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'older'); await settle();
+  h.response({ route: '/matches', recipientUserId: 'cafe-a' }, 'newer'); await settle();
+  older.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle();
+  newer.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle();
+  assert.deepEqual(h.routes, ['/matches']); stop();
+});
+
+test('disposed Android listener ignores delayed persisted and in-flight ownership responses', async () => {
+  const last = deferred(), h = adapter({ responseRead: () => last.promise }), stop = h.push.listenForPhoneNotifications();
+  stop(); last.resolve(tap()); stop.retryPending(); await settle(); assert.deepEqual(h.routes, []);
+  const lookup = deferred(), second = adapter({ initialResponse: tap(), sessionRead: () => lookup.promise });
+  const stopSecond = second.push.listenForPhoneNotifications(); await settle(); stopSecond();
+  lookup.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle(); assert.deepEqual(second.routes, []);
+});
+
+test('iOS Expo cold-response timing and auth retry behavior ignore Android navigation readiness', async () => {
+  const h = adapter({ platform: 'ios', device: true, initialResponse: tap() });
+  const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => false });
+  await settle(); assert.deepEqual(h.routes, ['/messages']); stop.retryPending(); await settle(); assert.deepEqual(h.routes, ['/messages']); stop();
+  const guest = adapter({ platform: 'ios', device: true, initialUser: null, initialResponse: tap() });
+  const stopGuest = guest.push.listenForPhoneNotifications({ isNavigationReady: () => false });
+  await settle(); guest.account('cafe-a', 'INITIAL_SESSION'); await settle(); assert.deepEqual(guest.routes, []);
+  guest.account('cafe-a'); await settle(); assert.deepEqual(guest.routes, ['/messages']); stopGuest();
 });
 
 test('malformed persisted cache invalidates old native delivery before replacement', async () => {
