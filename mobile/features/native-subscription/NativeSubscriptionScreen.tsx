@@ -30,7 +30,7 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     catch { /* Installed native module not available: status/management still work. */ }
     setHasStore(!!store);
     const current = new SubscriptionController({
-      accountId, store, call: authenticatedApi,
+      accountId, platform: Platform.OS, store, call: authenticatedApi,
       account: async () => {
         const context = await getCurrentContext();
         return live && context.user && context.role ? { id: context.user.id, role: context.role } : null;

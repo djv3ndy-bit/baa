@@ -1,10 +1,10 @@
 # BaristaMatch Google Play launch
 
-Prepared October 9, 2026. Publisher: **BaristaMatch LLC**. The Android launch must include **Pro purchases**.
+Updated October 11, 2026. Publisher: **BaristaMatch LLC**. The Android launch must include **Pro purchases**.
 
 ## Current status
 
-The organization developer account is verified, the US monthly Café Pro product/base plan is active, and Android 1.0.5 (3) is on the internal testing track with purchases disabled. That first bundle predates the dedicated Android backend pins and must not be promoted to production. Android source remains separate in draft PR #86 on `codex/google-play-pro-release`, based on the existing iOS release branch at `5ccc56dcfac5aac80c080f14c0b194db1abad304` (PR #80). The dedicated Android Sandbox backend and database are initialized; public access checks pass. Optional keyless authentication code is prepared, but its custom environment, Google trust and runtime acceptance remain pending. No Google private key exists. Source tests and public GET checks do not establish successful purchases, device compatibility or public-release approval.
+The organization developer account is verified, the US monthly Café Pro product/base plan is active, and Android 1.0.5 (5) is available on the owner-only internal testing track. The dedicated Android Sandbox backend/database, keyless Publisher authentication and authenticated Play notifications are configured. The isolated license-test acceptance below records purchase, restore, renewal, cancellation and expiry; it does not authorize a public release. Android source remains separate in draft PR #86 on `codex/google-play-pro-release`, based on the existing iOS release branch at `5ccc56dcfac5aac80c080f14c0b194db1abad304` (PR #80). Build 6 from Android source `44b05dd2005200a36dd511344ffe277bbf482651` is still being prepared for direct FCM device acceptance. No Google private key exists. Existing iOS and production environments remain outside this test scope.
 
 Existing app identity:
 
@@ -103,6 +103,20 @@ Google's SDK does not provide the Apple app-transaction proof used by the existi
 
 Source: [Google billing tests](https://developer.android.com/google/play/billing/test).
 
+### Isolated Android acceptance — October 11, 2026
+
+These checks used Android 1.0.5 (5), the dedicated Sandbox backend and a configured Google Play license tester. The Google sheet displayed USD 9.99/month with the free **Test card, always approves** method; the test did not charge a real payment method.
+
+- Purchase completed and the app confirmed Pro access. Restore and accelerated test renewal also passed against the isolated ledger.
+- Cancellation stopped automatic renewal while access remained active through the paid test period. Ledger revision 4, verified at `2026-10-11T05:36:49.778144Z`, had `auto_renews=false`, expiry `2026-10-11T05:41:06.474Z`, and native/paid-job access still true.
+- Expiry subsequently removed access. Ledger revision 5, verified at `2026-10-11T05:41:09.72253Z`, retained that expiry and `auto_renews=false`; native access and paid-job access were both false. The app returned to USD 9.99/month and Subscribe.
+- Acknowledgement is inferred from the successful initial purchase flow: the server awaits required Google acknowledgement before its success response. Neither the success notice nor the ledger is an independent observation of Google's acknowledgement state; no receipt, purchase token or order identifier is included here.
+- A UI follow-up is prepared: clear the old purchase-confirmation notice when Android receives a verified Google transition from Pro to free. The observed status/card and server gates had already changed correctly. This client fix awaits a later Android rebuild and runtime acceptance; build 6 is an intermediate direct-FCM testing candidate and does not contain it.
+
+FCM's API, exact external-identity condition and the two narrowly scoped IAM grants are configured. The direct-FCM server flag is stored only on the Android Custom Environment; the matching Git deployment refresh and build 6 device notification/lifecycle checks remain pending. This does not establish actual message delivery, token refresh, logout/account-switch cleanup or upgrade behavior. Keep Apple push and production settings unchanged.
+
+Payment failure, interrupted checkout/network recovery, duplicate-purchase races, refund handling and public-release acceptance remain separate checks. The earlier checklist is preparation guidance; these dated results close only the specific Sandbox cases stated above.
+
 ## 6. Build the production candidate and submit
 
 - [ ] Run the mobile type check and store configuration checks with the intended production inputs.
@@ -119,7 +133,7 @@ Sources: [Expo Android submission](https://docs.expo.dev/submit/android/), [Targ
 
 ## Evidence still required
 
-Dedicated Publisher authentication and RTDN setup, deployed keyless/notification source acceptance, current privacy/deletion review, store assets, a newly isolated signed Android AAB, and successful device/billing tests remain required. Production database/configuration and release approval remain separate gates. The verified LLC account, active product/base plan, initialized Android Sandbox database/backend and first purchases-disabled AAB do not establish these remaining outcomes. Local unit and database fixture tests validate code behavior; they do not replace release acceptance.
+Direct FCM deployment/device acceptance, rebuilt expiry-notice runtime acceptance, remaining billing failure/refund cases, final privacy/deletion review, store assets and production-candidate acceptance remain required. Production database/configuration and release approval remain separate gates. The successful isolated license-test lifecycle above does not establish a production purchase, public delivery or complete app QA. Local unit and database fixture tests validate code behavior; they do not replace release acceptance.
 
 ## Local validation
 

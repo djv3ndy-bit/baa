@@ -17,6 +17,7 @@ export type SubscriptionViewState = {
 export const initialSubscriptionState: SubscriptionViewState = { subscription: null, product: null, busy: false, error: '', notice: '' };
 type Dependencies = {
   accountId: string;
+  platform?: string;
   account: PurchaseDependencies['account'];
   call: BillingTransport;
   store: SubscriptionStore | null;
@@ -57,7 +58,12 @@ export class SubscriptionController {
     const value = await this.deps.call('/native-billing?action=status', {}, 'GET', this.deps.accountId);
     const subscription = checkedSubscription(value, this.deps.accountId);
     if (!await this.accountIsCurrent()) throw new Error('Account changed');
-    this.publish({ subscription });
+    // Management can finish while foreground loading is still locked. Do not
+    // retain a Google purchase success notice after Android confirms lost access.
+    const clearGoogleConfirmation = this.deps.platform === 'android'
+      && this.state.subscription?.provider === 'google' && this.state.subscription.access === 'pro'
+      && subscription.access !== 'pro' && this.state.notice === 'Your Pro access is confirmed.';
+    this.publish({ subscription, ...(clearGoogleConfirmation ? { notice: '' } : {}) });
     return subscription;
   }
   private async run(work: () => Promise<void>) {
