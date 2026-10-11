@@ -7,6 +7,7 @@ import {
   Alert,
   AppState,
   Linking,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -21,7 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_STORAGE_KEY, withAuthStorageLock, supabase } from "@/lib/supabase";
 import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } from '@/lib/accountDeletion';
 import { getCurrentContext, AppRole } from "@/lib/session";
-import { registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
+import { clearAndroidNotificationsAfterDeletion, registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
 import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
 
@@ -245,7 +246,9 @@ export default function Settings() {
       await requireAccountSession(expectedUserId);
       await finishAccountDeletion(
         () => authenticatedApi<DeletionResponse>('/delete-account', { confirmation: 'DELETE' }, 'POST', expectedUserId),
-        () => clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, expectedUserId, withAuthStorageLock),
+        () => Platform.OS === 'android'
+          ? clearAndroidNotificationsAfterDeletion(expectedUserId, () => clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, expectedUserId, withAuthStorageLock))
+          : clearDeletedSession(supabase.auth, AsyncStorage, AUTH_STORAGE_KEY, expectedUserId, withAuthStorageLock),
       );
       router.replace('/account-deleted');
     } catch (error) {

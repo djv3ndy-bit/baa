@@ -7,7 +7,7 @@ import vm from 'node:vm';
 const app = JSON.parse(fs.readFileSync(new URL('../mobile/app.json', import.meta.url))).expo;
 const source = fs.readFileSync(new URL('../mobile/app.config.js', import.meta.url), 'utf8');
 const valid = {
-  project_info: { project_number: '123456789', project_id: 'synthetic-test-only' },
+  project_info: { project_number: '397053773139', project_id: 'baristamatch' },
   client: [{ client_info: { mobilesdk_app_id: '1:123456789:android:synthetic', android_client_info: { package_name: 'com.baristajobmatch.app' } }, api_key: [{ current_key: 'synthetic-public-client-key' }] }],
 };
 const production = { EAS_BUILD_PROFILE: 'production', EAS_BUILD_PLATFORM: 'android' };
@@ -83,6 +83,9 @@ test('the Android license-testing profile is a separate isolated Play store buil
   assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_SUPABASE_URL, 'https://iqtpsxxlpncaeabbcxht.supabase.co');
   assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x');
   assert.equal(profile.env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, 'true');
+  assert.equal(profile.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED, 'true');
+  assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED, undefined);
+  assert.equal(eas.build.production.env?.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED, undefined);
   assert.equal(eas.build['payment-review'].env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, undefined);
   assert.equal(eas.build.production.env?.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING, undefined);
 });
@@ -136,4 +139,22 @@ test('the Android license-testing build also requires the registered Firebase An
   assert.equal(result.android.googleServicesFile, '/eas/client.json');
   const wrong = structuredClone(valid); wrong.client[0].client_info.android_client_info.package_name = 'com.example.other';
   assert.throws(() => resolveConfig({ ...androidReview, GOOGLE_SERVICES_JSON: '/eas/client.json' }, { '/eas/client.json': JSON.stringify(wrong) }), /no client for com.baristajobmatch.app/);
+});
+
+test('direct FCM rejects other profiles, platforms and missing isolated Google license-testing flags', () => {
+  for (const changes of [{ EAS_BUILD_PROFILE: 'production' }, { EAS_BUILD_PROFILE: 'payment-review' },
+    { EAS_BUILD_PLATFORM: 'ios' }, { EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING: undefined },
+    { EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING: 'false' }]) {
+    assert.throws(() => resolveConfig({ ...androidReview, ...changes }), /Android direct FCM requires/);
+  }
+  assert.throws(() => resolveConfig({ EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: 'TRUE' }), /explicitly enabled only/);
+});
+
+test('direct FCM pins the real Firebase project as well as the Android package', () => {
+  for (const change of [{ project_id: 'other' }, { project_number: '123456789' }]) {
+    const wrong = structuredClone(valid); Object.assign(wrong.project_info, change);
+    const env = { ...androidReview, GOOGLE_SERVICES_JSON: '/eas/client.json' };
+    assert.throws(() => resolveConfig(env, { '/eas/client.json': JSON.stringify(wrong) }), /dedicated BaristaMatch Firebase test project/);
+    assert.equal(resolveConfig({ ...env, EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: 'false' }, { '/eas/client.json': JSON.stringify(wrong) }).android.googleServicesFile, '/eas/client.json');
+  }
 });

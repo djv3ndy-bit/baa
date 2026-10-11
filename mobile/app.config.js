@@ -7,10 +7,15 @@ module.exports = ({ config }) => {
   const platform = process.env.EAS_BUILD_PLATFORM;
   const profile = process.env.EAS_BUILD_PROFILE;
   const licenseTesting = process.env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING;
+  const directFcm = process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED;
   const androidReview = profile === 'android-payment-review';
   // EAS supplies profile.env during local config resolution, but its built-in
   // profile/platform metadata and secret file variables exist on the builder.
   const hasBuilderMetadata = profile !== undefined || platform !== undefined || process.env.EAS_BUILD === 'true';
+  if (directFcm && !['true', 'false'].includes(directFcm)) throw new Error('Android direct FCM must be explicitly enabled only for the isolated Android test build.');
+  if (directFcm === 'true' && (licenseTesting !== 'true' || (hasBuilderMetadata && (!androidReview || platform !== 'android')))) {
+    throw new Error('Android direct FCM requires the android-payment-review profile and Android platform.');
+  }
   if (licenseTesting && !['true', 'false'].includes(licenseTesting)) {
     throw new Error('EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING must be true only in the isolated android-payment-review build.');
   }
@@ -49,6 +54,9 @@ module.exports = ({ config }) => {
   const text = value => typeof value === 'string' && value.trim().length > 0;
   if (!text(firebase.project_info?.project_id) || !text(firebase.project_info?.project_number) || !text(client.client_info?.mobilesdk_app_id) || !Array.isArray(client.api_key) || !client.api_key.some(entry => text(entry?.current_key))) {
     throw new Error('The Android Firebase client configuration is incomplete. Download a fresh google-services.json from the existing Firebase project.');
+  }
+  if (directFcm === 'true' && (firebase.project_info.project_id !== 'baristamatch' || firebase.project_info.project_number !== '397053773139')) {
+    throw new Error('Android direct FCM requires the dedicated BaristaMatch Firebase test project.');
   }
   // Keep Firebase contents and credentials out of Expo extra and the JS runtime.
   return { ...config, android: { ...config.android, googleServicesFile: filename } };

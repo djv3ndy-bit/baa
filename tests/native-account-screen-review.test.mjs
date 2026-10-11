@@ -14,7 +14,7 @@ const clean = value => JSON.parse(JSON.stringify(value));
 const member = (id, role = 'barista') => ({ user: { id, email: `${id}@example.invalid` }, role, profile: { id, role } });
 function harness(file, options = {}) {
   let current = options.member || member('account-a'), contextCalls = 0, hookIndex = 0, tree, focusCallback, focusCleanup;
-  const hooks = [], effects = [], callbacks = [], routes = [], alerts = [], requests = [], passwordCalls = [], cleared = [], rawUpdates = [];
+  const hooks = [], effects = [], callbacks = [], routes = [], alerts = [], requests = [], passwordCalls = [], cleared = [], rawUpdates = [], notificationCleanup = [];
   const depsEqual = (a, b) => a && b && a.length === b.length && a.every((value, i) => value === b[i]);
   const react = {
     useState(initial) { const id = hookIndex++; if (!(id in hooks)) hooks[id] = typeof initial === 'function' ? initial() : initial; return [hooks[id], value => { hooks[id] = typeof value === 'function' ? value(hooks[id]) : value; }]; },
@@ -29,7 +29,7 @@ function harness(file, options = {}) {
     async authenticatedApi(path, body, method, expected) { await api.requireAccountSession(expected); requests.push({ path, body, method, expected }); return options.api ? options.api(path, expected) : path === '/billing-status' ? { plan: 'free', status: 'active', connectedToBilling: false } : { success: true }; },
     async updateAccountPassword(expected, password) { await api.requireAccountSession(expected); passwordCalls.push({ expected, password }); if (options.password) await options.password(); },
   };
-  const native = { Platform: { OS: 'ios', select: values => values.ios ?? values.default }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value }, Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async () => {}, openSettings: async () => {} } };
+  const native = { Platform: { OS: options.platform || 'ios', select: values => values[options.platform || 'ios'] ?? values.default }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value }, Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async () => {}, openSettings: async () => {} } };
   for (const name of ['View', 'Text', 'Pressable', 'SafeAreaView', 'ScrollView', 'TextInput', 'ActivityIndicator']) native[name] = name;
   const jsx = (type, props) => ({ type, props: props || {} }), modules = new Map();
   function load(file) {
@@ -46,11 +46,11 @@ function harness(file, options = {}) {
       if (name === '@/modules/baristamatch-storefront') return { getStorefrontCountryCode: async () => null };
       if (name === 'expo-router') return { useLocalSearchParams: () => ({}), router: { replace: route => routes.push(route), push: route => routes.push(route), back: () => routes.push('back') }, useFocusEffect: callback => { focusCallback = callback; } };
       if (name === 'expo-web-browser') return { openBrowserAsync: async () => {} };
-      if (name === '@react-native-async-storage/async-storage') return { getItem: async () => current?.user ? JSON.stringify({ user: current.user }) : null, multiRemove: async keys => cleared.push(keys) };
+      if (name === '@react-native-async-storage/async-storage') { const storage = { getItem: async () => current?.user ? JSON.stringify({ user: current.user }) : null, multiRemove: async keys => cleared.push(keys) }; return { default: storage, ...storage }; }
       if (name.endsWith('/supabase') || name === './supabase') return { supabase: { auth }, AUTH_STORAGE_KEY: 'test-auth', withAuthStorageLock: operation => operation() };
       if (name.endsWith('/session') || name === './session') return { getCurrentContext: async () => options.context ? options.context(++contextCalls, current) : current };
       if (name.endsWith('/api')) return api;
-      if (name.endsWith('/pushNotifications')) return { registerForPhoneNotifications: async () => ({ status: 'enabled' }), unregisterThisDeviceNotifications: async () => {} };
+      if (name.endsWith('/pushNotifications')) return { registerForPhoneNotifications: async () => ({ status: 'enabled' }), unregisterThisDeviceNotifications: async () => {}, clearAndroidNotificationsAfterDeletion: async (expected, clearSession) => { notificationCleanup.push(expected); return clearSession(); } };
       if (name.startsWith('@/')) return load(`mobile/${name.slice(2)}`);
       if (name.startsWith('./') || name.startsWith('../')) return load(resolve(dirname(file), name));
       throw new Error(`Unexpected native dependency ${name}`);
@@ -65,7 +65,7 @@ function harness(file, options = {}) {
   function render() { hookIndex = 0; tree = expand(Component()); effects.splice(0).forEach(effect => effect()); }
   function all(type) { const nodes = []; function visit(node) { if (Array.isArray(node)) node.forEach(visit); else if (node && typeof node === 'object') { if (node.type === type) nodes.push(node); visit(node.props.children); } } visit(tree); return nodes; }
   render();
-  return { render, routes, alerts, requests, passwordCalls, rawUpdates, cleared, all, load, text: () => textOf(tree), focus: () => { focusCleanup = focusCallback(); }, blur: () => focusCleanup?.(), change(next, event = next?.user ? 'SIGNED_IN' : 'SIGNED_OUT') { current = next; callbacks.forEach(callback => callback(event, session())); }, press(label) { const node = all('Pressable').find(node => textOf(node).trim().startsWith(label)); assert.ok(node, `${label} exists`); assert.ok(!node.props.disabled, `${label} enabled`); return node.props.onPress(); } };
+  return { render, routes, alerts, requests, passwordCalls, rawUpdates, cleared, notificationCleanup, all, load, text: () => textOf(tree), focus: () => { focusCleanup = focusCallback(); }, blur: () => focusCleanup?.(), change(next, event = next?.user ? 'SIGNED_IN' : 'SIGNED_OUT') { current = next; callbacks.forEach(callback => callback(event, session())); }, press(label) { const node = all('Pressable').find(node => textOf(node).trim().startsWith(label)); assert.ok(node, `${label} exists`); assert.ok(!node.props.disabled, `${label} enabled`); return node.props.onPress(); } };
 }
 async function loadedSettings(options) { const h = harness('mobile/app/settings.tsx', options); h.focus(); await settle(); h.render(); return h; }
 function deletePrompt(h) { h.press('Advanced settings'); h.render(); h.press('Delete my account'); return h.alerts.at(-1)[2].find(button => button.text === 'Continue').onPress; }
@@ -170,4 +170,23 @@ for (const serializeStorage of [false, true]) test(`real auth-js password sign-i
     if (serializeStorage) assert.equal(JSON.parse(values.get(key)).user.id, 'new-account');
     else assert.equal(values.has(key), false, 'shared SDK lock alone would remove the newly signed-in account');
   } finally { releaseRead.resolve(); await auth.stopAutoRefresh(); }
+});
+
+
+test('Android Settings cleans notification delivery only after confirmed deletion, then clears the same auth store', async () => {
+  const gate = deferred(), h = await loadedSettings({ platform: 'android', api: path => path === '/delete-account' ? gate.promise : {} });
+  deletePrompt(h)(); h.alerts.at(-1)[2].find(button => button.text === 'Delete permanently').onPress(); await settle();
+  assert.deepEqual(h.notificationCleanup, []); assert.deepEqual(h.cleared, []);
+  gate.resolve({ success: true }); await settle();
+  assert.deepEqual(h.notificationCleanup, ['account-a']); assert.equal(h.cleared.length, 1);
+  assert.equal(h.routes.at(-1), '/account-deleted');
+});
+
+test('unconfirmed Android deletion and confirmed iOS deletion do not invoke the Android notification hook', async () => {
+  for (const [platform, success] of [['android', false], ['ios', true]]) {
+    const h = await loadedSettings({ platform, api: path => path === '/delete-account' ? { success } : {} });
+    deletePrompt(h)(); h.alerts.at(-1)[2].find(button => button.text === 'Delete permanently').onPress(); await settle();
+    assert.deepEqual(h.notificationCleanup, []); assert.equal(h.cleared.length, success ? 1 : 0);
+    assert.equal(h.routes.includes('/account-deleted'), success);
+  }
 });

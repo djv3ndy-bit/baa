@@ -68,6 +68,7 @@
         "EXPO_PUBLIC_SUPABASE_URL": "https://ojvjlvojvozvhktbclcg.supabase.co",
         "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
         "EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING": "true",
+        "EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED": "true",
         "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
       }
     }
