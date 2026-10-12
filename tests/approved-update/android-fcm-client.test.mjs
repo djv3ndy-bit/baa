@@ -17,9 +17,10 @@ function harness(options = {}) {
   if (options.saved) storage.set(module.ANDROID_FCM_TOKEN_KEY, JSON.stringify(options.saved));
   const deps = {
     requireEnabled: () => options.enabled !== false,
+    registrationScope: () => options.public ? module.PUBLIC_ANDROID_FCM_SCOPE : undefined,
     userId: async () => user,
     storage: { async getItem(k) { if (options.read) await options.read(); return storage.get(k) || null; }, async setItem(k, value) { calls.push(['cache', k]); if (options.write) await options.write(); storage.set(k, value); }, async removeItem(k) { calls.push(['uncache', k]); storage.delete(k); } },
-    async channel() { calls.push('channel'); }, async permissions() { calls.push('permissions'); return permission; },
+    async channel() { calls.push('channel'); if (options.channel) await options.channel(); }, async permissions() { calls.push('permissions'); return permission; },
     async requestPermission() { calls.push('request-permission'); return permission = { granted: options.grant !== false, canAskAgain: true }; },
     async token() { calls.push('native-token'); return options.token ? options.token() : token; },
     async invalidateNativeToken() { calls.push('invalidate'); if (options.invalidate) await options.invalidate(); token = native('synthetic_fcm_after_reset'); },
@@ -57,6 +58,58 @@ test('permission and session gates run before token collection or persistence', 
   assert.ok(accepted.calls.indexOf('channel') < accepted.calls.indexOf('native-token'));
   assert.deepEqual(accepted.saved(), { token: 'synthetic_fcm_a', userId: 'cafe-a' });
   assert.ok(accepted.calls.some(value => Array.isArray(value) && value[0] === 'cache' && value[1] === module.ANDROID_FCM_TOKEN_KEY));
+});
+
+test('public first registration rotates legacy Expo native delivery before collection; later refresh reuses proven public ownership', async () => {
+  const h = harness({ public: true }), stop = h.controller.listen();
+  h.rows.set('synthetic_fcm_a', 'cafe-a'); // Legacy native/Expo registration must become undeliverable, not reassigned.
+  await h.controller.register();
+  assert.ok(h.calls.indexOf('invalidate') < h.calls.indexOf('native-token'));
+  assert.equal(h.rows.get('synthetic_fcm_after_reset'), 'cafe-a');
+  assert.equal(h.saved().scope, module.PUBLIC_ANDROID_FCM_SCOPE);
+  h.calls.length = 0; await h.controller.register();
+  assert.ok(!h.calls.includes('invalidate'));
+  h.refresh(native('synthetic_public_refresh')); await settle();
+  assert.equal(h.rows.get('synthetic_public_refresh'), 'cafe-a');
+  assert.ok(!h.calls.includes('invalidate')); stop();
+});
+
+test('public permission denial still invalidates legacy native ownership without collecting or saving a token', async () => {
+  for (const fails of [false, true]) {
+    const h = harness({ public: true, invalidate: async () => { if (fails) throw new Error('migration reset failed'); } });
+    h.permission({ granted: false, canAskAgain: false });
+    if (fails) await assert.rejects(h.controller.register(), /migration reset failed/);
+    else assert.equal((await h.controller.register()).status, 'denied');
+    assert.ok(h.calls.includes('invalidate'));
+    assert.ok(!h.calls.includes('native-token')); assert.equal(h.rows.size, 0);
+    assert.equal(h.saved(), null);
+  }
+});
+
+test('public scope rejects an isolated same-user cache and preserves failed migration reset for retry', async () => {
+  for (const cached of [false, true]) {
+    let fails = true;
+    const h = harness({ public: true, ...(cached ? { saved: { userId: 'cafe-a', token: 'synthetic_fcm_a' } } : {}),
+      invalidate: async () => { if (fails) throw new Error('migration reset failed'); } });
+    await assert.rejects(h.controller.register(), /migration reset failed/);
+    assert.ok(!h.calls.includes('native-token')); assert.equal(h.rows.size, 0);
+    if (cached) assert.equal(h.saved().token, 'synthetic_fcm_a');
+    fails = false; await h.controller.register();
+    assert.equal(h.saved().scope, module.PUBLIC_ANDROID_FCM_SCOPE);
+    assert.equal(h.rows.get('synthetic_fcm_after_reset'), 'cafe-a');
+  }
+});
+
+test('public migration reset cannot register a token after the account changes; isolated cached registration does not rotate', async () => {
+  const beforeGate = deferred(), changed = harness({ public: true, channel: () => beforeGate.promise });
+  const before = changed.controller.register(); await settle(); changed.account('barista-b', false); beforeGate.resolve();
+  assert.equal((await before).status, 'no-session'); assert.ok(!changed.calls.includes('invalidate')); assert.ok(!changed.calls.includes('native-token'));
+  const gate = deferred(), h = harness({ public: true, invalidate: () => gate.promise });
+  const pending = h.controller.register(); await settle(); h.account('barista-b', false); gate.resolve();
+  assert.equal((await pending).status, 'no-session'); assert.ok(!h.calls.includes('native-token')); assert.equal(h.rows.size, 0);
+  const review = harness({ saved: { userId: 'cafe-a', token: 'synthetic_fcm_a' } });
+  await review.controller.register(); assert.ok(!review.calls.includes('invalidate'));
+  assert.deepEqual(review.saved(), { userId: 'cafe-a', token: 'synthetic_fcm_a' });
 });
 
 test('malformed, wrong-provider and Expo tokens cannot be persisted', async () => {
@@ -192,7 +245,7 @@ test('confirmed deletion waits an issued registration and blocks refresh while r
   fails = false; h.account(null, false); await h.controller.confirmedDeletion('cafe-a'); assert.equal(h.saved(), null); stop();
 });
 
-function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError, initialUser = 'cafe-a', initialResponse = null, responseRead, pushRoute } = {}) {
+function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError, initialUser = 'cafe-a', initialResponse = null, responseRead, pushRoute, publicEnv = {} } = {}) {
   let user = initialUser, responseCallback, tokenCallback;
   const calls = [], routes = [], storage = new Map(), authCallbacks = [];
   const notifications = {
@@ -224,7 +277,7 @@ function adapter({ platform = 'android', flag = 'true', environment = isolated, 
     'expo-device': { isDevice: device }, 'expo-notifications': notifications, 'expo-router': { router: { push: route => { pushRoute?.(route); routes.push(route); } } },
     './supabase': { supabase }, './notificationRouting': routing, './androidFcmRegistration': module,
     '../features/review-mode/environment': { getAppEnvironment: () => environment },
-  }, { process: { env: { EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: flag, EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY: key } } });
+  }, { process: { env: { EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: flag, EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY: key, ...publicEnv } } });
   return { push, calls, routes, storage, token: token => tokenCallback?.(token), account(id, event = id ? 'SIGNED_IN' : 'SIGNED_OUT') { user = id; authCallbacks.forEach(callback => callback(event, id ? { user: { id } } : null)); },
     response(data, id = 'notification-one') { responseCallback({ actionIdentifier: 'default', notification: { request: { identifier: id, content: { data } } } }); } };
 }
@@ -236,6 +289,7 @@ test('actual isolated Android adapter permits the Play-services emulator, writes
   assert.equal(write[1], 'android_device_push_tokens');
   assert.deepEqual(write[2], { fcm_token: 'native_adapter_token', user_id: 'cafe-a', platform: 'android', firebase_project_id: 'baristamatch', package_name: 'com.baristajobmatch.app', enabled: true });
   assert.deepEqual(write[3], { onConflict: 'fcm_token' }); assert.ok(!h.calls.includes('expo'));
+  assert.ok(!h.calls.includes('native-unregister')); // Existing isolated first-registration behavior is unchanged.
   assert.ok(h.calls.findIndex(call => Array.isArray(call) && call[0] === 'expo-auto' && call[1] === false) < h.calls.indexOf('native'));
   await h.push.unregisterThisDeviceNotifications('cafe-a');
   assert.ok(h.calls.some(call => Array.isArray(call) && call[0] === 'delete' && call[1] === 'android_device_push_tokens'
@@ -389,7 +443,7 @@ test('storage read failure invalidates delivery, preserving the existing handle 
 });
 
 test('Android review sign-in gives Google testing instructions while Apple wording stays byte-identical', () => {
-  function copy(platform) {
+  function copy(platform, env = {}) {
     const react = { useState: value => [value, () => {}], useRef: current => ({ current }), useCallback: value => value, useEffect() {} };
     const native = { Platform: { OS: platform }, StyleSheet: { create: value => value }, View: 'View', Text: 'Text', ScrollView: 'ScrollView', Pressable: 'Pressable', ActivityIndicator: 'ActivityIndicator', Keyboard: {} };
     const jsx = (type, props) => ({ type, props });
@@ -397,12 +451,15 @@ test('Android review sign-in gives Google testing instructions while Apple wordi
       react, 'react/jsx-runtime': { jsx, jsxs: jsx }, 'react-native': native, 'expo-router': { router: {}, useFocusEffect() {} },
       '@/lib/supabase': { supabase: {} }, '@/lib/session': { getCurrentContext() {} },
       '@/components/ConversationKeyboardView': { ConversationKeyboardView: 'KeyboardView', ConversationTextInput: 'TextInput' },
-    });
+    }, { process: { env } });
     const tree = loaded.default();
     const text = node => Array.isArray(node) ? node.map(text).join(' ') : typeof node === 'string' ? node : node && typeof node === 'object' ? text(node.props?.children) : '';
     return text(tree);
   }
   assert.match(copy('android'), /registered Google Play license tester and a test payment method/);
+  assert.match(copy('android', { EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'true' }), /Temporary reviewer Pro access requires no payment/);
+  assert.ok(!copy('android', { EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'true' }).includes('test payment method'));
+  assert.ok(copy('ios', { EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'true' }).includes('Apple confirms a Sandbox installation'));
   assert.ok(!copy('android').includes('Apple confirms'));
   assert.ok(copy('ios').includes('Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.'));
 });
@@ -489,5 +546,54 @@ test('signed-in unreadable cache invalidates a prior-owner native token and pres
     failRead = false; failReset = false; h.calls.length = 0;
     await h.controller.register(); assert.equal(h.rows.get('synthetic_fcm_after_reset'), 'barista-b');
     if (fails) assert.ok(h.calls.indexOf('invalidate') < h.calls.indexOf('native-token'));
+  }
+});
+
+const publicKey = 'sb_publishable_SYNTHETIC_ANDROID_PUBLIC';
+const publicApi = 'https://baristamatch-android-baristamatch.vercel.app/api';
+const publicEnvironment = { review: false, apiBase: 'https://www.baristajobmatch.com/api',
+  supabaseUrl: 'https://lmwqrxoitraofaftpwhe.supabase.co', publishableKey: publicKey };
+const publicEnv = { EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'true',
+  EXPO_PUBLIC_ANDROID_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publicKey, EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL: publicApi };
+
+test('public direct FCM requires every exact compiled Android/public connection gate', () => {
+  const enabled = (platform = 'android', flag = 'true', release = 'true', env = publicEnvironment, k = publicKey, api = publicApi) =>
+    module.publicAndroidFcmEnabled(platform, flag, release, env, k, api);
+  assert.equal(enabled(), true);
+  assert.equal(enabled('ios'), false); assert.equal(enabled('web'), false); assert.equal(enabled('android', 'false'), false);
+  for (const release of [undefined, 'false', 'TRUE']) assert.throws(() => module.publicAndroidFcmEnabled('android', 'true', release, publicEnvironment, publicKey, publicApi), /configured public build/);
+  for (const env of [isolated, { ...publicEnvironment, review: true }, { ...publicEnvironment, apiBase: publicApi },
+    { ...publicEnvironment, supabaseUrl: isolated.supabaseUrl }, { ...publicEnvironment, publishableKey: key }]) {
+    assert.throws(() => enabled('android', 'true', 'true', env), /configured public build/);
+  }
+  for (const k of ['', 'sb_secret_SYNTHETIC', key]) assert.throws(() => enabled('android', 'true', 'true', publicEnvironment, k), /configured public build/);
+  for (const api of ['', publicApi + '/', isolated.apiBase]) assert.throws(() => enabled('android', 'true', 'true', publicEnvironment, publicKey, api), /configured public build/);
+});
+
+test('actual public Android adapter uses owned native FCM registration, refresh, logout and recipient-bound cold taps', async () => {
+  const h = adapter({ environment: publicEnvironment, publicEnv, initialResponse: tap() });
+  let ready = false; const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  await settle(); assert.deepEqual(h.routes, []);
+  assert.equal((await h.push.registerForPhoneNotifications()).status, 'enabled');
+  assert.ok(h.calls.indexOf('native-unregister') < h.calls.indexOf('native'));
+  assert.equal(JSON.parse(h.storage.get(module.ANDROID_FCM_TOKEN_KEY)).scope, module.PUBLIC_ANDROID_FCM_SCOPE);
+  h.token(native('public_refreshed_token')); await settle();
+  assert.ok(h.calls.some(c => Array.isArray(c) && c[0] === 'upsert' && c[1] === 'android_device_push_tokens' && c[2].fcm_token === 'public_refreshed_token'));
+  assert.ok(!h.calls.includes('expo'));
+  ready = true; stop.retryPending(); await settle(); assert.deepEqual(h.routes, ['/messages']);
+  h.account('barista-b'); h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'old-cafe-alert');
+  await settle(); assert.deepEqual(h.routes, ['/messages']);
+  await h.push.unregisterThisDeviceNotifications('barista-b'); stop();
+  assert.ok(h.calls.includes('native-unregister')); assert.ok(h.calls.includes('token-stop'));
+});
+
+test('bad public Android configuration never falls back to legacy Expo registration or routing', async () => {
+  for (const env of [{ ...publicEnv, EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'false' },
+    { ...publicEnv, EXPO_PUBLIC_ANDROID_PUBLIC_SUPABASE_PUBLISHABLE_KEY: key },
+    { ...publicEnv, EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL: isolated.apiBase }]) {
+    const h = adapter({ environment: publicEnvironment, publicEnv: env, device: true });
+    await assert.rejects(h.push.registerForPhoneNotifications(), /Android notifications could not be enabled/);
+    assert.throws(() => h.push.listenForPhoneNotifications(), /configured public build/);
+    assert.ok(!h.calls.includes('expo')); assert.ok(!h.calls.includes('native')); assert.equal(h.calls.length, 0);
   }
 });

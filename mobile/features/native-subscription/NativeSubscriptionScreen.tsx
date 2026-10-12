@@ -7,6 +7,8 @@ import { CafeAccessCheck } from '../../components/CafeAccessCheck';
 import { useCafeAccess } from '../../lib/useCafeAccess';
 import { getCurrentContext } from '../../lib/session';
 import { authenticatedApi, requireAccountSession } from '../../lib/api';
+import { privacyPolicyUrl, termsOfServiceUrl } from '../../lib/legalLinks';
+import { authenticatedNativeBillingApi } from '../../lib/nativeBillingApi';
 import { SubscriptionPanel } from './SubscriptionPanel';
 import { SubscriptionController, initialSubscriptionState, type SubscriptionStore } from './subscriptionController';
 import type { StorePurchase } from './purchaseCoordinator';
@@ -33,7 +35,7 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     catch { /* Installed native module not available: status/management still work. */ }
     setHasStore(!!store);
     const current = new SubscriptionController({
-      accountId, platform: Platform.OS, reviewAccessEnabled, store, call: authenticatedApi,
+      accountId, platform: Platform.OS, reviewAccessEnabled, store, call: authenticatedNativeBillingApi,
       account: async () => {
         const context = await getCurrentContext();
         return live && context.user && context.role ? { id: context.user.id, role: context.role } : null;
@@ -64,7 +66,7 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     return () => { live = false; foreground.remove(); current.dispose(); controller.current = null; };
   }, [accountId, createStore, reviewAccessEnabled]));
   const openLegal = (page: 'terms' | 'privacy') => {
-    void Linking.openURL(`https://www.baristajobmatch.com/${page}.html`).catch(() => {
+    void Linking.openURL(page === 'privacy' ? privacyPolicyUrl() : termsOfServiceUrl()).catch(() => {
       Alert.alert('Could not open this page', 'Check your connection and try again.');
     });
   };

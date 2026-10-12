@@ -1,11 +1,13 @@
 # Android test Publisher authentication
 
 The optional `vercel_oidc` mode uses Vercel's signed request identity, Google
-Workload Identity Federation, and service-account impersonation. It supports
-only the dedicated `android-testing` Custom Environment in the existing `baa`
-project. It cannot authenticate generic Preview, development, or Production
-deployments. Existing JSON credentials and Apple authentication retain their
-current behavior.
+Workload Identity Federation, and service-account impersonation. The Sandbox
+path supports only the dedicated `android-testing` Custom Environment in the
+existing `baa` project; those credentials cannot authenticate generic Preview,
+development, or Production deployments. A separate, hard-pinned production
+identity is prepared in [Android public Publisher authentication](google-play-public-wif-preparation.md),
+with its Google resources and activation still pending. Existing JSON
+credentials and Apple authentication retain their current behavior.
 
 This code does not create cloud trust, grant access, activate billing, or enable
 purchases. Keep `NATIVE_PURCHASES_ENABLED=false` and `BILLING_ENABLED=false` until

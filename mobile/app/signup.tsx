@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { getMobileAuthWebBridge } from '@/features/review-mode/environment';
 import { createExplicitProfile, getCurrentContext, savedAppRole } from '@/lib/session';
 import { normalizeUSLocation, normalizeUSState } from '@/lib/usLocation';
+import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/legalLinks';
 import { trackProductEvent } from '@/lib/productEvents';
 
 type Role = 'barista' | 'cafe_owner_manager';
@@ -140,7 +141,7 @@ export default function SignupScreen() {
           </Pressable>
           <Pressable onPress={signUp} disabled={busy || loadError} style={[styles.primary, loading && styles.disabled]}><Text style={styles.primaryText}>{loading ? 'Saving account…' : setupUserId ? 'Finish account setup' : 'Create account'}</Text></Pressable>
           <Text style={styles.legal}>By creating an account, you agree to the following:</Text>
-          <View style={styles.legalLinks}><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/terms.html')}><Text style={styles.legalLink}>Terms of Service</Text></Pressable><Text style={styles.legalSeparator}> · </Text><Pressable accessibilityRole="link" onPress={()=>Linking.openURL('https://www.baristajobmatch.com/privacy.html')}><Text style={styles.legalLink}>Privacy Policy</Text></Pressable></View>
+          <View style={styles.legalLinks}><Pressable accessibilityRole="link" onPress={()=>Linking.openURL(termsOfServiceUrl())}><Text style={styles.legalLink}>Terms of Service</Text></Pressable><Text style={styles.legalSeparator}> · </Text><Pressable accessibilityRole="link" onPress={()=>Linking.openURL(privacyPolicyUrl())}><Text style={styles.legalLink}>Privacy Policy</Text></Pressable></View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

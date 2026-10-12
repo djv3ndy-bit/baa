@@ -65,5 +65,6 @@ export function createEnvironmentController(storage: Storage, configured: AppEnv
     } finally { switching = false; }
   }
 
-  return { initialize, get, switchMode, canReturnToLive: () => !configured.review, restartRequired: () => restartRequired };
+  return { initialize, get, switchMode, canReturnToLive: () => !configured.review, restartRequired: () => restartRequired,
+    changePending: () => switching || restartRequired };
 }

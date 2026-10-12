@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { canReturnToLive, getAppEnvironment, reviewRestartRequired, switchAppMode } from '@/features/review-mode/environment';
@@ -27,7 +27,11 @@ export default function ReviewModeScreen() {
     <Text accessibilityRole="header" style={styles.heading}>{review ? 'You are in test mode' : 'App review and testing'}</Text>
     <Text style={styles.copy}>Test mode connects to dedicated review accounts and isolated test data. It does not change live accounts or subscriptions. Use only the test credentials supplied for review.</Text>
     <Text style={styles.copy}>Sign out of your current account in Settings before changing modes. The app restarts to keep the two sessions separate.</Text>
-    <Text style={styles.copy}>Apple test purchases require a Sandbox installation on iOS 16 or later. Changing app mode does not change your Apple purchase account.</Text>
+    <Text style={styles.copy}>{Platform.OS === 'android'
+      ? process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE === 'true'
+        ? 'Reviewer Pro access uses the dedicated review account and requires no payment. Changing app mode does not change your Google Play account.'
+        : 'Google Play test purchases require a registered license tester and a test payment method. Changing app mode does not change your Google Play account.'
+      : 'Apple test purchases require a Sandbox installation on iOS 16 or later. Changing app mode does not change your Apple purchase account.'}</Text>
     {review && !canReturnToLive() && <Text style={styles.copy}>This build is for testing only. Live accounts are available in the regular app.</Text>}
     {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
     {(!review || canReturnToLive()) && <Pressable accessibilityRole="button" disabled={busy || reviewRestartRequired()} accessibilityState={{ disabled: busy || reviewRestartRequired(), busy }} onPress={changeMode} style={styles.button}>

@@ -19,6 +19,8 @@ const reviewEnvironment: AppEnvironment = Platform.OS === 'android' ? {
   publishableKey: validAndroidReviewKey ? androidReviewKey : '',
   apiBase: 'https://android-testing.baristajobmatch.com/api',
 } : appleReviewEnvironment;
+const androidPublic = Platform.OS === 'android' && process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE === 'true';
+const publicKey = process.env.EXPO_PUBLIC_ANDROID_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
 const configuredUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const configuredReview = configuredUrl.replace(/\/$/, '') === reviewEnvironment.supabaseUrl;
 const configured: AppEnvironment = {
@@ -26,10 +28,18 @@ const configured: AppEnvironment = {
   supabaseUrl: configuredUrl,
   // Android review never falls back to the generic production/Apple key.
   publishableKey: Platform.OS === 'android' && configuredReview
-    ? reviewEnvironment.publishableKey : process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
+    ? reviewEnvironment.publishableKey : androidPublic ? publicKey : process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
   apiBase: (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://www.baristajobmatch.com/api').replace(/\/$/, ''),
 };
 if (Platform.OS === 'android') {
+  if (androidPublic && (configuredReview || configuredUrl !== 'https://lmwqrxoitraofaftpwhe.supabase.co'
+    || configured.apiBase !== 'https://www.baristajobmatch.com/api'
+    || process.env.EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL !== 'https://baristamatch-android-baristamatch.vercel.app/api'
+    || process.env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING !== 'false'
+    || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publicKey) || !validAndroidReviewKey
+    || publicKey === androidReviewKey || publicKey === appleReviewEnvironment.publishableKey)) {
+    throw new Error('The Android public marketplace connection is not configured.');
+  }
   if (configuredUrl.replace(/\/$/, '') === appleReviewEnvironment.supabaseUrl
     || configured.apiBase === appleReviewEnvironment.apiBase) {
     throw new Error('Android testing must not use the Apple test database or API.');
@@ -50,6 +60,7 @@ export const initializeAppEnvironment = controller.initialize;
 export const getAppEnvironment = controller.get;
 export const canReturnToLive = controller.canReturnToLive;
 export const reviewRestartRequired = controller.restartRequired;
+export const appEnvironmentChangePending = controller.changePending;
 export const getPasswordResetRedirect = () => Platform.OS === 'android' && controller.get().review
   ? 'https://android-testing.baristajobmatch.com/reset-password'
   : 'https://www.baristajobmatch.com/reset-password';

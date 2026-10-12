@@ -24,6 +24,7 @@ import { clearDeletedSession, finishAccountDeletion, type DeletionResponse } fro
 import { getCurrentContext, AppRole } from "@/lib/session";
 import { clearAndroidNotificationsAfterDeletion, registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
+import { privacyPolicyUrl, termsOfServiceUrl } from '@/lib/legalLinks';
 import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
 
 type BillingStatus = {
@@ -381,14 +382,14 @@ export default function Settings() {
         <Pressable
           style={s.advanced}
           onPress={() =>
-            openHelp("https://www.baristajobmatch.com/privacy.html")
+            openHelp(privacyPolicyUrl())
           }
         >
           <Text style={s.advancedText}>Privacy & account data</Text>
         </Pressable>
         <Pressable
           style={s.advanced}
-          onPress={() => openHelp("https://www.baristajobmatch.com/terms.html")}
+          onPress={() => openHelp(termsOfServiceUrl())}
         >
           <Text style={s.advancedText}>Terms of Service</Text>
         </Pressable>

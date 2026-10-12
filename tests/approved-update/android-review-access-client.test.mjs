@@ -316,6 +316,8 @@ test('ordinary iOS summary and plans do not evaluate the Android environment acc
     '../../lib/useCafeAccess': { useCafeAccess: () => ({ ready: true, accountId: free.accountId }) },
     '../../lib/session': { getCurrentContext: async () => ({ user: { id: free.accountId }, role: 'cafe_owner_manager' }) },
     '../../lib/api': { authenticatedApi: async () => paid, requireAccountSession: async () => {} },
+    '../../lib/legalLinks': { privacyPolicyUrl: () => 'https://www.baristajobmatch.com/privacy.html' },
+    '../../lib/nativeBillingApi': { authenticatedNativeBillingApi: async () => paid },
     './SubscriptionPanel': { SubscriptionPanel: props => ({ type: 'panel', props }) },
     './subscriptionController': { initialSubscriptionState: {}, SubscriptionController: class {
       constructor(deps) { created.push(deps); } load() {} dispose() {}

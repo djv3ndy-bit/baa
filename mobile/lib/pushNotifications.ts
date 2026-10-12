@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { supabase } from './supabase';
 import { notificationDestination } from './notificationRouting';
 import { getAppEnvironment } from '../features/review-mode/environment';
-import { createAndroidFcmRegistration, isolatedAndroidFcmEnabled } from './androidFcmRegistration';
+import { createAndroidFcmRegistration, isolatedAndroidFcmEnabled, publicAndroidFcmEnabled, PUBLIC_ANDROID_FCM_SCOPE } from './androidFcmRegistration';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -19,11 +19,20 @@ const registrations = new Set<Promise<PhoneNotificationOutcome>>();
 const handled = new Set<string>();
 const projectId = () => Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 const permissionEnabled = (permission: Notifications.NotificationPermissionsStatus) => permission.granted || permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
-const directAndroid = () => Platform.OS === 'android' && process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED === 'true'
-  && isolatedAndroidFcmEnabled(Platform.OS, process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED,
-    getAppEnvironment(), process.env.EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY || '');
+const directAndroid = () => {
+  if (Platform.OS !== 'android' || process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED !== 'true') return false;
+  const environment = getAppEnvironment();
+  return environment.review
+    ? isolatedAndroidFcmEnabled(Platform.OS, process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED,
+      environment, process.env.EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY || '')
+    : publicAndroidFcmEnabled(Platform.OS, process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED,
+      process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE, environment,
+      process.env.EXPO_PUBLIC_ANDROID_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '',
+      process.env.EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL || '');
+};
 const androidFcm = createAndroidFcmRegistration({
   requireEnabled: directAndroid,
+  registrationScope: () => getAppEnvironment().review ? undefined : PUBLIC_ANDROID_FCM_SCOPE,
   async userId() { const { data, error } = await supabase.auth.getSession(); if (error) throw new Error('Notification sign-in could not be checked.'); return data.session?.user.id || null; },
   storage: AsyncStorage,
   async channel() {

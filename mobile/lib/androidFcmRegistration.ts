@@ -5,6 +5,7 @@ export type AndroidFcmOutcome = { status: 'enabled' | 'denied' | 'no-session'; c
 type NativeToken = { type: string; data: unknown };
 type Permission = { granted: boolean; canAskAgain: boolean };
 type SavedToken = { token: string; userId: string };
+export const PUBLIC_ANDROID_FCM_SCOPE = 'public:lmwqrxoitraofaftpwhe';
 
 /** A bad explicitly enabled test configuration must never fall back to Expo. */
 export function isolatedAndroidFcmEnabled(platform: string, flag: string | undefined, environment: AppEnvironment, expectedKey: string) {
@@ -14,6 +15,20 @@ export function isolatedAndroidFcmEnabled(platform: string, flag: string | undef
     || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(expectedKey)
     || expectedKey === 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x'
     || environment.publishableKey !== expectedKey) throw new Error('Android notifications require the isolated test build.');
+  return true;
+}
+
+/** Public FCM uses the same ownership-safe lifecycle, with a distinct compiled scope. */
+export function publicAndroidFcmEnabled(platform: string, flag: string | undefined, publicRelease: string | undefined,
+  environment: AppEnvironment, expectedKey: string, billingApi: string) {
+  if (platform !== 'android' || flag !== 'true') return false;
+  if (publicRelease !== 'true' || environment.review !== false
+    || environment.apiBase !== 'https://www.baristajobmatch.com/api'
+    || environment.supabaseUrl !== 'https://lmwqrxoitraofaftpwhe.supabase.co'
+    || billingApi !== 'https://baristamatch-android-baristamatch.vercel.app/api'
+    || !/^sb_publishable_[A-Za-z0-9_-]+$/.test(expectedKey)
+    || expectedKey === 'sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x'
+    || environment.publishableKey !== expectedKey) throw new Error('Android notifications require the configured public build.');
   return true;
 }
 
@@ -29,6 +44,8 @@ function nativeToken(value: NativeToken): string {
 
 export function createAndroidFcmRegistration(deps: {
   requireEnabled: () => boolean;
+  /** A new public installation must rotate any legacy Expo native token. */
+  registrationScope?: () => string | undefined;
   userId: () => Promise<string | null>;
   storage: { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void>; removeItem(key: string): Promise<void> };
   channel: () => Promise<unknown>;
@@ -55,6 +72,8 @@ export function createAndroidFcmRegistration(deps: {
     try {
       const value = JSON.parse(raw);
       if (!value || typeof value.userId !== 'string' || !value.userId) throw new Error();
+      const scope = deps.registrationScope?.();
+      if (scope && value.scope !== scope) throw new Error();
       return { userId: value.userId, token: nativeToken({ type: 'android', data: value.token }) };
     } catch { resetRequired = true; return null; }
   };
@@ -84,7 +103,7 @@ export function createAndroidFcmRegistration(deps: {
         return { status: 'no-session' };
       }
       if (expectedUser && expectedUser !== userId) return { status: 'no-session' };
-      let previous: SavedToken | null;
+      let previous: SavedToken | null, resetForRegistration = false;
       try { previous = await saved(); }
       catch (error) {
         // Unreadable storage cannot prove this native token belongs to the
@@ -93,10 +112,18 @@ export function createAndroidFcmRegistration(deps: {
         throw error;
       }
       if (resetRequired || (previous && previous.userId !== userId)) {
-        await resetNative(); previous = null;
+        await resetNative(); previous = null; resetForRegistration = true;
         if (refreshed) return { status: 'no-session' };
       }
       await deps.channel();
+      if (!previous && !resetForRegistration && deps.registrationScope?.()) {
+        // A legacy Expo row can still reference this installation's native
+        // token. Rotate once before the first public direct registration, so
+        // the shared Expo sender cannot also deliver to the same native token.
+        if (!await current(userId, stamp)) return { status: 'no-session' };
+        await resetNative();
+        if (refreshed || !await current(userId, stamp)) return { status: 'no-session' };
+      }
       let permission = await deps.permissions();
       if (!permission.granted && requestPermission && permission.canAskAgain) permission = await deps.requestPermission();
       if (!permission.granted) return { status: 'denied', canAskAgain: permission.canAskAgain };
@@ -109,7 +136,7 @@ export function createAndroidFcmRegistration(deps: {
       }
       // Keep a cleanup handle before issuing a write whose response may fail.
       // Failed registration or deletion never silently discards a live token.
-      try { await deps.storage.setItem(ANDROID_FCM_TOKEN_KEY, JSON.stringify({ token, userId })); }
+      try { await deps.storage.setItem(ANDROID_FCM_TOKEN_KEY, JSON.stringify({ token, userId, ...(deps.registrationScope?.() ? { scope: deps.registrationScope() } : {}) })); }
       catch (error) {
         // Storage loss cannot leave a previous account's native token active.
         // No database write has been issued; resetRequired survives any failure.
