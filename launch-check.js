@@ -153,14 +153,28 @@ if(!mobileLogin.includes('useWindowDimensions') || !mobileLogin.includes('useSaf
 // First-time OAuth users complete the same explicit role and consent form as email users.
 if(!mobileLogin.includes("pathname: '/signup'")) throw new Error('New mobile OAuth accounts must complete signup');
 const mobileSignup=fs.readFileSync('mobile/app/signup.tsx','utf8');
-for(const token of ['ageConfirmed','at least 16','parent or legal guardian','/terms.html','/privacy.html'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup legal consent is missing ${token}`);
+for(const token of ['ageConfirmed','at least 16','parent or legal guardian'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup legal consent is missing ${token}`);
+const mobileLegalLinks=fs.readFileSync('mobile/lib/legalLinks.ts','utf8');
+for(const [helper,page] of [['termsOfServiceUrl','terms'],['privacyPolicyUrl','privacy']]){
+  const definition=mobileLegalLinks.match(new RegExp(`${helper}\\s*=\\s*\\(\\s*\\)\\s*=>\\s*Platform\\.OS\\s*===\\s*['"]android['"]\\s*\\?\\s*['"]([^'"]+)['"]\\s*:\\s*['"]([^'"]+)['"]`));
+  if(!definition||definition[1]!==`https://baristamatch-android-baristamatch.vercel.app/android-${page}`||definition[2]!==`https://www.baristajobmatch.com/${page}.html`)throw new Error(`Mobile legal helper has incorrect platform URLs: ${helper}`);
+}
+function checkMobileLegalAccess(source,screen,opener='Linking.openURL'){
+  if(opener==='openHelp'&&!/function\s+openHelp\s*\(\s*url\s*:\s*string\s*\)\s*\{\s*Linking\.openURL\(url\)/.test(source))throw new Error(`Mobile ${screen} legal link opener is missing`);
+  for(const helper of ['termsOfServiceUrl','privacyPolicyUrl']){
+    const imported=new RegExp(`import\\s*\\{[^}]*\\b${helper}\\b[^}]*\\}\\s*from\\s*['"]@/lib/legalLinks['"]`).test(source);
+    if(!imported||!source.includes(`${opener}(${helper}())`))throw new Error(`Mobile ${screen} legal access is missing ${helper}`);
+  }
+}
+checkMobileLegalAccess(mobileSignup,'signup');
 for(const token of ['normalizeUSLocation','locationState','all 50 U.S. states'])if(!mobileSignup.includes(token))throw new Error(`Mobile signup structured U.S. location is missing ${token}`);
 const mobileSettings=fs.readFileSync('mobile/app/settings.tsx','utf8');
 if(mobileSettings.includes('/create-checkout-session')||!mobileSettings.includes('View Free and Pro plans')) throw new Error('Mobile plan settings are incomplete or bypass the preview gate');
 for(const token of ['role === "cafe_owner_manager"','"/billing-status"','Next billing date:','Manage subscription','"/create-portal-session"'])if(!mobileSettings.replaceAll("'", '"').includes(token))throw new Error(`Mobile café-only subscription management is missing ${token}`);
 if(!mobileSettings.includes('/delete-account')||!mobileSettings.includes('showAdvanced')||!mobileSettings.includes('Delete my account')) throw new Error('Mobile Advanced settings account deletion is missing');
 if(mobileSettings.indexOf('Delete my account')<mobileSettings.indexOf('Log out')) throw new Error('Mobile account deletion must remain separated from Log out');
-for(const token of ['/terms.html','/privacy.html','BaristaMatch LLC'])if(!mobileSettings.includes(token))throw new Error(`Mobile settings legal access is missing ${token}`);
+if(!mobileSettings.includes('BaristaMatch LLC'))throw new Error('Mobile settings legal access is missing BaristaMatch LLC');
+checkMobileLegalAccess(mobileSettings,'settings','openHelp');
 const deleteAccount=fs.readFileSync('api/delete-account.js','utf8');
 if(deleteAccount.includes('DELETE_COOLDOWN_DAYS')||deleteAccount.includes('deletion becomes available')) throw new Error('Account deletion has a prohibited signup cooldown');
 if(deleteAccount.includes('subscriptionBlocksAccountDeletion')||deleteAccount.includes('Cancel your current Stripe subscription'))throw new Error('Account deletion still blocks on the removed manual-subscription guard');
