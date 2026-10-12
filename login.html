@@ -23,7 +23,8 @@ async function initialize() {
     if (!response.ok || !config.supabaseUrl || !config.supabasePublishableKey) {
       throw new Error('Login is temporarily unavailable. Please try again shortly.');
     }
-    client = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey);
+    const authStorageKey = `sb-${new URL(config.supabaseUrl).hostname.split('.')[0]}-auth-token`;
+    client = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { storageKey: authStorageKey } });
     const sessionResult = await client.auth.getSession();
     if (sessionResult.error) {
       await client.auth.signOut({ scope: 'local' }).catch(() => {});
