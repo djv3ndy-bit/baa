@@ -6,6 +6,9 @@ const userId='10000000-0000-4000-8000-000000000001';
 const account={id:userId,role:'cafe_owner_manager',suspendedAt:null,email:'owner@example.invalid',emailConfirmed:true};
 const local=()=>({user_id:userId,status:'free',current_period_end:null,cancel_at_period_end:false,
   stripe_customer_id:null,stripe_subscription_id:null,stripe_checkout_attempt_id:null});
+// Actual ensure_cafe_subscription() row: the legacy status default survives
+// bootstrap, which only sets complimentary_access=true. No fake paid history.
+const complimentary=()=>({...local(),status:'trialing',complimentary_access:true});
 const customer=(overrides={})=>({id:'cus_fixture',livemode:true,metadata:{cafe_user_id:userId},email:'owner@example.invalid',...overrides});
 const subscription=(overrides={})=>({id:'sub_fixture',livemode:true,customer:'cus_fixture',metadata:{cafe_user_id:userId},status:'canceled',...overrides});
 const session=(overrides={})=>({id:'cs_fixture',livemode:true,customer:'cus_fixture',metadata:{cafe_user_id:userId},client_reference_id:userId,status:'open',...overrides});
@@ -21,6 +24,53 @@ test('free local IDs are insufficient: exhaustive live customer, subscription an
   const f=fixture();assert.equal(await f.run(),true);
   assert.deepEqual(f.calls.map(x=>x[0]),['row','client','customers','subscriptions','sessions']);
   assert.deepEqual(f.calls.slice(2),[['customers',{limit:100}],['subscriptions',{status:'all',limit:100}],['sessions',{status:'open',limit:100}]]);
+});
+test('normal complimentary trialing bootstrap completes every authoritative Stripe scan without rewriting local state',async()=>{
+  const row=complimentary(),before=structuredClone(row),f=fixture({row});
+  assert.equal(await f.run(),true);
+  assert.deepEqual(f.calls.map(x=>x[0]),['row','client','customers','subscriptions','sessions']);
+  assert.deepEqual(row,before);
+});
+test('complimentary trialing exception requires own strict-null identifiers and exact free-tier fields before Stripe',async()=>{
+  const rows=[];
+  for(const key of ['complimentary_access','current_period_end','cancel_at_period_end',
+    'stripe_customer_id','stripe_subscription_id','stripe_checkout_attempt_id']) {
+    for(const value of [undefined,'',0])rows.push({...complimentary(),[key]:value});
+    const missing=complimentary();delete missing[key];rows.push(missing);
+    const inherited=complimentary();delete inherited[key];Object.setPrototypeOf(inherited,{[key]:complimentary()[key]});rows.push(inherited);
+  }
+  rows.push({...complimentary(),complimentary_access:false},{...complimentary(),current_period_end:'2026-11-01T00:00:00Z'},
+    {...complimentary(),cancel_at_period_end:true},{...complimentary(),stripe_customer_id:'cus_fixture'},
+    {...complimentary(),stripe_subscription_id:'sub_fixture'},{...complimentary(),stripe_checkout_attempt_id:'20000000-0000-4000-8000-000000000001'});
+  for(const row of rows) {
+    const f=fixture({row});await assert.rejects(f.run(),{code:'WEBSITE_BILLING_EXISTS'});
+    assert.equal(f.calls.some(x=>x[0]==='client'),false);
+  }
+});
+test('complimentary access never exempts active or delinquent local website states',async()=>{
+  for(const status of ['active','past_due','unpaid','incomplete','paused']) {
+    const f=fixture({row:{...complimentary(),status}});
+    await assert.rejects(f.run(),{code:'WEBSITE_BILLING_EXISTS'});assert.equal(f.calls.some(x=>x[0]==='client'),false);
+  }
+});
+test('complimentary trialing bootstrap still blocks changed-email orphan Stripe trials and active subscriptions',async()=>{
+  for(const status of ['trialing','active']) {
+    const f=fixture({row:complimentary(),customers:[customer({email:'prior@example.invalid'})],subscriptions:[subscription({status})]});
+    await assert.rejects(f.run(),{code:'WEBSITE_BILLING_EXISTS'});
+    assert.deepEqual(f.calls.map(x=>x[0]),['row','client','customers','subscriptions']);
+  }
+});
+test('complimentary trialing bootstrap still blocks every owned open website checkout',async()=>{
+  for(const open of [session(),session({customer:null}),session({customer:null,metadata:{},client_reference_id:null,customer_email:account.email})]) {
+    const f=fixture({row:complimentary(),customers:[customer()],sessions:[open]});
+    await assert.rejects(f.run(),{code:'WEBSITE_BILLING_EXISTS'});
+    assert.equal(f.calls.at(-1)[0],'sessions');
+  }
+});
+test('complimentary trialing bootstrap never turns provider failure or incomplete customer enumeration into Free',async()=>{
+  await assert.rejects(fixture({row:complimentary(),createClient:async()=>{throw Error('offline');}}).run(),/offline/);
+  const f=fixture({row:complimentary(),maxPages:1,client:{customers:async()=>({object:'list',data:[customer()],has_more:true})}});
+  await assert.rejects(f.run(),{code:'PROVIDER_UNAVAILABLE'});assert.equal(f.calls.some(x=>x[0]==='subscriptions'),false);
 });
 test('metadata-owned orphan customer with changed email and renewable legacy subscription blocks a second charge',async()=>{
   for(const status of ['active','trialing','past_due','unpaid','incomplete','paused']) {

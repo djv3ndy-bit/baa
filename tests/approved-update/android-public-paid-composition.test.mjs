@@ -29,9 +29,9 @@ const verified=()=>({provider:'google',environment:'Production',binding,provider
 const request=(action,body={})=>({method:action==='status'?'GET':'POST',headers:{host:pin.apiHost,authorization:'Bearer a.b.c'},query:{action},body});
 const output=()=>({setHeader(){},status(code){this.code=code;return this;},json(body){this.body=body;return this;}});
 const page=(data=[])=>({object:'list',data,has_more:false});
-function fixture({environment={},auth=cafe(),apply='applied',settleError=false,owner={userId:user},inspectionEnvironment='Production'}={}) {
+function fixture({environment={},auth=cafe(),apply='applied',settleError=false,owner={userId:user},inspectionEnvironment='Production',localRow=local()}={}) {
   const calls=[],state={conflict:false,settleError,apply,owner,inspectionEnvironment};
-  const transport={authenticateCafe:async()=>{calls.push('auth');return auth;},subscriptionFor:async id=>{assert.equal(id,user);calls.push('local');return local();},
+  const transport={authenticateCafe:async()=>{calls.push('auth');return auth;},subscriptionFor:async id=>{assert.equal(id,user);calls.push('local');return localRow;},
     adminRows:async(path,options)=>{
       calls.push(path);const body=JSON.parse(options.body);
       if(path==='rpc/native_checkout_claim')return {attemptId:body.p_attempt_id,accountBinding:binding};
@@ -63,6 +63,25 @@ test('configured real composition prepares and starts only after catalog, durabl
   assert.deepEqual(f.calls.slice(2),['catalog','rpc/native_checkout_claim','local','stripeCustomers','stripeSubscriptions','stripeSessions']);
   f.calls.length=0;const started=await f.run('start',{...selection,attemptId:prepared.body.attemptId});
   assert.equal(started.code,200);assert.deepEqual(f.calls.slice(2),['rpc/native_checkout_provider','catalog','local','stripeCustomers','stripeSubscriptions','stripeSessions','rpc/native_checkout_start']);
+});
+test('normal complimentary trialing café displays Free and can prepare/start only after fresh Stripe scans',async()=>{
+  const f=fixture({localRow:{...local(),status:'trialing',complimentary_access:true}});
+  const status=await f.run('status');assert.equal(status.code,200);assert.equal(status.body.access,'free');assert.equal(status.body.provider,null);assert.equal(status.body.canPurchase,true);
+  f.calls.length=0;const prepared=await f.run('prepare',selection);assert.equal(prepared.code,200);
+  assert.deepEqual(f.calls.slice(2),['catalog','rpc/native_checkout_claim','local','stripeCustomers','stripeSubscriptions','stripeSessions']);
+  f.calls.length=0;const started=await f.run('start',{...selection,attemptId:prepared.body.attemptId});assert.equal(started.code,200);
+  assert.deepEqual(f.calls.slice(2),['rpc/native_checkout_provider','catalog','local','stripeCustomers','stripeSubscriptions','stripeSessions','rpc/native_checkout_start']);
+});
+test('a new Stripe orphan after complimentary trialing prepare still blocks start and releases only the unlaunched claim',async()=>{
+  const f=fixture({localRow:{...local(),status:'trialing',complimentary_access:true}});
+  const prepared=await f.run('prepare',selection);assert.equal(prepared.code,200);
+  f.state.conflict=true;f.calls.length=0;const started=await f.run('start',{...selection,attemptId:prepared.body.attemptId});
+  assert.equal(started.code,409);assert.equal(f.calls.includes('rpc/native_checkout_start'),false);assert.equal(f.calls.at(-1),'rpc/android_google_checkout_cancel');
+});
+test('complimentary trialing café cannot prepare when public new sales remain disabled',async()=>{
+  const f=fixture({environment:{BILLING_ENABLED:'false',NATIVE_PURCHASES_ENABLED:'false'},localRow:{...local(),status:'trialing',complimentary_access:true}});
+  const response=await f.run('prepare',selection);assert.equal(response.code,409);
+  for(const call of ['local','stripeCustomers','rpc/native_checkout_claim','rpc/native_checkout_start'])assert.equal(f.calls.includes(call),false);
 });
 test('new Stripe orphan conflict after prepare blocks start and only releases an unlaunched Google claim',async()=>{
   const f=fixture(),prepared=await f.run('prepare',selection);f.state.conflict=true;f.calls.length=0;

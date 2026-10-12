@@ -8,6 +8,17 @@ const email=value=>typeof value==='string' && value.length<=320 && /^[^\s@]+@[^\
 const terminal=new Set(['canceled','incomplete_expired']);
 const subscriptionStatuses=new Set(['active','trialing','past_due','unpaid','incomplete','paused',...terminal]);
 
+// Normal café bootstrap retains the legacy `trialing` default while granting
+// complimentary Free hiring access. This exact unconnected shape only permits
+// the authoritative Stripe scans below; it never proves billing is absent.
+function isComplimentaryTrialingFreeTier(row) {
+  return row.status==='trialing'
+    && ['complimentary_access','current_period_end','cancel_at_period_end',
+      'stripe_customer_id','stripe_subscription_id','stripe_checkout_attempt_id'].every(key=>Object.hasOwn(row,key))
+    && row.complimentary_access===true && row.current_period_end===null && row.cancel_at_period_end===false
+    && row.stripe_customer_id===null && row.stripe_subscription_id===null && row.stripe_checkout_attempt_id===null;
+}
+
 /** Read-only restricted client. The existing account-specific Price pin proves
  * the credential belongs to the approved live Stripe account without Account
  * read/write permissions. No API entry, webhook, mutation or global client. */
@@ -49,7 +60,7 @@ export async function inspectAndroidPublicStripeBilling({account,readSubscriptio
   const local=await readSubscription(userId);
   const own=key=>Object.hasOwn(local,key);
   if(!local || typeof local!=='object' || Array.isArray(local) || !own('user_id') || local.user_id!==userId
-    || !own('status') || !['free','canceled','expired','incomplete_expired'].includes(local.status)
+    || !own('status') || !(['free','canceled','expired','incomplete_expired'].includes(local.status) || isComplimentaryTrialingFreeTier(local))
     || !own('current_period_end') || !(local.current_period_end===null || typeof local.current_period_end==='string' && Number.isFinite(Date.parse(local.current_period_end)))
     || !own('cancel_at_period_end') || typeof local.cancel_at_period_end!=='boolean'
     || !own('stripe_customer_id') || !(local.stripe_customer_id===null || id(local.stripe_customer_id,'cus'))
