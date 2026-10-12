@@ -52,7 +52,11 @@ export default function ReviewLogin() {
   return <ReviewKeyboardView style={styles.page}>
     <ScrollView ref={scroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} onLayout={revealField} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <Text accessibilityRole="header" style={styles.heading}>App review sign-in</Text>
-      <Text style={styles.copy}>Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.</Text>
+      <Text style={styles.copy}>{Platform.OS === 'android'
+        ? process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE === 'true'
+          ? 'Use the dedicated test account supplied for review. This session uses isolated test data. Temporary reviewer Pro access requires no payment.'
+          : 'Use the dedicated test account supplied for review. This session uses isolated test data. Test purchases require a registered Google Play license tester and a test payment method.'
+        : 'Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.'}</Text>
       <Text style={styles.label}>Test-account email</Text>
       <ConversationTextInput onFocus={() => focus('email')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('email', event.nativeEvent.layout.y)} testID="review-email-input" accessibilityLabel="Test-account email" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="username" style={styles.input} />
       <Text style={styles.label}>Test-account password</Text>

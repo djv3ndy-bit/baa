@@ -9,8 +9,18 @@ export const appleCafeMonthly: ApprovedStorePlan = {
   prices: { USD: 9.99 },
 };
 
-// Google remains unavailable until its real product/base plan and U.S.-only
-// availability are configured and verified. Do not invent a Play product ID.
+// Use the real Play Console subscription and base plan IDs, matching the
+// server's GOOGLE_PLAY_PRODUCT_ID / GOOGLE_PLAY_BASE_PLAN_ID. Missing or invalid
+// configuration keeps Android purchases unavailable. The store and server
+// independently confirm U.S. availability, monthly terms and purchase access.
 export function approvedStorePlan(platform: string): ApprovedStorePlan | null {
-  return platform === 'ios' ? { ...appleCafeMonthly, prices: { ...appleCafeMonthly.prices } } : null;
+  if (platform === 'ios') return { ...appleCafeMonthly, prices: { ...appleCafeMonthly.prices } };
+  if (platform !== 'android') return null;
+  const productId = process.env.EXPO_PUBLIC_GOOGLE_PLAY_PRODUCT_ID;
+  const basePlanId = process.env.EXPO_PUBLIC_GOOGLE_PLAY_BASE_PLAN_ID;
+  // Subscription IDs are 1–40 characters; base plan IDs follow RFC-1034.
+  if (typeof productId !== 'string' || !/^[a-z0-9][a-z0-9_.]{0,39}$/.test(productId)
+    || productId.startsWith('android.test') || typeof basePlanId !== 'string'
+    || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(basePlanId)) return null;
+  return { id: productId, basePlanId, provider: 'google', storefront: 'US', prices: { USD: 9.99 } };
 }

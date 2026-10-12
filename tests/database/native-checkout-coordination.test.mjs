@@ -20,11 +20,13 @@ before(async()=>{
  await db.exec(file('supabase/migrations/20260909044749_bind_checkout_attempt_ui_mode.sql'));
  await db.exec(file('review/native-billing-ledger.sql'));
  await db.exec(file('review/native-checkout-coordination.sql'));
+ await db.exec(file('server/native-billing/sql/checkout_provider.sql'));
 });
 beforeEach(async()=>{await db.exec(`reset role;truncate private.native_checkout_attempts,private.native_billing_subscriptions;update public.cafe_subscriptions set stripe_customer_id=null,stripe_subscription_id=null,status='free',stripe_checkout_claim_id=null,stripe_checkout_claim_expires_at=null,stripe_checkout_claim_kind=null,stripe_checkout_attempt_id=null,stripe_checkout_channel=null,stripe_checkout_ui_mode=null;update public.profiles set suspended_at=null;`)});
 after(async()=>db?.close());
 const claim=(id=first,user=cafe,provider='apple')=>scalar("select public.native_checkout_claim($1,$2,'Production',$3)",[user,provider,id]);
 const start=(id=first,user=cafe)=>scalar("select public.native_checkout_start($1,'Production',$2)",[user,id]);
+const checkoutProvider=(id=first,user=cafe,environment='Production')=>scalar('select public.native_checkout_provider($1,$2,$3)',[user,environment,id]);
 const cancel=(id=first,beforeLaunch=false,user=cafe)=>scalar("select public.native_checkout_cancel($1,'Production',$2,$3)",[user,id,beforeLaunch]);
 const pending=()=>scalar("select public.native_checkout_pending($1,'Production')",[cafe]);
 const web=()=>scalar("select public.claim_stripe_checkout($1,$2,$3,'web','embedded')",[cafe,second,second]);
@@ -50,6 +52,40 @@ test('Stripe subscriptions needing recovery block native checkout even before a 
 });
 test('store launch authorization is single use and scoped to the original account',async()=>{
  await claim();assert.equal(await start(first,other),false);assert.equal(await start(),true);assert.equal(await start(),false);assert.equal(await web(),null);
+});
+test('provider lookup returns the stored Google or Apple provider without modifying its reservation',async()=>{
+ for(const provider of ['google','apple']){
+  const result=await claim(first,cafe,provider);assert.ok(result);
+  const before=await db.query('select * from private.native_checkout_attempts');
+  await db.exec('set role service_role');assert.equal(await checkoutProvider(),provider);await db.exec('reset role');
+  assert.deepEqual(await db.query('select * from private.native_checkout_attempts'),before);
+  await cancel(first,true);
+  await db.exec('truncate private.native_checkout_attempts');
+ }
+});
+test('provider lookup never exposes another account, wrong environment, absent or expired attempts',async()=>{
+ await claim(first,cafe,'google');assert.equal(await checkoutProvider(first,other),null);assert.equal(await checkoutProvider(second),null);
+ assert.equal(await checkoutProvider(first,cafe,'Sandbox'),null);
+ await db.exec("update private.native_checkout_attempts set reserved_until=now()-interval '1 minute'");assert.equal(await checkoutProvider(),null);
+});
+test('provider lookup rejects ineligible accounts and all non-reserved checkout states',async()=>{
+ await claim(first,cafe,'google');
+ await db.query('update public.profiles set suspended_at=now() where id=$1',[cafe]);assert.equal(await checkoutProvider(),null);
+ await db.query("update public.profiles set suspended_at=null,role='barista' where id=$1",[cafe]);assert.equal(await checkoutProvider(),null);
+ await db.query("update public.profiles set role='cafe_owner_manager' where id=$1",[cafe]);
+ for(const state of ['started','cancelled','expired','verified']){
+  await db.query('update private.native_checkout_attempts set state=$1',[state]);assert.equal(await checkoutProvider(),null);
+ }
+});
+test('provider lookup is denied to anonymous and authenticated callers',async()=>{
+ await claim(first,cafe,'google');
+ for(const role of ['anon','authenticated']){
+  await db.exec('set role '+role);await assert.rejects(checkoutProvider(),/permission denied/);await db.exec('reset role');
+ }
+});
+test('Google reservation startup keeps cross-provider and website duplicate protection',async()=>{
+ await claim(first,cafe,'google');assert.equal(await checkoutProvider(),'google');assert.equal(await claim(second,cafe,'apple'),null);assert.equal(await web(),null);
+ assert.equal(await start(),true);assert.equal(await checkoutProvider(),null);assert.equal(await start(),false);assert.equal(await web(),null);
 });
 test('only unused reservations expire; a started or pending purchase never unlocks on a timer',async()=>{
  await claim();await db.exec("update private.native_checkout_attempts set reserved_until=now()-interval '1 minute'");

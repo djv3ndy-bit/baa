@@ -34,6 +34,22 @@ test('paid website subscribers receive provider management instead of a duplicat
   assert.ok(paid.some(value => value.label === 'Manage Stripe subscription'));
   assert.ok(!paid.some(value => value.label.startsWith('Subscribe')));
 });
+test('Google subscribers see Play management and restore without Apple recovery or duplicate checkout', () => {
+  const googleProduct = { ...product, provider: 'google', basePlanId: 'monthly' };
+  const free = actions({ product: googleProduct });
+  assert.ok(free.some(value => value.label === 'Subscribe for $9.99/month'));
+  assert.ok(free.some(value => value.label === 'Restore purchases'));
+  const paid = actions({ product: googleProduct, subscription: {
+    ...subscription, provider: 'google', access: 'pro', status: 'active', canManage: true, canPurchase: false,
+  } });
+  assert.ok(paid.some(value => value.label === 'Manage Google Play subscription'));
+  assert.ok(!paid.some(value => value.label.startsWith('Subscribe') || value.label.includes('Apple')));
+  const pending = actions({ product: googleProduct, subscription: {
+    ...subscription, provider: 'google', status: 'pending', canPurchase: false, canResumeAppleCheckout: true,
+  } });
+  assert.ok(pending.some(value => value.label === 'Restore purchases'));
+  assert.ok(!pending.some(value => value.label.startsWith('Subscribe') || value.label.includes('Apple')));
+});
 test('billing errors and pending status cannot leave a stale purchase button available', () => {
   for (const state of [{ error: 'Offline' }, { subscription: { ...subscription, status: 'pending', canPurchase: false } }, { product: null }]) {
     assert.ok(!actions(state).some(value => value.label.startsWith('Subscribe')));

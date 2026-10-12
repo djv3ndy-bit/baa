@@ -44,7 +44,7 @@ test('returns a generic provider error without exposing provider text', () => {
 test('mobile email signup uses the HTTPS bridge instead of an unhandled login deep link', () => {
   const signup = read('mobile/app/signup.tsx');
   assert.equal(MOBILE_AUTH_WEB_BRIDGE, 'https://www.baristajobmatch.com/mobile-auth-callback.html');
-  assert.match(signup, /emailRedirectTo:\s*MOBILE_AUTH_WEB_BRIDGE/);
+  assert.match(signup, /emailRedirectTo:\s*getMobileAuthWebBridge\(\)/);
   assert.doesNotMatch(signup, /emailRedirectTo:\s*['"]baristamatch:\/\/login/);
 });
 
@@ -68,7 +68,7 @@ test('mobile session persistence and password recovery contracts remain enabled'
   assert.match(client, /autoRefreshToken:\s*true/);
   assert.match(client, /persistSession:\s*true/);
   assert.match(client, /detectSessionInUrl:\s*false/);
-  assert.match(mobileReset, /https:\/\/www\.baristajobmatch\.com\/reset-password/);
+  assert.match(mobileReset, /redirectTo:\s*getPasswordResetRedirect\(\)/);
   assert.match(webReset, /PASSWORD_RECOVERY/);
   assert.match(webReset, /updateUser\(\{password/);
 });

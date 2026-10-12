@@ -9,6 +9,20 @@ const MAX_OBJECTS = 5000;
 const MAX_FOLDERS = 100;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function isolatedAndroidTestDeletionWithoutStripe(environment, billing) {
+  // This independent Android test database has never used Stripe. Every other
+  // environment must still discover orphaned Customers, even for a free row.
+  if (environment.SUPABASE_URL !== "https://ojvjlvojvozvhktbclcg.supabase.co" ||
+      environment.NATIVE_BILLING_ENVIRONMENT !== "Sandbox" ||
+      environment.VERCEL_ENV !== "preview" ||
+      environment.VERCEL_TARGET_ENV !== "android-testing" ||
+      environment.BILLING_ENABLED !== "false") return false;
+  if (!billing || typeof billing !== "object" || Array.isArray(billing) ||
+      ["stripe_customer_id", "stripe_subscription_id", "stripe_checkout_attempt_id"].some(name => !Object.hasOwn(billing, name) || billing[name] !== null)) return false;
+  return !Object.entries(environment).some(([name, value]) => name.startsWith("STRIPE_") &&
+    value != null && value !== "" && !(name === "STRIPE_LIVEMODE" && value === "false"));
+}
+
 function ownedObjectPath(value, userId) {
   const path = String(value || "").trim();
   if (!path.startsWith(`${userId}/`) || /[\\\u0000-\u001f]/.test(path)) return null;
@@ -316,7 +330,7 @@ export default async function handler(req, res) {
     const subscriptions = await subscriptionResponse.json();
     if (!Array.isArray(subscriptions) || subscriptions.length > 1) throw new CleanupError();
     const billing = subscriptions[0];
-    if (billing) {
+    if (billing && !isolatedAndroidTestDeletionWithoutStripe(process.env, billing)) {
       // Bind destructive cleanup to the configured BaristaMatch account and
       // canonical Price before treating a missing resource as already deleted.
       const stripe = await stripeWebhookClient();

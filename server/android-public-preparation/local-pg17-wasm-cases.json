@@ -1,0 +1,396 @@
+{
+  "scope": "LOCAL SYNTHETIC DISPOSABLE ONLY",
+  "cases": [
+    {
+      "name": "provider-valid-google",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000001')='google');",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-valid-apple-not-rewritten",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000002')='apple');",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-expired",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000003') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-started",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000004') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-cancelled",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000005') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-wrong-owner",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000006') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-barista",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000003','Production','20000000-0000-4000-8000-000000000007') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-sandbox",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Sandbox','20000000-0000-4000-8000-000000000008') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-suspended",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000004','Production','20000000-0000-4000-8000-000000000009') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-missing-profile",
+      "sql": "select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000005','Production','20000000-0000-4000-8000-000000000010') is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-null-arguments",
+      "sql": "select test_harness.assert(public.native_checkout_provider(null,'Production',null) is null);",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-denies-changed-configuration",
+      "sql": "update private.native_billing_configuration set environment='Sandbox'; set local role service_role; select test_harness.assert(public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000001') is null);",
+      "role": "postgres",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "provider-no-execute-anon",
+      "sql": "select public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000001');",
+      "role": "anon",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "provider-no-execute-authenticated",
+      "sql": "select public.native_checkout_provider('10000000-0000-4000-8000-000000000001','Production','20000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "catalog-rls-four-owner-policies",
+      "sql": "select test_harness.assert((select relrowsecurity from pg_class where oid='public.android_device_push_tokens'::regclass));select test_harness.assert((select count(*)=4 from pg_policy where polrelid='public.android_device_push_tokens'::regclass and polroles=array['authenticated'::regrole::oid]));",
+      "role": "postgres",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "owner-select-sees-only-own",
+      "sql": "select test_harness.assert((select count(*)=1 and bool_and(user_id='10000000-0000-4000-8000-000000000001') from public.android_device_push_tokens));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "owner-insert-own",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_insert_a','10000000-0000-4000-8000-000000000001'); select test_harness.assert((select count(*)=2 from public.android_device_push_tokens));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "owner-delete-own",
+      "sql": "delete from public.android_device_push_tokens where fcm_token='qa_token_a'; select test_harness.assert((select count(*)=0 from public.android_device_push_tokens));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "foreign-read-hidden",
+      "sql": "select test_harness.assert((select count(*)=0 from public.android_device_push_tokens where fcm_token='qa_token_b'));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "foreign-update-noop",
+      "sql": "with changed as (update public.android_device_push_tokens set enabled=false where fcm_token='qa_token_b' returning 1) select test_harness.assert((select count(*)=0 from changed));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "foreign-delete-noop",
+      "sql": "with changed as (delete from public.android_device_push_tokens where fcm_token='qa_token_b' returning 1) select test_harness.assert((select count(*)=0 from changed));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "foreign-insert-denied",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_foreign','10000000-0000-4000-8000-000000000002');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "42501"
+    },
+    {
+      "name": "ownership-transfer-denied",
+      "sql": "update public.android_device_push_tokens set user_id='10000000-0000-4000-8000-000000000002' where fcm_token='qa_token_a';",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "42501"
+    },
+    {
+      "name": "foreign-token-upsert-denied",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_token_a','10000000-0000-4000-8000-000000000002') on conflict(fcm_token) do update set enabled=true;",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000002",
+      "expected_error": "42501"
+    },
+    {
+      "name": "signedout-auth-role-sees-no-rows",
+      "sql": "select test_harness.assert((select count(*)=0 from public.android_device_push_tokens));",
+      "role": "authenticated",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "signedout-auth-role-insert-denied",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_signedout','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "invalid-token-empty",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "invalid-token-too-long",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values(repeat('x',2049),'10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "invalid-token-ascii-space",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa token','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "invalid-token-control",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values(E'qa\\ntoken','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "invalid-token-nbsp",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values(U&'qa\\00A0token','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "invalid-token-bom",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values(U&'qa\\FEFFtoken','10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "max-token-bytes-accepted",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values(repeat('x',2048),'10000000-0000-4000-8000-000000000001');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "identity-pin-platform",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id,platform) values('qa_bad_identity','10000000-0000-4000-8000-000000000001','ios');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "identity-pin-firebase_project_id",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id,firebase_project_id) values('qa_bad_identity','10000000-0000-4000-8000-000000000001','foreign');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "identity-pin-package_name",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id,package_name) values('qa_bad_identity','10000000-0000-4000-8000-000000000001','foreign.package');",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": "23514"
+    },
+    {
+      "name": "server-assigned-timestamps",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id,created_at,updated_at) values('qa_timestamp','10000000-0000-4000-8000-000000000001','2099-01-01','2099-01-01'); select test_harness.assert((select created_at between transaction_timestamp() and statement_timestamp() and updated_at between transaction_timestamp() and statement_timestamp() from public.android_device_push_tokens where fcm_token='qa_timestamp'));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "created-time-preserved-on-owner-update",
+      "sql": "update public.android_device_push_tokens set created_at='2099-01-01',updated_at='2099-01-01',enabled=false where fcm_token='qa_token_a'; select test_harness.assert((select created_at<'2099-01-01' and updated_at between transaction_timestamp() and statement_timestamp() and not enabled from public.android_device_push_tokens where fcm_token='qa_token_a'));",
+      "role": "authenticated",
+      "user": "10000000-0000-4000-8000-000000000001",
+      "expected_error": null
+    },
+    {
+      "name": "service-select-all",
+      "sql": "select test_harness.assert((select count(*)=2 from public.android_device_push_tokens));",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "service-can-disable-only-columns",
+      "sql": "update public.android_device_push_tokens set enabled=false,updated_at='2099-01-01' where fcm_token='qa_token_a'; select test_harness.assert((select not enabled and updated_at between transaction_timestamp() and statement_timestamp() from public.android_device_push_tokens where fcm_token='qa_token_a'));",
+      "role": "service_role",
+      "user": null,
+      "expected_error": null
+    },
+    {
+      "name": "service-cannot-update-fcm_token",
+      "sql": "update public.android_device_push_tokens set fcm_token='qa_replaced' where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-update-user_id",
+      "sql": "update public.android_device_push_tokens set user_id='10000000-0000-4000-8000-000000000002' where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-update-firebase_project_id",
+      "sql": "update public.android_device_push_tokens set firebase_project_id='baristamatch' where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-update-package_name",
+      "sql": "update public.android_device_push_tokens set package_name='com.baristajobmatch.app' where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-update-platform",
+      "sql": "update public.android_device_push_tokens set platform='android' where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-update-created_at",
+      "sql": "update public.android_device_push_tokens set created_at=now() where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-register",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_service','10000000-0000-4000-8000-000000000001');",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "service-cannot-delete",
+      "sql": "delete from public.android_device_push_tokens where fcm_token='qa_token_a';",
+      "role": "service_role",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "anon-cannot-read",
+      "sql": "select count(*) from public.android_device_push_tokens;",
+      "role": "anon",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "anon-cannot-register",
+      "sql": "insert into public.android_device_push_tokens(fcm_token,user_id) values('qa_anon','10000000-0000-4000-8000-000000000001');",
+      "role": "anon",
+      "user": null,
+      "expected_error": "42501"
+    },
+    {
+      "name": "auth-deletion-cascades-only-owner",
+      "sql": "delete from auth.users where id='10000000-0000-4000-8000-000000000001'; select test_harness.assert((select count(*)=0 from public.android_device_push_tokens where user_id='10000000-0000-4000-8000-000000000001'));select test_harness.assert((select count(*)=1 from public.android_device_push_tokens where user_id='10000000-0000-4000-8000-000000000002'));",
+      "role": "postgres",
+      "user": null,
+      "expected_error": null
+    }
+  ],
+  "guards": [
+    {
+      "name": "sandbox-precondition",
+      "setup": "update private.native_billing_configuration set environment='Sandbox';",
+      "prefix": ""
+    },
+    {
+      "name": "missing-configuration",
+      "setup": "delete from private.native_billing_configuration;",
+      "prefix": ""
+    },
+    {
+      "name": "missing-signature",
+      "setup": "drop function public.native_checkout_start(uuid,text,uuid);",
+      "prefix": ""
+    },
+    {
+      "name": "wrong-column-contract",
+      "setup": "alter table public.profiles alter column suspended_at type text using suspended_at::text;",
+      "prefix": ""
+    },
+    {
+      "name": "unknown-executor",
+      "setup": "",
+      "prefix": "set role authenticated;"
+    },
+    {
+      "name": "unexpected-default-grantee",
+      "setup": "create role unexpected_default_reader; alter default privileges for role postgres in schema public grant select on tables to unexpected_default_reader;",
+      "prefix": ""
+    }
+  ],
+  "syntheticUserA": "10000000-0000-4000-8000-000000000001",
+  "syntheticUserB": "10000000-0000-4000-8000-000000000002"
+}

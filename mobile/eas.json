@@ -54,6 +54,44 @@
         "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
         "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
       }
+    },
+    "android-payment-review": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "preview",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://android-testing.baristajobmatch.com/api",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ojvjlvojvozvhktbclcg.supabase.co",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING": "true",
+        "EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      }
+    },
+    "android-public-internal": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE": "true",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.baristajobmatch.com/api",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lmwqrxoitraofaftpwhe.supabase.co",
+        "EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL": "https://baristamatch-android-baristamatch.vercel.app/api",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING": "false",
+        "EXPO_PUBLIC_GOOGLE_PLAY_PRODUCT_ID": "baristamatch_cafe_pro",
+        "EXPO_PUBLIC_GOOGLE_PLAY_BASE_PLAN_ID": "monthly-us",
+        "EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      }
     }
   },
   "submit": {

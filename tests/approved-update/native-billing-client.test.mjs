@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadTypescript} from './load-typescript.mjs';
+import {nativeCheckoutService} from '../../server/native-billing/checkoutService.mjs';
 const {nativePurchaseDependencies,checkedSubscription}=loadTypescript('mobile/features/native-subscription/nativeBillingClient.ts');
 const {PurchaseCoordinator}=loadTypescript('mobile/features/native-subscription/purchaseCoordinator.ts');
 const account={id:'cafe-a',role:'cafe_owner_manager'},id='10000000-0000-4000-8000-000000000001',binding='20000000-0000-4000-8000-000000000001';
@@ -25,6 +26,56 @@ test('native buy follows real account-bound prepare/start/verify/status/finish r
  const h=harness();const result=await h.coordinator.buy(product);assert.equal(result.kind,'verified');assert.equal(result.subscription.access,'pro');
  assert.deepEqual(h.calls.map(row=>row[0]),['/native-billing?action=status','/native-billing?action=prepare','/native-billing?action=start','store-buy','/native-purchases','/native-billing?action=status','finish']);
  for(const row of h.calls.filter(row=>row[0].startsWith('/')))assert.equal(row[3],account.id);
+});
+test('Google preflight sends the selected base plan and actual Play storefront to the account-bound server',async()=>{
+ const calls=[];
+ const googleProduct={...product,provider:'google',basePlanId:'monthly-standard'};
+ const deps=nativePurchaseDependencies({account:async()=>account,
+  call:async(path,body,method,accountId)=>{calls.push([path,body,method,accountId]);return {attemptId:id,accountBinding:binding};},
+  store:{country:async()=> 'US',buy:async()=>{throw Error('must not charge');},restore:async()=>[],finish:async()=>{}},
+ });
+ assert.equal((await deps.preflight(account.id,googleProduct)).accountBinding,binding);
+ assert.deepEqual(JSON.parse(JSON.stringify(calls)),[['/native-billing?action=prepare',{provider:'google',productId:product.id,storefront:'US',basePlanId:'monthly-standard'},'POST',account.id]]);
+ await assert.rejects(deps.purchase({...googleProduct,basePlanId:'annual'},binding),/reload/);
+ assert.equal(calls.length,1);
+});
+test('a Google product without its configured base plan cannot reserve checkout',async()=>{
+ const h=harness();await assert.rejects(h.deps.preflight(account.id,{...product,provider:'google'}),/plan/);
+ assert.equal(h.calls.length,0);
+});
+test('Apple preflight preserves its existing payload without Google catalog fields',async()=>{
+ const h=harness();await h.deps.preflight(account.id,product);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.calls[0][1])),{provider:'apple',productId:product.id,storefront:'USA'});
+});
+test('Google startup sends the original prepared product, base plan and Play storefront before charging',async()=>{
+ const calls=[],googleProduct={...product,provider:'google',basePlanId:'monthly-standard'};
+ const deps=nativePurchaseDependencies({account:async()=>account,
+  call:async(path,body,method,accountId)=>{calls.push([path,body,method,accountId]);return path.endsWith('prepare') ? {attemptId:id,accountBinding:binding} : {started:true};},
+  store:{country:async()=> 'US',buy:async()=>{calls.push(['store-buy']);return {kind:'pending'};},restore:async()=>[],finish:async()=>{}},
+ });
+ await deps.preflight(account.id,googleProduct);await deps.purchase(googleProduct,binding);
+ assert.deepEqual(JSON.parse(JSON.stringify(calls[1])),['/native-billing?action=start',{attemptId:id,provider:'google',productId:product.id,basePlanId:'monthly-standard',storefront:'US'},'POST',account.id]);
+ assert.equal(calls[2][0],'store-buy');
+});
+test('changing server Google catalog configuration after prepare cannot launch the old client product',async()=>{
+ for(const changed of [{productId:'new.monthly'},{basePlanId:'new-monthly'}]){
+  const selected={...product,provider:'google',basePlanId:'monthly-standard'},configured={productId:selected.id,basePlanId:selected.basePlanId};
+  let bought=false,started=false;
+  const server=nativeCheckoutService({environment:'Production',enabled:true,productId:product.id,googlePlan:configured,
+   repository:{claimCheckout:async()=>({attemptId:id,accountBinding:binding}),checkoutProvider:async()=> 'google',startCheckout:async()=>{started=true;return true;}},
+   ready:async()=>{},inspectWebsiteBilling:async()=>true,
+  });
+  const deps=nativePurchaseDependencies({account:async()=>account,
+   call:async(path,body)=>path.endsWith('prepare') ? server.prepare(account,body) : server.start(account,body.attemptId,body),
+   store:{country:async()=> 'US',buy:async()=>{bought=true;return {kind:'pending'};},restore:async()=>[],finish:async()=>{}},
+  });
+  await deps.preflight(account.id,selected);Object.assign(configured,changed);
+  assert.equal((await deps.purchase(selected,binding)).kind,'pending');assert.equal(started,false);assert.equal(bought,false);
+ }
+});
+test('Apple startup preserves its attemptId-only payload for existing released clients',async()=>{
+ const h=harness();await h.deps.preflight(account.id,product);await h.deps.purchase(product,binding);
+ assert.deepEqual(JSON.parse(JSON.stringify(h.calls.find(row=>row[0].endsWith('start'))[1])),{attemptId:id});
 });
 test('only an explicit SDK user cancellation releases the server reservation',async()=>{
  const h=harness({result:{kind:'cancelled'}});assert.equal((await h.coordinator.buy(product)).kind,'cancelled');

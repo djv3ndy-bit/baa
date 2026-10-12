@@ -5,9 +5,9 @@ import { loadTypescript, plain } from './load-typescript.mjs';
 function renderedInsets(path, platform, review) {
   const jsx = (type, props) => ({ type, props });
   const { default: RootLayout } = loadTypescript('mobile/app/_layout.tsx', {
-    react: { useEffect() {} },
+    react: { useEffect() {}, useRef: current => ({ current }) },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'expo-router': { Stack: 'Stack', usePathname: () => path },
+    'expo-router': { Stack: 'Stack', usePathname: () => path, useRootNavigationState: () => ({ key: 'test-root' }) },
     'react-native': { Platform: { OS: platform } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-status-bar': { StatusBar: 'StatusBar' },

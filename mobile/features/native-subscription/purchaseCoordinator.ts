@@ -1,6 +1,7 @@
 /** Store adapters and the server must supply these values. Client receipt data
- * alone never grants access. This module is not wired into the release yet. */
+ * alone never grants access. */
 export type BillingProvider = 'apple' | 'google' | 'stripe';
+export type ReviewAccess = { active: true; expiresAt: string };
 export type VerifiedSubscription = {
   accountId: string;
   verified: true;
@@ -14,8 +15,30 @@ export type VerifiedSubscription = {
   autoRenews: boolean;
   gracePeriodEnd?: string | null;
   subscriptions?: { provider: BillingProvider; canManage: boolean; access: 'free' | 'pro' }[];
+  reviewAccess?: ReviewAccess;
 };
-export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google' };
+/** Display only a separately verified reviewer grant in its authorized client environment. */
+export function reviewerAccess(subscription: VerifiedSubscription | null, enabled = false): ReviewAccess | null {
+  const grant = subscription?.reviewAccess;
+  return enabled && subscription?.verified === true && subscription.access === 'pro' && subscription.canPurchase === false
+    && grant?.active === true && typeof grant.expiresAt === 'string' && Number.isFinite(Date.parse(grant.expiresAt))
+    && Date.parse(grant.expiresAt) > Date.now() ? grant : null;
+}
+/** Recheck display at expiry, including deadlines beyond the native timer limit. */
+export function reviewerExpiryTimer(expiresAt: string, expired: () => void): () => void {
+  const end = Date.parse(expiresAt);
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const schedule = () => {
+    if (cancelled || !Number.isFinite(end)) return;
+    const remaining = end - Date.now();
+    if (remaining <= 0) { expired(); return; }
+    timer = setTimeout(schedule, Math.min(remaining, 2147483647));
+  };
+  schedule();
+  return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer); };
+}
+export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google'; basePlanId?: string };
 export type StorePurchase = { id: string; productId: string; provider: 'apple' | 'google'; proof: string };
 export type PurchaseResult = { kind: 'cancelled' | 'pending' } | { kind: 'purchased'; purchase: StorePurchase };
 export type PurchaseOutcome =

@@ -1,3 +1,6 @@
+import {usesAndroidDirectFcm} from '../server/android-push/configuration.mjs';
+import {sendAndroidPushToUsers} from '../server/android-push/send.mjs';
+
 const clean=(value,max=500)=>String(value??'').trim().slice(0,max);
 
 function adminHeaders(extra={}){
@@ -36,6 +39,7 @@ async function disableInvalidTokens(tokens){
 }
 
 export async function sendPushToUsers(userIds,notification){
+  if(usesAndroidDirectFcm(process.env))return sendAndroidPushToUsers(userIds,notification);
   const uniqueUsers=[...new Set(userIds.filter(Boolean))];
   if(!uniqueUsers.length)return {sent:0};
   const encoded=uniqueUsers.map(id=>encodeURIComponent(id)).join(',');

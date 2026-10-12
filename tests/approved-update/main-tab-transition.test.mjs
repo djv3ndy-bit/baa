@@ -5,9 +5,9 @@ import { loadTypescript } from './load-typescript.mjs';
 const jsx = (type, props) => ({ type, props });
 function options() {
   const { default: RootLayout } = loadTypescript('mobile/app/_layout.tsx', {
-    react: { useEffect() {} },
+    react: { useEffect() {}, useRef: current => ({ current }) },
     'react/jsx-runtime': { jsx, jsxs: jsx },
-    'expo-router': { Stack: 'stack', usePathname: () => '/home' },
+    'expo-router': { Stack: 'stack', usePathname: () => '/home', useRootNavigationState: () => ({ key: 'test-root' }) },
     'react-native': { Platform: { OS: 'ios' } },
     'react-native-safe-area-context': { SafeAreaView: 'safe-area' },
     'expo-status-bar': { StatusBar: 'status-bar' },

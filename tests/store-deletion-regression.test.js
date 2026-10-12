@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import handler, { endStripeBillingForDeletion, storedObjectsForProfile } from '../api/delete-account.js';
+import handler, { endStripeBillingForDeletion, isolatedAndroidTestDeletionWithoutStripe, storedObjectsForProfile } from '../api/delete-account.js';
 import { stripeApiClient } from '../api/_billing.js';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -10,9 +10,16 @@ const response = (data, status = 200) => new Response(JSON.stringify(data), { st
 
 function setup(t, options = {}) {
   const oldFetch = globalThis.fetch;
-  const keys = ['SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'STRIPE_RESTRICTED_KEY', 'STRIPE_LIVEMODE', 'STRIPE_ACCOUNT_ID', 'STRIPE_MONTHLY_PRICE_ID'];
+  const keys = [...new Set([
+    'SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY',
+    'NATIVE_BILLING_ENVIRONMENT', 'VERCEL_ENV', 'VERCEL_TARGET_ENV', 'BILLING_ENABLED',
+    'STRIPE_RESTRICTED_KEY', 'STRIPE_LIVEMODE', 'STRIPE_ACCOUNT_ID', 'STRIPE_MONTHLY_PRICE_ID',
+    ...Object.keys(process.env).filter(key => key.startsWith('STRIPE_')),
+    ...Object.keys(options.environment || {})
+  ])];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   Object.assign(process.env, { SUPABASE_URL: BASE, SUPABASE_PUBLISHABLE_KEY: 'publishable-test', SUPABASE_SECRET_KEY: options.legacy ? 'legacy-service-key' : 'sb_secret_test' });
+  for (const key of keys) if (key.startsWith('STRIPE_')) delete process.env[key];
   let testStripe;
   let previousStripeHttpClient;
   if (options.stripeFetch) {
@@ -28,6 +35,9 @@ function setup(t, options = {}) {
   } else {
     delete process.env.STRIPE_RESTRICTED_KEY;
     delete process.env.STRIPE_LIVEMODE;
+  }
+  for (const [key, value] of Object.entries(options.environment || {})) {
+    value === undefined ? delete process.env[key] : process.env[key] = value;
   }
   t.after(() => {
     globalThis.fetch = oldFetch;
@@ -554,4 +564,192 @@ test('timeouts report a retryable error without leaking credentials', async t =>
   const mock = setup(t, { override: () => { throw new DOMException('private upstream details', 'TimeoutError'); } });
   await mock.run(); assert.equal(mock.res.statusCode, 504); assert.equal(mock.identityDeleted(), false);
   assert.doesNotMatch(JSON.stringify(mock.res.body), /private upstream|sb_secret|valid-session/);
+});
+
+const ANDROID_TEST_ENVIRONMENT = Object.freeze({
+  SUPABASE_URL: 'https://ojvjlvojvozvhktbclcg.supabase.co',
+  NATIVE_BILLING_ENVIRONMENT: 'Sandbox',
+  VERCEL_ENV: 'preview',
+  VERCEL_TARGET_ENV: 'android-testing',
+  BILLING_ENABLED: 'false',
+  STRIPE_LIVEMODE: 'false'
+});
+const FREE_BILLING = Object.freeze({
+  stripe_customer_id: null, stripe_subscription_id: null, stripe_checkout_attempt_id: null, status: 'free'
+});
+const CAFE = Object.freeze({ role: 'cafe_owner_manager', suspended_at: null, is_discoverable: true });
+const CLOSED_ANDROID_GATES = [
+  ...Object.keys(ANDROID_TEST_ENVIRONMENT).filter(key => key !== 'STRIPE_LIVEMODE').map(key => [`missing ${key}`, { [key]: undefined }]),
+  ['Apple review database', { SUPABASE_URL: 'https://iqtpsxxlpncaeabbcxht.supabase.co' }],
+  ['production database', { SUPABASE_URL: 'https://lmwqrxoitraofaftpwhe.supabase.co' }],
+  ['unknown database', { SUPABASE_URL: BASE }],
+  ['database URL with a suffix', { SUPABASE_URL: `${ANDROID_TEST_ENVIRONMENT.SUPABASE_URL}.example.invalid` }],
+  ['Production receipts', { NATIVE_BILLING_ENVIRONMENT: 'Production' }],
+  ['unknown receipt environment', { NATIVE_BILLING_ENVIRONMENT: 'sandbox' }],
+  ['production deployment', { VERCEL_ENV: 'production' }],
+  ['local development', { VERCEL_ENV: 'development' }],
+  ['generic Preview target', { VERCEL_TARGET_ENV: 'preview' }],
+  ['unknown custom target', { VERCEL_TARGET_ENV: 'other-testing' }],
+  ['enabled billing', { BILLING_ENABLED: 'true' }],
+  ['unknown billing flag', { BILLING_ENABLED: '0' }]
+];
+
+test('Android test exception requires all selected Stripe links explicitly null and unconfigured test mode', () => {
+  assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_TEST_ENVIRONMENT, FREE_BILLING), true);
+  const withoutMode = { ...ANDROID_TEST_ENVIRONMENT };
+  delete withoutMode.STRIPE_LIVEMODE;
+  assert.equal(isolatedAndroidTestDeletionWithoutStripe(withoutMode, FREE_BILLING), true);
+  assert.equal(isolatedAndroidTestDeletionWithoutStripe({ ...withoutMode, STRIPE_RESTRICTED_KEY: '' }, FREE_BILLING), true);
+  for (const billing of [null, undefined, [], 'missing', {}, Object.create(FREE_BILLING)]) {
+    assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_TEST_ENVIRONMENT, billing), false);
+  }
+});
+for (const field of ['stripe_customer_id', 'stripe_subscription_id', 'stripe_checkout_attempt_id']) {
+  for (const missing of [true, false]) {
+    test(`Android exception rejects ${missing ? 'absent' : 'undefined'} selected ${field}`, async t => {
+      const billing = { ...FREE_BILLING, [field]: undefined };
+      if (missing) delete billing[field];
+      assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_TEST_ENVIRONMENT, billing), false);
+      const mock = setup(t, { environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [billing] });
+      await mock.run();
+      assert.equal(mock.res.statusCode, 502);
+      assert.equal(mock.identityDeleted(), false);
+      assert.equal(mock.calls.some(call => call.path.startsWith('/storage/v1/object/')), false);
+    });
+  }
+}
+test('Android exception rejects an empty billing row before storage or identity deletion', async t => {
+  const mock = setup(t, { environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [{}] });
+  await mock.run();
+  assert.equal(mock.res.statusCode, 502);
+  assert.equal(mock.identityDeleted(), false);
+  assert.equal(mock.calls.some(call => call.path.startsWith('/storage/v1/object/')), false);
+});
+for (const [label, changed] of CLOSED_ANDROID_GATES) {
+  test(`Android free cafe retains fail-closed Stripe cleanup for ${label}`, async t => {
+    const environment = { ...ANDROID_TEST_ENVIRONMENT, ...changed };
+    assert.equal(isolatedAndroidTestDeletionWithoutStripe(environment, FREE_BILLING), false);
+    const mock = setup(t, { environment, profiles: [CAFE], subscriptions: [FREE_BILLING] });
+    await mock.run();
+    assert.equal(mock.res.statusCode, changed.SUPABASE_URL === undefined && 'SUPABASE_URL' in changed ? 503 : 502);
+    assert.equal(mock.identityDeleted(), false);
+    assert.equal(mock.calls.some(call => call.path.startsWith('/storage/v1/object/')), false);
+  });
+}
+for (const [field, value] of [
+  ['stripe_customer_id', 'cus_linked'],
+  ['stripe_subscription_id', 'sub_legacy'],
+  ['stripe_checkout_attempt_id', '33333333-3333-4333-8333-333333333333'],
+  ['stripe_customer_id', ''],
+  ['stripe_subscription_id', false],
+  ['stripe_checkout_attempt_id', 0]
+]) {
+  test(`Android exception rejects present ${field}=${JSON.stringify(value)}`, async t => {
+    const billing = { ...FREE_BILLING, [field]: value };
+    assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_TEST_ENVIRONMENT, billing), false);
+    const mock = setup(t, { environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [billing] });
+    await mock.run();
+    assert.equal(mock.res.statusCode, 502);
+    assert.equal(mock.identityDeleted(), false);
+    assert.equal(mock.calls.some(call => call.path.startsWith('/storage/v1/object/')), false);
+  });
+}
+for (const [field, value] of [
+  ['STRIPE_RESTRICTED_KEY', 'rk_test_fixture'], ['STRIPE_ACCOUNT_ID', 'acct_fixture'],
+  ['STRIPE_MONTHLY_PRICE_ID', 'price_fixture'], ['STRIPE_PUBLISHABLE_KEY', 'pk_test_fixture'],
+  ['STRIPE_WEBHOOK_SECRET', 'whsec_fixture'], ['STRIPE_SECRET_KEY', 'sk_test_fixture'],
+  ['STRIPE_FUTURE_CONFIGURATION', 'configured'], ['STRIPE_RESTRICTED_KEY', ' '],
+  ['STRIPE_LIVEMODE', 'true'], ['STRIPE_LIVEMODE', 'unknown']
+]) {
+  test(`Android exception rejects configured or ambiguous ${field}=${JSON.stringify(value)}`, async t => {
+    const environment = { ...ANDROID_TEST_ENVIRONMENT, [field]: value };
+    assert.equal(isolatedAndroidTestDeletionWithoutStripe(environment, FREE_BILLING), false);
+    const mock = setup(t, { environment, profiles: [CAFE], subscriptions: [FREE_BILLING] });
+    await mock.run();
+    assert.equal(mock.res.statusCode, 502);
+    assert.equal(mock.identityDeleted(), false);
+  });
+}
+test('isolated Android free cafe deletes only owned uploads and verified identity after billing lease and lookup', async t => {
+  const mock = setup(t, {
+    environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [FREE_BILLING],
+    files: { 'coffee-videos': [`${USER}/nested/video.mp4`, `${OTHER}/keep.mp4`], 'cafe-images': [`${USER}/old.jpg`, `${OTHER}/keep.jpg`] }
+  });
+  await mock.run({ body: { confirmation: 'DELETE', user_id: OTHER } });
+  assert.equal(mock.res.statusCode, 200);
+  assert.deepEqual(mock.res.body, { success: true, appleRevocation: 'not_applicable' });
+  assert.deepEqual([...mock.files.get('coffee-videos')], [`${OTHER}/keep.mp4`]);
+  assert.deepEqual([...mock.files.get('cafe-images')], [`${OTHER}/keep.jpg`]);
+  const claim = mock.calls.findIndex(call => call.path.endsWith('/claim_stripe_deletion'));
+  const lock = mock.calls.findIndex(call => call.method === 'PATCH');
+  const billing = mock.calls.findIndex(call => call.path === '/rest/v1/cafe_subscriptions');
+  const storage = mock.calls.findIndex(call => call.path.startsWith('/storage/'));
+  assert.ok(claim >= 0 && claim < lock && lock < billing && billing < storage);
+  assert.equal(mock.calls.at(-1).path, `/auth/v1/admin/users/${USER}`);
+  assert.equal(mock.calls.at(-1).method, 'DELETE');
+  assert.equal(mock.calls.filter(call => call.method === 'PATCH').length, 1);
+  assert.equal(mock.calls.some(call => call.path.endsWith('/settle_stripe_checkout_attempt_for_deletion')), false);
+});
+for (const [label, override, status] of [
+  ['expired authentication', call => call.path === '/auth/v1/user' ? response({}, 401) : undefined, 401],
+  ['authentication outage', call => call.path === '/auth/v1/user' ? response({}, 503) : undefined, 502],
+  ['profile outage', call => call.path === '/rest/v1/profiles' ? response({}, 503) : undefined, 502],
+  ['malformed profile', call => call.path === '/rest/v1/profiles' ? response({}) : undefined, 502],
+  ['billing lookup outage', call => call.path === '/rest/v1/cafe_subscriptions' ? response({}, 503) : undefined, 502],
+  ['malformed billing lookup', call => call.path === '/rest/v1/cafe_subscriptions' ? response({}) : undefined, 502],
+  ['storage listing outage', call => call.path.startsWith('/storage/v1/object/list/') ? response({}, 503) : undefined, 502],
+  ['foreign storage listing', call => call.path.startsWith('/storage/v1/object/list/') ? response([{ name: '../foreign', id: 'object', metadata: {} }]) : undefined, 502],
+  ['storage removal outage', call => call.method === 'DELETE' && call.path.startsWith('/storage/') ? response({}, 503) : undefined, 502]
+]) {
+  test(`isolated Android deletion still fails closed for ${label}`, async t => {
+    const mock = setup(t, { environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [FREE_BILLING], files: { 'cafe-images': [`${USER}/avatar.jpg`] }, override });
+    await mock.run();
+    assert.equal(mock.res.statusCode, status);
+    assert.equal(mock.identityDeleted(), false);
+    assert.equal(mock.res.body.success, undefined);
+    const lock = mock.calls.find(call => call.method === 'PATCH' && call.search.includes('suspended_at=is.null'));
+    if (lock) {
+      const restore = mock.calls.find(call => call.method === 'PATCH' && call.search.includes('suspended_at=eq.'));
+      assert.equal(new URLSearchParams(restore.search).get('suspended_at'), `eq.${lock.body.suspended_at}`);
+      assert.deepEqual(restore.body, { suspended_at: null, is_discoverable: true });
+      assert.equal(mock.calls.at(-1).path, '/rest/v1/rpc/release_stripe_checkout');
+    }
+  });
+}
+test('isolated Android identity deletion failure restores the owned lock without claiming success', async t => {
+  const mock = setup(t, {
+    environment: ANDROID_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [FREE_BILLING],
+    override: call => call.path === `/auth/v1/admin/users/${USER}` ? response({}, 503) : undefined
+  });
+  await mock.run();
+  assert.equal(mock.res.statusCode, 502);
+  assert.equal(mock.res.body.success, undefined);
+  assert.equal(mock.calls.some(call => call.method === 'PATCH' && call.search.includes('suspended_at=eq.')), true);
+  assert.equal(mock.calls.at(-1).path, '/rest/v1/rpc/release_stripe_checkout');
+});
+test('configured Stripe in Android test still discovers and removes owned orphan customers before identity deletion', async t => {
+  const stripeRequests = [];
+  const mock = setup(t, {
+    environment: { ...ANDROID_TEST_ENVIRONMENT, STRIPE_RESTRICTED_KEY: 'rk_test_account_deletion', STRIPE_ACCOUNT_ID: 'acct_baristamatch', STRIPE_MONTHLY_PRICE_ID: 'price_baristamatch' },
+    profiles: [CAFE], subscriptions: [FREE_BILLING],
+    stripeFetch: async (url, init) => {
+      const path = new URL(url).pathname;
+      stripeRequests.push(`${init.method} ${path}`);
+      if (path === '/v1/prices/price_baristamatch') return response({ id: 'price_baristamatch', livemode: false, currency: 'usd', unit_amount: 999, type: 'recurring', recurring: { interval: 'month', interval_count: 1 }, metadata: { application: 'baristamatch', plan: 'cafe_monthly', stripe_account_id: 'acct_baristamatch' } });
+      if (path === '/v1/customers/search') return response({ data: [{ id: 'cus_orphan', metadata: { cafe_user_id: USER } }], has_more: false });
+      if (path === '/v1/customers/cus_orphan' && init.method === 'GET') return response({ id: 'cus_orphan', metadata: { cafe_user_id: USER } });
+      if (path === '/v1/checkout/sessions') return response({ data: [], has_more: false });
+      if (path === '/v1/customers/cus_orphan' && init.method === 'DELETE') {
+        assert.equal(mock.identityDeleted(), false);
+        return response({ id: 'cus_orphan', deleted: true });
+      }
+      throw new Error('Unexpected mock Stripe request');
+    }
+  });
+  await mock.run();
+  assert.equal(mock.res.statusCode, 200);
+  assert.equal(mock.identityDeleted(), true);
+  assert.ok(stripeRequests.includes('GET /v1/customers/search'));
+  assert.ok(stripeRequests.includes('GET /v1/customers/cus_orphan'));
+  assert.ok(stripeRequests.includes('DELETE /v1/customers/cus_orphan'));
 });

@@ -126,6 +126,17 @@ test('verified provider test notifications do not call purchase verification', a
   assert.deepEqual(f.counts(), { verifyCount:0,ackCount:0 });
 });
 
+test('authenticated out-of-scope Google one-time voids finish and deduplicate without subscription rows', async () => {
+  const f = fixture();
+  const ignored = { provider: 'google', eventId: 'one-time-void', payload: 'authenticated-one-time-void', ignored: 'google-one-time-voided-purchase' };
+  assert.equal((await f.service.notification(ignored)).kind, 'ignored');
+  assert.equal((await f.service.notification(ignored)).kind, 'duplicate');
+  assert.deepEqual(f.counts(), { verifyCount: 0, ackCount: 0 });
+  assert.equal(await scalar('select count(*) from private.native_billing_subscriptions'), 0);
+  assert.equal(await scalar('select public.native_billing_access($1,$2)', [cafe, 'Sandbox']), false);
+  await assert.rejects(f.service.notification({ ...ignored, payload: 'changed-event-payload' }), /identity conflict/);
+});
+
 test('deleted account ownership survives for verified financial events without restoring access or transferring purchases', async () => {
   const f = fixture(); await f.service.reconcile(purchase);
   await db.query('delete from profiles where id=$1', [cafe]);
