@@ -22,7 +22,7 @@ export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
         :await service.cancel(account(user),body.attemptId,body.reason);
       return res.status(200).json(result);
     }catch(error){
-      const message={CHECKOUT_BLOCKED:'Another purchase or billing update is in progress. Check your subscription status before trying again.',WEBSITE_BILLING_EXISTS:'Your website subscription or checkout needs attention. Finish or cancel that checkout before purchasing here.',PRODUCT_UNAVAILABLE:'New subscriptions are available only in the United States.',NOT_ENABLED:'In-app purchasing is not available yet.',INVALID_CANCELLATION:'This purchase could not be marked as canceled. Check its status before trying again.'}[error?.code];
+      const message={REVIEW_ACCESS_ACTIVE:'Your reviewer Pro access is already active. No purchase is needed.',CHECKOUT_BLOCKED:'Another purchase or billing update is in progress. Check your subscription status before trying again.',WEBSITE_BILLING_EXISTS:'Your website subscription or checkout needs attention. Finish or cancel that checkout before purchasing here.',PRODUCT_UNAVAILABLE:'New subscriptions are available only in the United States.',NOT_ENABLED:'In-app purchasing is not available yet.',INVALID_CANCELLATION:'This purchase could not be marked as canceled. Check its status before trying again.'}[error?.code];
       return res.status(message?409:503).json({error:message || 'Subscription services are temporarily unavailable. Please try again. If checkout already opened, check its status before purchasing again.'});
     }
   };

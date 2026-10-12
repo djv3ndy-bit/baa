@@ -28,16 +28,19 @@ export const nativeManagementUrls = Object.freeze({
  * nativeStatus field is verified server data, never a fabricated Stripe record. */
 export function accountBillingView(website, combined) {
   const nativeRows = combined.subscriptions.filter(row => row.provider !== 'stripe');
-  if (!nativeRows.length && !combined.checkoutPending) return website;
+  if (!nativeRows.length && !combined.checkoutPending && !combined.reviewAccess) return website;
   const primary = combined.subscriptions[0];
   const nativeOwnsAccess = primary && primary.provider !== 'stripe';
   const needsAttention = ['pending', 'payment_required'].includes(combined.status);
-  const blocksPurchase = combined.access === 'pro' || combined.checkoutPending || needsAttention;
+  // Reviewer access changes account permissions, never a provider's payment
+  // status or management capability in this preserved legacy contract.
+  const providerPaid = combined.reviewAccess ? combined.subscriptions.some(row => row.access === 'pro') : combined.access === 'pro';
+  const blocksPurchase = providerPaid || combined.checkoutPending || needsAttention;
   return {
     ...website,
     plan: combined.access,
     status: nativeOwnsAccess || combined.checkoutPending
-      ? combined.access === 'pro' ? 'active' : needsAttention ? 'incomplete' : 'canceled'
+      ? providerPaid ? 'active' : needsAttention ? 'incomplete' : 'canceled'
       : website.status,
     connectedToBilling: website.connectedToBilling || nativeRows.length > 0,
     canManageBilling: website.canManageBilling || blocksPurchase,

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { combinedAccountStatus } from './accountStatus.mjs';
+import { withAndroidReviewAccess } from './reviewAccess.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, googlePlan, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, googlePlan, ready, createId=randomUUID, reviewAccess=async()=>null }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
   const checkProduct=request=> {
@@ -20,17 +21,19 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
   return {
     async status(account,website) {
       accountCheck(account);
+      const reviewer=await reviewAccess(account);
       await repository.settleVerifiedCheckout(account.id,environment);
       const [native,checkoutPending]=await Promise.all([repository.summary(account.id,environment),repository.checkoutPending(account.id,environment)]);
       const status=combinedAccountStatus({account,website,native,environment,checkoutPending});
-      const recovery = enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
+      const recovery = !reviewer && enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
         && !website.billingPaused && repository.recoverAppleCheckout
         ? await repository.recoverAppleCheckout(account.id,environment) : null;
-      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery};
+      return withAndroidReviewAccess({...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery},reviewer);
     },
     async prepare(account,request) {
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
+      requireValue(!(await reviewAccess(account)),'REVIEW_ACCESS_ACTIVE');
       const provider=checkProduct(request);
       // Fail before opening the store if server verification is not configured.
       await ready(provider);
@@ -51,6 +54,7 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     async resume(account,request,website) {
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
+      requireValue(!(await reviewAccess(account)),'REVIEW_ACCESS_ACTIVE');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
       await ready('apple');
       requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
@@ -63,6 +67,7 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     },
     async start(account,attemptId,request) {
       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
+      requireValue(!(await reviewAccess(account)),'REVIEW_ACCESS_ACTIVE');
       // Derive the store from the durable reservation, never from a caller's
       // provider field. The atomic start operation still rechecks eligibility,
       // expiry and duplicate billing after provider readiness completes.

@@ -51,6 +51,7 @@ function harness(file, options = {}) {
       if (name.endsWith('/session') || name === './session') return { getCurrentContext: async () => options.context ? options.context(++contextCalls, current) : current };
       if (name.endsWith('/api')) return api;
       if (name.endsWith('/pushNotifications')) return { registerForPhoneNotifications: async () => ({ status: 'enabled' }), unregisterThisDeviceNotifications: async () => {}, clearAndroidNotificationsAfterDeletion: async (expected, clearSession) => { notificationCleanup.push(expected); return clearSession(); } };
+      if (name.endsWith('/review-mode/environment')) return { getAppEnvironment: () => options.environment || { review: false, apiBase: '', supabaseUrl: '', publishableKey: '' } };
       if (name.startsWith('@/')) return load(`mobile/${name.slice(2)}`);
       if (name.startsWith('./') || name.startsWith('../')) return load(resolve(dirname(file), name));
       throw new Error(`Unexpected native dependency ${name}`);

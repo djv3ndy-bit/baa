@@ -6,6 +6,7 @@ import {inspectNativeWebsiteBilling} from '../server/native-billing/websiteCheck
 import {checkoutHandler} from '../server/native-billing/checkoutHandler.mjs';
 import {createCheckoutReadiness} from '../server/native-billing/checkoutReadiness.mjs';
 import {captureBillingStatus} from '../server/native-billing/accountBillingHandler.mjs';
+import {createAndroidReviewAccess} from '../server/native-billing/reviewAccess.mjs';
 
 const repository=nativeBillingRepository(adminRows);
 const readiness=new Map();
@@ -18,6 +19,7 @@ export function nativeAccountService(){
     const readinessKey=JSON.stringify([environment,productId,googlePlan.productId,googlePlan.basePlanId]);
     if(!readiness.has(readinessKey)) readiness.set(readinessKey,createCheckoutReadiness({environment,productId,googlePlan}));
     return nativeCheckoutService({repository,environment,productId,googlePlan,
+      reviewAccess:createAndroidReviewAccess({repository}),
       enabled:process.env.NATIVE_PURCHASES_ENABLED==='true' && process.env.BILLING_ENABLED==='true',
       ready:readiness.get(readinessKey),
       async inspectWebsiteBilling(userId,provider='apple'){

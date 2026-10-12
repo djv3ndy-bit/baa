@@ -14,7 +14,13 @@ const record = (value: unknown): Record<string, any> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Subscription confirmation is unavailable.');
   return value as Record<string, any>;
 };
-export function checkedSubscription(value: unknown, accountId: string): VerifiedSubscription {
+export function androidReviewerAccessEnabled(platform: string, environment: { review: boolean; apiBase: string; supabaseUrl: string; publishableKey: string }): boolean {
+  return platform === 'android' && environment.review === true
+    && environment.apiBase === 'https://android-testing.baristajobmatch.com/api'
+    && environment.supabaseUrl === 'https://ojvjlvojvozvhktbclcg.supabase.co'
+    && /^sb_publishable_[A-Za-z0-9_-]+$/.test(environment.publishableKey);
+}
+export function checkedSubscription(value: unknown, accountId: string, reviewAccessEnabled = false): VerifiedSubscription {
   const row = record(value);
   if (row.accountId !== accountId || row.verified !== true || !['free', 'pro'].includes(row.access)
     || ![null, 'apple', 'google', 'stripe'].includes(row.provider) || !statuses.includes(row.status)
@@ -29,12 +35,18 @@ export function checkedSubscription(value: unknown, accountId: string): Verified
     throw new Error('Subscription confirmation is unavailable.');
   }
   if (row.canResumeAppleCheckout !== undefined && typeof row.canResumeAppleCheckout !== 'boolean') throw new Error('Subscription confirmation is unavailable.');
+  if (row.reviewAccess !== undefined && (!reviewAccessEnabled || !row.reviewAccess || typeof row.reviewAccess !== 'object'
+    || Array.isArray(row.reviewAccess) || row.reviewAccess.active !== true || typeof row.reviewAccess.expiresAt !== 'string'
+    || !Number.isFinite(Date.parse(row.reviewAccess.expiresAt)) || Date.parse(row.reviewAccess.expiresAt) <= Date.now()
+    || row.access !== 'pro' || row.canPurchase !== false)) {
+    throw new Error('Subscription confirmation is unavailable.');
+  }
   return row as VerifiedSubscription;
 }
 
 /** The caller supplies the existing authenticatedApi transport. Its expected
  * account check stays in force on every request, including verification. */
-export function nativePurchaseDependencies({ account, call, store }: { account: AccountReader; call: BillingTransport; store: PurchaseStore }): PurchaseDependencies {
+export function nativePurchaseDependencies({ account, call, store, reviewAccessEnabled = false }: { account: AccountReader; call: BillingTransport; store: PurchaseStore; reviewAccessEnabled?: boolean }): PurchaseDependencies {
   let prepared: { accountId: string; attemptId: string; binding: string; productId: string; provider: StoreProduct['provider']; basePlanId?: string; storefront: string; recovery?: boolean } | null = null;
   const requireAccount = async (expected?: string) => {
     const current = await account();
@@ -43,7 +55,7 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
   };
   const status = async (accountId: string) => {
     await requireAccount(accountId);
-    const result = checkedSubscription(await call('/native-billing?action=status', {}, 'GET', accountId), accountId);
+    const result = checkedSubscription(await call('/native-billing?action=status', {}, 'GET', accountId), accountId, reviewAccessEnabled);
     await requireAccount(accountId);
     return result;
   };
