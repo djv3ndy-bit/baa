@@ -4,11 +4,13 @@ import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('Vercel routes expose /mcp and /health without touching the customer project', () => {
+test('Vercel routes expose MCP, liveness, and OAuth discovery without touching the customer project', () => {
   const config = JSON.parse(read('vercel.json'));
   assert.deepEqual(config.rewrites, [
     { source: '/mcp', destination: '/api/mcp' },
     { source: '/health', destination: '/api/health' },
+    { source: '/.well-known/oauth-protected-resource', destination: '/api/oauth-protected-resource' },
+    { source: '/.well-known/oauth-protected-resource/mcp', destination: '/api/oauth-protected-resource' },
   ]);
   assert.equal(config.functions['api/mcp.ts'].maxDuration, 60);
 });
