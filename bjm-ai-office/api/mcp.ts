@@ -1,5 +1,6 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createOfficeMcpServer } from '../server/mcp.js';
+import { requireOfficeOwner } from '../server/owner-auth.mjs';
 
 export const config = { maxDuration: 60 };
 
@@ -11,6 +12,7 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(405).json({ error: 'Method not allowed.' });
   }
+  if (!(await requireOfficeOwner(req, res))) return;
 
   const server = createOfficeMcpServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
@@ -26,8 +28,8 @@ export default async function handler(req: any, res: any) {
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.method === 'POST' ? req.body : undefined);
-  } catch (error) {
-    console.error('BJM AI Office Vercel MCP request failed', error);
+  } catch {
+    console.error('BJM AI Office MCP request failed');
     if (!res.headersSent) res.status(500).json({ error: 'MCP request failed.' });
   } finally {
     if (res.writableEnded) await close();
