@@ -12,9 +12,10 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Allow', 'GET, POST, DELETE');
     return res.status(405).json({ error: 'Method not allowed.' });
   }
-  if (!(await requireOfficeOwner(req, res))) return;
+  const owner = await requireOfficeOwner(req, res);
+  if (!owner) return;
 
-  const server = createOfficeMcpServer();
+  const server = createOfficeMcpServer(owner.accessToken);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   let closed = false;
   const close = async () => {

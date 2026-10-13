@@ -12,7 +12,7 @@ const env = {
 };
 const now = () => 1800000000000;
 const baseClaims = { sub: OWNER, iss: 'https://project.example/auth/v1', aud: 'https://office.example/mcp',
-  client_id: 'office-client', role: 'authenticated', scope: 'openid', session_id: OTHER,
+  client_id: 'office-client', role: 'bjm_office_reader', scope: 'openid', session_id: OTHER,
   exp: 1800000600, iat: 1800000000 };
 const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
 const token = (claims = {}, header = {}) => `${encode({ alg: 'ES256', ...header })}.${encode({ ...baseClaims, ...claims })}.MOCK_SIGNATURE`;
@@ -56,7 +56,7 @@ for (const [name, claims] of Object.entries({
   missingExpiry: { exp: undefined }, longLifetime: { exp: 1800003601 },
   wrongIssuer: { iss: 'https://attacker.example/auth/v1' }, genericAudience: { aud: 'authenticated' },
   wrongClient: { client_id: 'another-client' }, regularLogin: { client_id: undefined },
-  serviceRole: { role: 'service_role' }, missingScope: { scope: '' }, missingSession: { session_id: undefined },
+  serviceRole: { role: 'service_role' }, customerRole: { role: 'authenticated' }, missingScope: { scope: '' }, missingSession: { session_id: undefined },
 })) {
   test(`rejects ${name} token before network`, async () => {
     assert.equal((await run(request(claims), { fetchImpl: neverFetch })).status, 401);

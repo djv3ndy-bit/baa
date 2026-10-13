@@ -1,40 +1,42 @@
 # BJM AI Office
 
-Private/internal ChatGPT App for the Barista Job Match owner.
+Private owner reporting through an MCP server and React widget. Continue the existing Office projects and PR #87; do not recreate the Office or change the customer website deployment root.
 
-## Product shape
+## Current capability
 
-Primary archetype: **interactive-decoupled** ChatGPT App (MCP server + React widget).
+Five authenticated, read-only tools are implemented:
 
-This is intentionally separate from the customer-facing Barista Job Match website/app. ChatGPT/BJM Office is the owner control center.
+| Tool | Result |
+| --- | --- |
+| `get_owner_overview` | Aggregate business, support, billing and health report |
+| `get_ai_team_status` | The 19 registered roles and permission ceilings |
+| `get_decision_queue` | Review signals; no action execution or task persistence |
+| `get_system_health` | Website reachability and actual aggregate-read availability |
+| `get_billing_summary` | Subscription totals and payment counts |
 
-## V1 owner experience
+ChatGPT handles analysis using these tools. This server does not call the OpenAI API, start 19 independent background workers, or require an OpenAI API key. Registered roles describe responsibilities; they do not establish active execution.
 
-- Owner Overview: platform/support/billing/approval summary
-- AI Team: Manager, Engineering, Support, Billing, Marketing, Social, Sales, Analytics
-- Decision Queue: protected actions requiring owner approval
-- Reports: owner brief, support, billing, growth, system health
-- Quick Commands: run team, ask manager, check support, check health, create marketing plan
-- Emergency controls are represented as protected actions, never silent autonomous writes
+The widget uses the MCP Apps bridge with a legacy ChatGPT fallback. Credentials remain server-side. Missing, denied, stale or malformed data is unavailable/null; only a successful read can produce a verified zero. Support and payment summaries cover 30 days; overview totals and subscription counts are all-time. Billing counts reflect database synchronization, not an independent Stripe reconciliation.
 
-## Safety contract
+## Security and activation
 
-Read-only/reporting tools are safe by default. Mutating actions must be separate MCP tools with accurate destructive/idempotent annotations and explicit owner confirmation. No secrets are placed in widget code. No public customer UI is added to baristajobmatch.com.
+Every MCP request validates the exact bearer token with Supabase Auth, then enforces the configured owner, issuer, Office resource audience, dedicated OAuth client, `bjm_office_reader` role, `openid` scope and session lifetime. Ordinary customer tokens and privileged server keys are rejected.
 
-## Planned MCP tools
+The request's validated token can call only the aggregate snapshot adapter. The proposed database role, restricted aggregate function and dedicated-client token hook are an **unapplied review package**, not evidence of deployed database isolation. The reader role must pass the effective-privilege audit, including inherited `PUBLIC` grants, before activation. Account-level Supabase Auth capabilities are distinct from business-data privileges; never disclose the access token.
 
-- `get_owner_overview` — read-only summary
-- `get_ai_team_status` — read-only agent status/capabilities
-- `get_decision_queue` — read-only pending approvals
-- `get_reports` — read-only reports
-- `run_owner_brief` — read-only orchestration/report generation
-- `request_owner_action` — creates a reviewable approval request; does not execute protected action
-- later: narrowly scoped approved-action tools for merge/deploy/refund/publish/etc., each with explicit confirmation
+Keep `BJM_AI_OFFICE_AUTH_ENABLED=false` until hosted owner/nonowner login, OAuth refresh/revocation, and direct table/RPC/storage denial tests pass. No refunds, sends, publications, merges, deployments or customer changes are implemented as Office tools.
 
-## Data adapters
+## Local verification
 
-The server layer should call private backend adapters for Supabase, GitHub, Vercel, Resend and Stripe-derived billing data. The widget receives concise structured content; credentials and sensitive provider payloads stay server-side.
+Use Node 22 and the committed Office lockfile:
 
-## Docs alignment
+```sh
+pnpm install --frozen-lockfile
+pnpm test
+pnpm typecheck
+pnpm build
+```
 
-Build against current OpenAI Apps SDK guidance: MCP server + widget UI, tool-first design, accurate annotations, structuredContent for model/widget, widget-only metadata in `_meta`, MCP Apps bridge first, and exact CSP allowlists before deployment.
+Tests use synthetic users/tokens and local database fixtures. They exercise the real MCP SDK, role/RPC constraints, provider failures and rendered widget states. They do not prove real hosted OAuth or Vercel authorization.
+
+See [the current activation checkpoint](docs/AI_TEAM_ACTIVATION_2026-10-13.md) for completed work, remaining prerequisites and the existing project IDs.

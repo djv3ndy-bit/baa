@@ -12,5 +12,5 @@
     "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },
-  "include": ["api/**/*.ts", "server/**/*.ts", "web/**/*.tsx", "vite.config.ts"]
+  "include": ["api/**/*.ts", "server/**/*.ts"]
 }

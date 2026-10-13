@@ -5,8 +5,10 @@ const source = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 for (const path of ['api/mcp.ts', 'server/index.ts']) {
   test(`${path} requires owner before constructing or invoking MCP`, () => {
     const text = source(path);
-    const gate = text.indexOf('if (!(await requireOfficeOwner(req, res))) return;');
-    assert.ok(gate > 0 && gate < text.indexOf('const server = createOfficeMcpServer()'));
+    const validation = text.indexOf('const owner = await requireOfficeOwner(req, res);');
+    const gate = text.indexOf('if (!owner) return;');
+    assert.ok(validation > 0 && validation < gate);
+    assert.ok(gate < text.indexOf('const server = createOfficeMcpServer(owner.accessToken)'));
     assert.ok(gate < text.indexOf('transport.handleRequest('));
   });
 }

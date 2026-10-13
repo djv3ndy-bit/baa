@@ -90,7 +90,7 @@ export async function authorizeOfficeRequest(req, options = {}) {
     if (!audiences.every(aud => typeof aud === 'string') || !audiences.includes(config.resource) ||
         claims.iss !== config.issuer || claims.client_id !== config.clientId ||
         !UUID.test(claims.sub || '') || !UUID.test(claims.session_id || '') ||
-        claims.role !== 'authenticated' ||
+        claims.role !== 'bjm_office_reader' ||
         !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat) ||
         claims.exp <= now || claims.iat > now + 30 || claims.exp <= claims.iat || claims.exp - claims.iat > 3600 ||
         (claims.nbf !== undefined && (!Number.isSafeInteger(claims.nbf) || claims.nbf > now + 30)) ||
@@ -120,7 +120,9 @@ export async function authorizeOfficeRequest(req, options = {}) {
 
 export async function requireOfficeOwner(req, res) {
   const authorization = await authorizeOfficeRequest(req);
-  if (authorization.ok) return true;
+  // This credential is only passed to the request's private provider closure.
+  // It must never enter a tool result, widget prop, process environment or log.
+  if (authorization.ok) return { ownerId: authorization.ownerId, accessToken: req.headers.authorization.slice(7) };
   for (const [key, value] of Object.entries(authorization.headers)) res.setHeader(key, value);
   res.status(authorization.status).json(authorization.body);
   return false;

@@ -1,49 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { tsImport } from 'tsx/esm/api';
 
-const registry={
-  manager:'prepare',engineering:'prepare',security:'prepare',support:'prepare',marketing:'prepare',sales:'prepare',
-  'barista-acquisition':'prepare',marketplace:'recommend',product:'recommend',seo:'prepare',matching:'recommend',
-  communications:'prepare',billing:'prepare',finance:'recommend','trust-safety':'prepare',data:'prepare',release:'prepare',
-  compliance:'recommend','owner-intelligence':'observe'
-};
-const rank={observe:0,recommend:1,prepare:2,execute:3};
-const permission=(id,requested)=>Boolean(registry[id])&&rank[requested]<=rank[registry[id]];
-const route=event=>{
- const v=event.toLowerCase();
- if(/security|credential|secret|vulnerab|suspicious login/.test(v))return'security';
- if(/seo|indexing|sitemap|schema|search console/.test(v))return'seo';
- if(/database|query|index|migration|rls/.test(v))return'data';
- if(/crash|api failure|ci failure|performance|outage|bug/.test(v))return'engineering';
- if(/refund|subscription|payment|billing/.test(v))return'billing';
- if(/support|customer issue|help request/.test(v))return'support';
- if(/café prospect|cafe prospect|sales lead/.test(v))return'sales';
- if(/barista acquisition|barista signup|barista prospect/.test(v))return'barista-acquisition';
- if(/marketplace|zero applicants|supply|demand|liquidity/.test(v))return'marketplace';
- if(/ux|product friction|drop-off|dropoff/.test(v))return'product';
- if(/notification|transactional email|push notification/.test(v))return'communications';
- if(/app store|testflight|release|build submission/.test(v))return'release';
- if(/privacy|terms|compliance|legal/.test(v))return'compliance';
- if(/fraud|fake job|fake profile|abuse|scam/.test(v))return'trust-safety';
- if(/matching|recommendation|job fit/.test(v))return'matching';
- if(/revenue|cost|margin|finance/.test(v))return'finance';
- if(/growth|activation|marketing|campaign/.test(v))return'marketing';
- return'manager';
-};
+const { AGENT_REGISTRY, permissionDecision, routeAgentFor, teamSnapshot } = await tsImport('../server/policy.ts', import.meta.url);
 
-test('registry contains all 19 V1 operating roles',()=>assert.equal(Object.keys(registry).length,19));
-test('orchestrator routes representative events',()=>{
- assert.equal(route('production API failure on jobs'),'engineering');
- assert.equal(route('suspicious login security alert'),'security');
- assert.equal(route('database query is slow'),'data');
- assert.equal(route('SEO sitemap indexing issue'),'seo');
- assert.equal(route('barista signup acquisition cohort'),'barista-acquisition');
- assert.equal(route('fake job scam report'),'trust-safety');
+test('actual registry contains all 19 V1 operating roles without execution authority', () => {
+  assert.equal(AGENT_REGISTRY.length, 19);
+  assert.equal(new Set(AGENT_REGISTRY.map(agent => agent.id)).size, 19);
+  for (const agent of AGENT_REGISTRY) assert.notEqual(agent.ceiling, 'execute');
 });
-test('permission ceilings block overreach',()=>{
- assert.equal(permission('owner-intelligence','recommend'),false);
- assert.equal(permission('marketplace','prepare'),false);
- assert.equal(permission('engineering','prepare'),true);
- assert.equal(permission('engineering','execute'),false);
+
+test('actual orchestrator routes representative events', () => {
+  assert.equal(routeAgentFor('production API failure on jobs'), 'engineering');
+  assert.equal(routeAgentFor('suspicious login security alert'), 'security');
+  assert.equal(routeAgentFor('database query is slow'), 'data');
+  assert.equal(routeAgentFor('database schema migration'), 'data');
+  assert.equal(routeAgentFor('SEO sitemap indexing issue'), 'seo');
+  assert.equal(routeAgentFor('barista signup acquisition cohort'), 'barista-acquisition');
+  assert.equal(routeAgentFor('fake job scam report'), 'trust-safety');
 });
-test('unknown agent cannot act',()=>assert.equal(permission('unknown','observe'),false));
+
+test('actual permission ceilings block overreach and unknown agents', () => {
+  assert.equal(permissionDecision('owner-intelligence', 'recommend').allowed, false);
+  assert.equal(permissionDecision('marketplace', 'prepare').allowed, false);
+  assert.equal(permissionDecision('engineering', 'prepare').allowed, true);
+  assert.equal(permissionDecision('engineering', 'execute').allowed, false);
+  assert.equal(permissionDecision('unknown', 'observe').allowed, false);
+});
+
+test('team snapshot describes registration without claiming active execution', () => {
+  assert.equal(teamSnapshot().length, 19);
+  for (const agent of teamSnapshot()) {
+    assert.equal(agent.status, 'registered');
+    assert.equal(agent.execution, 'available_on_request');
+    assert.equal(agent.permissionCeiling, AGENT_REGISTRY.find(entry => entry.id === agent.id).ceiling);
+  }
+});

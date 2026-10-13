@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { teamSnapshot } from './policy.js';
-import { getLiveOverview, getSupportSummary, getBillingSummary, getSystemHealth, getDecisionSignals } from './providers.js';
+import { createOfficeProviders } from './providers.js';
 import { notionConfigured } from './notion.js';
 
 const WIDGET_URI = 'ui://bjm-ai-office/owner-v1';
@@ -16,10 +16,12 @@ export function officeBaseUrl() {
 function widgetHtml() {
   const baseUrl = officeBaseUrl();
   const assetUrl = new URL('/assets/office.js', `${baseUrl}/`).toString();
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="${assetUrl}"></script></body></html>`;
+  const styleUrl = new URL('/assets/office.css', `${baseUrl}/`).toString();
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${styleUrl}"></head><body><div id="root"></div><script type="module" src="${assetUrl}"></script></body></html>`;
 }
 
-export function createOfficeMcpServer() {
+export function createOfficeMcpServer(accessToken?: string) {
+  const { getLiveOverview, getSupportSummary, getBillingSummary, getSystemHealth, getDecisionSignals } = createOfficeProviders(accessToken);
   const server = new McpServer({ name: 'bjm-ai-office', version: '0.4.1' });
   const baseUrl = officeBaseUrl();
   const resourceOrigin = new URL(baseUrl).origin;

@@ -19,11 +19,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - run: npm install
-      - run: npm test
-      - run: npm run typecheck
-      - run: npm run build
+      - uses: pnpm/action-setup@v4
+        with: {version: '11.25.0', run_install: false}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
       - name: Verify deterministic widget bundle
-        run: test -f dist/assets/office.js
+        run: test -f dist/assets/office.js && test -f dist/assets/office.css
       - name: Verify Vercel function routes
         run: test -f api/mcp.ts && test -f api/health.ts && test -f vercel.json

@@ -2,6 +2,8 @@
 
 Status: draft implementation for review. Do not label the Office or its 19 registered agents operational from this patch.
 
+**Historical checkpoint:** The current implementation and corrected hosting facts are recorded in [AI_TEAM_ACTIVATION_2026-10-13.md](AI_TEAM_ACTIVATION_2026-10-13.md). The two Office projects already exist in GitHub's deployment records. Do not repeat project creation or interpret a connector 404 as proof of absence. The legacy privileged adapter described below has since been replaced by a request-scoped aggregate adapter, and Office authentication now requires the dedicated `bjm_office_reader` role. The database/token-hook package remains unapplied.
+
 ## Verified checkpoint
 
 The current consent gate from PR #82 is merged, but both Office MCP entrypoints had no owner authentication. The provider adapter currently relies on SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY, so deploying it as previously written would not be an RLS-limited read-only integration. Public health also called private provider health. The recorded separate Office Vercel project was not found under the connected team during this inspection; the website project remains present. Resolve the intended hosting target rather than recreating or deleting projects blindly.
