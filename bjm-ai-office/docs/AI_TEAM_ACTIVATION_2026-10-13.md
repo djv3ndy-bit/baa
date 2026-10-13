@@ -1,53 +1,85 @@
-# AI team activation checkpoint — October 13, 2026
+# AI Office activation checkpoint — October 13, 2026
 
-Status: implementation and local verification in the existing PR #87. Hosted activation remains pending. No production, database, OAuth, billing or mobile settings have been changed by this continuation.
+**Status: the approved preview and local security tests passed, and temporary access cleanup is complete. The Office preview is disabled and protected. Production Office deployment and final activation remain pending.**
 
-## Existing work and hosting
+Continue the existing `bjm-ai-office` project, root `bjm-ai-office`, and [draft PR #87](https://github.com/djv3ndy-bit/baa/pull/87) on `fix/ai-office-owner-auth-20261012`. Prior hosted-preview head: `cd0a8b83c76f3f1b89a9e17f9bab343d82ef9350`; tree: `5cc33d310dc9db85e3e5a17521bead22b0be4b6d`. The production candidate additionally rejects a nil session UUID before contacting Auth, with a regression test and **127 local tests**, typechecks and build passing. Normal Auth issues nonzero sessions; no current nil-token mint path is alleged. Record final-commit CI and hosted evidence independently. The PR is unmerged. The separate existing `bjm-ai-office-` project is preserved. Create no replacement projects and do not change the customer website deployment root.
 
-- Continue `fix/ai-office-owner-auth-20261012` / [PR #87](https://github.com/djv3ndy-bit/baa/pull/87). The separate consent-session fix [PR #88](https://github.com/djv3ndy-bit/baa/pull/88) remains independent and unmerged.
-- Signed-in Vercel inspection confirms the original `bjm-ai-office` and the separate `bjm-ai-office-` both exist. Continue the original Office, whose root is `bjm-ai-office`; do not create, delete, rename or reimport either project.
-- The reviewed original Office preview at commit `737f6bc` renders the current widget and both assets correctly. Its Standard Protection requires Vercel login; an unauthenticated API request returns Vercel's 401, so this is not hosted Office OAuth verification. No deployment-protection setting was changed.
-- October 13 connector reads list only `baa` and `baristamatch-android`. Both recorded Office IDs and the recorded Office preview return 404 through this connection; listing their deployments returns none. This establishes a visibility/access discrepancy, not project absence or deletion.
-- Vercel sign-in is complete. No local Vercel CLI authentication was found. The existing ChatGPT Sign in with Vercel connection exposes no project-grant selector in its account page; do not disconnect/reconnect or broaden permissions speculatively.
-- The approved public bootstrap settings are saved only for `fix/ai-office-owner-auth-20261012`, with Office access disabled; private owner/client/key settings and the database package are still pending. The production Supabase OAuth server is enabled, dynamic registration is disabled, its current key is ECC P-256, and no active OAuth clients, Auth hooks or Office database roles/configuration are installed. ChatGPT is signed in through Chrome; its custom MCP form exposes a callback before creation. Recopy that exact callback after choosing the final endpoint and discovering its metadata. No connection was submitted.
+## Production V1 scope
 
-## Implementation completed
+This is private owner reporting and drafting through ChatGPT, with five authenticated read-only tools: owner overview, team registry, decision signals, system health and billing summary. The widget can load these reports and ask ChatGPT to prepare drafts.
 
-- The owner boundary now rejects ordinary customer `authenticated` tokens and requires `bjm_office_reader` in addition to issuer, exact resource audience, dedicated client, owner, scope and verified live session checks.
-- Public OAuth discovery needs only validated Office/Supabase HTTPS origins. Anonymous MCP requests receive a discovery challenge before activation; credential-bearing requests remain behind complete private configuration and the activation switch, without executing tools or providers during setup.
-- Both HTTP entrypoints pass the validated request token directly into that request's private MCP/provider closure. No process-global bearer token or cross-request data cache is used.
-- The legacy service-role table adapter is replaced with a single aggregate RPC contract using the publishable API key and validated owner token. Raw customer rows and credentials are never included in tool results.
-- Provider errors, denied reads, invalid counts and stale/malformed responses remain null/unavailable. Health depends on successful aggregate reads. Support/payment reporting uses a fixed 30-day window and counts are not capped at 100/500 rows.
-- The widget reports registered roles, unavailable data and connection failures accurately, supports MCP Apps alongside the legacy bridge, and loads its stylesheet in the embedded resource.
-- Database roles, aggregate RPC, client-specific token hook and isolation tests are prepared for review only in [office-read-review.sql](../sql/office-read-review.sql). The effective privilege audit includes PUBLIC grants and the exact fingerprint of the reviewed pure profile predicate. The PostgreSQL 16+ installer temporarily grants only the SET ability needed for aggregate function ownership and restores its exact original membership before commit. A private security-barrier view delegates only the configured owner's live dedicated-client sessions; the aggregate role receives no direct Auth schema/table privileges. Its owner, definition fingerprint, projection, options, dependencies, rules and grants are audited before lookup. Existing customer grants are preserved. Review the package before applying anything.
+The 19 registry entries are role definitions available on request. Their ceilings are observe, recommend or prepare; none has an execute ceiling. They do not establish independent agents, scheduled work or continuous background execution. Policy routing/retry/handoff helpers are not connected to a worker loop. No OpenAI API key is required.
 
-## Validation completed locally
+The decision queue checks only available billing, website/data-health and recent-support signals. Notion is currently unavailable and optional for this V1. Its configuration flag is not a task read: adding settings alone does not expand decision coverage. The existing Notion-writing helper is not registered as an Office tool. An empty queue does not prove that all business work is clear.
 
-- **126 tests passed, zero failures**, including real MCP SDK calls for all five tools; actual denied Vercel-handler requests; public discovery without tool execution; request-token/cache isolation; provider outages, malformed/stale responses and partial nulls; rendered widget states; and local PostgreSQL role, table, RPC and storage isolation. Non-superuser migration tests prove inert empty configuration, installation with existing Auth reads but no delegation rights, private-view isolation/drift detection, temporary membership cleanup/preservation and atomic rollback. Relation audits account for schema USAGE; sequence audits remain global because numeric OIDs bypass schema-name lookup. Granting schema access to previously unreachable PUBLIC tables fails the audit. No shared grants are revoked. Read-only hosted metadata confirms PostgreSQL 17.6 and a matching restricted migration session; the package is still unapplied there.
-- Both server and browser TypeScript checks passed. The production widget build passed and generated deterministic `assets/office.js` and `assets/office.css`.
-- Browser checks passed for MCP Apps initialization, result hydration, report calls, visible errors, preserved report state, follow-up messages, disconnected controls, legacy fallback, and 390-pixel layout without overflow. Browser console checks found no errors. Fixtures were synthetic, not live business data.
-- An independent review found no remaining actionable code issues in the prepared changes.
-- Local verification used the bundled Node 24.19.0 runtime. The existing required GitHub `validate` workflow targets Node 22, now installs from the frozen Office pnpm lockfile, and checks both widget assets. CI results on the final commit must be read separately; local results are not a Node 22 claim.
+Support and payment summaries use a 30-day window; overview totals and subscription counts are all-time. Counts come from database aggregates, not an independent Stripe reconciliation. Missing, denied, malformed or stale data remains unavailable/null. Describe reports using their snapshot time; an earlier successful report is not a current availability claim.
 
-## Required activation sequence
+No Office tool sends email or messages, persists tasks, charges/refunds/cancels subscriptions, changes customers, publishes, merges or deploys. Consequential actions and production activation remain subject to owner approval.
 
-1. Approve the exact hosted test origin and access approach. Use the existing Office branch alias to keep its OAuth resource fixed across environment redeploys; scope Preview values only to `fix/ai-office-owner-auth-20261012`. A temporary exception for that one hostname exposes every path and all current/future deployments served there while active. Freeze the reviewed source and alias assignment during tests, record the immutable deployment for audit, and remove the exception after testing or abort. Do not change other preview or production protection. Recopy the final connection's displayed callback after metadata discovery. A Ready preview does not prove authenticated readiness.
-2. Review the database target and package against the current catalog, including inherited PUBLIC/schema/routine/storage privileges. An approved installation may leave configuration empty and disabled before the callback is known; do not install the Auth hook or authorize a new Office client in that state. Prove the reader cannot access customer rows, write tables, invoke legacy mutation RPCs, or write storage. Do not revoke shared grants or alter customer policies to make an audit pass.
-3. Prepare the predefined OAuth client using the exact callback, PKCE S256 and `openid`; keep dynamic registration disabled. Before the client can be authorized, populate its private owner/client/resource mapping with `enabled=false` and install the reviewed client-specific token hook. A disabled mapped client must still receive the restricted reader role; never allow it to fall through to ordinary customer claims.
-4. Recheck existing token hooks immediately before installation. Compose with any intervening hook; never overwrite an unknown hook or change customer-token claims globally. Configure only the approved Office preview values. Review the independent consent-session PR #88 and the website's existing preview-only owner setting before testing the real consent flow; neither production consent deployment nor owner correction is implied by this checkpoint.
-5. In the existing isolated preview, verify actual access-token issuance and refresh, `/auth/v1/user` acceptance, owner success, nonowner/regular-customer/wrong-client/wrong-resource denial, and revoked-session denial. Confirm ordinary website login is unchanged. Local synthetic-token tests are not this proof.
-6. Verify the five tools and embedded UI with actual aggregate reads. Compare known counts independently and confirm database-only billing results cannot be mistaken for live Stripe reconciliation.
-7. Present the exact reviewed configuration and production commit for the owner's final activation approval. Correct any needed production consent owner setting only within that approved change, then redeploy and repeat owner/nonowner checks before enabling access.
+## Implementation and hosted proof
 
-## Configuration
+- Every MCP request validates its exact bearer token with Supabase Auth and enforces the owner, issuer, dedicated client, exact Office resource audience, restricted `bjm_office_reader` role, `openid` scope and session lifetime. Ordinary customer tokens and privileged server keys are rejected.
+- Both HTTP entrypoints pass the validated token into that request's MCP/provider closure. There is no process-global bearer token or cross-request data cache. Providers call only the aggregate snapshot RPC and whitelist returned counts.
+- Migration `20261013171447` is installed. The dedicated public PKCE client, one-row private mapping and client-specific token hook exist. Dynamic client registration remains disabled. The private security-barrier session view and restricted roles passed the effective-privilege audit without revoking shared customer grants; the aggregate role has no direct Auth schema/table privileges.
+- **Twelve hosted database denial checks passed.** The ordinary customer-claim preservation and dedicated restricted claims were also checked synthetically on the hosted hook; this does not replace a real customer/nonowner login regression.
+- Normal ChatGPT owner consent, all five MCP tools, all five purpose-built connector calls and the widget's owner-report button succeeded. **Thirteen aggregate counts matched independent comparisons**, without reading raw customer rows for those comparisons.
+- The separately approved local PKCE test passed normal owner issuance and refresh, `/auth/v1/user` acceptance and **37 original/refreshed read checks**. Raw-table reads were denied and Storage listing returned AccessDenied, while the aggregate RPC and all five tools worked.
+- Logging out only the fresh local test session succeeded. Its still-unexpired token then received Office 401 and aggregate RPC 403; its refresh attempt was denied. Existing dedicated sessions were preserved, and the existing ChatGPT owner report continued working.
+- Disabling the mapping produced a fresh owner response with unavailable/null business, support and billing data. The widget displayed unavailable values and an attention signal rather than zero counts.
+- The approved website Production owner-setting correction was saved privately and the same website source was redeployed successfully. The verified owner reached the correct dedicated-client consent. This separate configuration correction is not an Office production deployment or a merge of the independent consent-session [PR #88](https://github.com/djv3ndy-bit/baa/pull/88).
 
-Server-only values: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `BJM_OFFICE_BASE_URL`, `BJM_AI_OFFICE_OWNER_USER_ID`, `BJM_AI_OFFICE_OAUTH_CLIENT_ID`, and `BJM_AI_OFFICE_AUTH_ENABLED=false` until activation. Never inherit `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`. Never place bearer tokens in widget metadata, URLs, logs, source, or tool arguments.
+## Auth-token trust boundary
+
+The Office validates the token through Supabase Auth, and its provider code uses that token only for the bounded aggregate adapter. No Office tool returns the credential or exposes an Auth mutation. The trusted server must keep the token out of the widget, logs, URLs, source and tool arguments.
+
+The same Supabase bearer may permit account-level Auth operations outside the Office tools. `openid` and the restricted database role are not a general Auth-endpoint permission boundary. Hosted table/RPC/Storage denials prove business-data restrictions; they do not prove that every account Auth mutation is denied. Destructive owner-account probes were not run and must not be used as a readiness shortcut.
+
+**Production enablement requires an explicit decision to accept this token-handling trust boundary or resolve it with a reviewed design.** A read-only Office tool surface alone does not settle that decision.
+
+## Automated and UI verification
+
+[Office CI run 38436870592](https://github.com/djv3ndy-bit/baa/actions/runs/38436870592) passed on reviewed head `cd0a8b83c76f3f1b89a9e17f9bab343d82ef9350`: **126 tests**, both TypeScript checks, widget build, assets and routes. The local suite also passed 126 tests. Local verification used Node 24.19.0; the recorded CI run used Node 22.23.3. Local PKCE-driver offline checks passed separately.
+
+Synthetic browser checks passed initialization, result hydration, reports, visible errors, preserved report state, follow-up messages, disconnected controls, legacy fallback and the 390-pixel layout. Real owner widget interaction subsequently passed during the approved hosted window.
+
+Resource CSP metadata uses the standard `_meta.ui.csp` camelCase fields and allows only the configured Office origin. **Enforced-CSP browser behavior remains unverified:** the successful hosted widget check used the pre-existing global CSP-enforcement setting off, and that setting was not changed.
+
+## Current parked state and completed cleanup
+
+- Office application activation is false and the private mapping is disabled; the live owner-session view returns no rows.
+- The exact temporary branch-domain protection exception is removed. Browser access returns to Vercel sign-in and anonymous MCP requests receive Vercel 401.
+- The client's sole original ChatGPT callback is restored. The temporary local callback is removed, the listener is closed and no disposable test sessions remain.
+- Existing dedicated owner sessions were preserved. No global logout or client-grant revocation was used.
+
+No cleanup remains for the approved temporary preview/local test. The preview's unavailable state is intentional. Installed restricted database/Auth infrastructure and saved branch-specific settings remain in place for the next approved step.
+
+## Remaining production acceptance and activation sequence
+
+1. **Complete the remaining real checks.** Verify nonowner OAuth denial and ordinary customer login with the installed hook. Resolve and record widget behavior with CSP enforcement enabled. Preserve the existing owner/customer sessions and account settings unless a specific test requires an approved narrow change.
+2. **Review the exact production target and configuration.** Use the existing original Office project and a verified stable production HTTPS origin. Confirm that public discovery, the MCP resource audience, dedicated-client mapping, callback and widget asset origin agree. A preview token/resource and branch-only settings do not establish production configuration. Keep dynamic registration disabled and do not broaden project protection speculatively. Establish and record a hardened disabled Production baseline built from the reviewed tree before enablement.
+3. **Approve the final production change before merging, promoting or deploying.** Present the exact reviewed source, production-scoped values, mapping/hook change if needed, validation results, Auth-token trust decision and safe rollback baseline. Explicitly accept or resolve the account-level Auth bearer boundary before enabling access. The earlier preview/local-test approval does not itself authorize Office production activation. Keep the independent PR #88 separate unless its change is still needed and independently approved.
+4. **Deploy with access disabled, then run the approved production verification window.** Confirm public metadata and the anonymous OAuth challenge, exact deployed source and assets, owner success, nonowner/customer/wrong-client/wrong-resource denial, direct data restrictions and unchanged website login. Verify all five tools and the widget against independently checked aggregates on the final origin.
+5. **Enable only within the final approved scope.** Record the resulting availability, snapshot and accepted limitations. Keep the following rollback contract available and verified.
+
+## Rollback contract
+
+1. **Disable the private mapping first.** Set its enabled state false while retaining the exact-client configuration row, restricted token hook and isolation roles. Deleting the mapping or removing the hook could let future dedicated-client tokens fall through to ordinary `authenticated` claims.
+2. **Disable the Office application.** Set the Production activation switch false and deploy that disabled state. Keep the restricted client configuration and hook installed.
+3. **Return only to the hardened disabled Production baseline built from the reviewed tree.** Verify its exact source and disabled settings. The original previous Production deployment may contain the legacy privileged adapter; a blind rollback to that deployment is unsafe.
+4. Remove any temporary callback or protection exception introduced for testing and confirm Office/business access is denied while ordinary customer behavior is preserved. This closes Office and aggregate access; it does not establish revocation of every bearer-token Auth capability. Any account-session revocation needs its own deliberate, narrowly scoped decision.
+
+## Required server-side configuration
+
+`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `BJM_OFFICE_BASE_URL`, `BJM_AI_OFFICE_OWNER_USER_ID`, `BJM_AI_OFFICE_OAUTH_CLIENT_ID` and `BJM_AI_OFFICE_AUTH_ENABLED`. Keep activation false until the remaining checks and final approval are complete. `BJM_PUBLIC_URL` is optional and defaults to the existing public website; Notion settings are not required for the five tools.
+
+Never inherit `SUPABASE_SECRET_KEY` or `SUPABASE_SERVICE_ROLE_KEY`, copy the full customer-app environment, or place bearer tokens/private values in source, widget metadata, URLs, logs or tool arguments. Owner/client identifiers and credentials are intentionally omitted from this document.
 
 ## Primary references
 
 - [OpenAI MCP authentication](https://developers.openai.com/plugins/build/auth)
+- [OpenAI component resource metadata](https://developers.openai.com/plugins/reference)
 - [Supabase OAuth token security](https://supabase.com/docs/guides/auth/oauth-server/token-security)
 - [Custom Access Token Hook](https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook)
 - [Supabase OAuth flows](https://supabase.com/docs/guides/auth/oauth-server/oauth-flows)
 
-Current upstream Supabase Auth source supports verifying a custom-role, resource-bound token through `/user`, including session lookup. The actual hosted project version and issued token must still be tested. A database reader role restricts business-data access; it does not by itself remove account-level capabilities from every Supabase Auth endpoint.
+A restricted database reader limits business-data privileges; `openid` does not supply a general account-Auth permission boundary. The explicit token-handling decision and safe rollback above remain production prerequisites.

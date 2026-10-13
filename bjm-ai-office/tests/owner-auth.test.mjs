@@ -34,6 +34,15 @@ test('verified exact owner succeeds without returning token or profile', async (
   assert.deepEqual(result, { ok: true, ownerId: OWNER }); assert.equal(calls, 1);
 });
 
+test('nil session cannot rely on an otherwise accepted owner response', async () => {
+  let calls = 0;
+  const result = await run(request({ session_id: '00000000-0000-0000-0000-000000000000' }), {
+    fetchImpl: async () => { calls++; return userResponse(); },
+  });
+  assert.equal(result.status, 401);
+  assert.equal(calls, 0);
+});
+
 test('missing activation switch fails closed', async () => {
   assert.equal((await run(request(), { env: { ...env, BJM_AI_OFFICE_AUTH_ENABLED: '' }, fetchImpl: neverFetch })).status, 503);
 });

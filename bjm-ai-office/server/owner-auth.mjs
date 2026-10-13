@@ -5,6 +5,7 @@
  */
 const clean = value => typeof value === 'string' ? value.trim() : '';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
 const MAX_TOKEN = 8192;
 
 // Discovery contains public identifiers only and is available before client setup.
@@ -101,7 +102,7 @@ export async function authorizeOfficeRequest(req, options = {}) {
     const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
     if (!audiences.every(aud => typeof aud === 'string') || !audiences.includes(config.resource) ||
         claims.iss !== config.issuer || claims.client_id !== config.clientId ||
-        !UUID.test(claims.sub || '') || !UUID.test(claims.session_id || '') ||
+        !UUID.test(claims.sub || '') || !UUID.test(claims.session_id || '') || claims.session_id === NIL_UUID ||
         claims.role !== 'bjm_office_reader' ||
         !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat) ||
         claims.exp <= now || claims.iat > now + 30 || claims.exp <= claims.iat || claims.exp - claims.iat > 3600 ||
