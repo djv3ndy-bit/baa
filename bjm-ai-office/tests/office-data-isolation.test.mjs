@@ -16,6 +16,12 @@ const fixture = `
 create role anon; create role authenticated; create role service_role bypassrls;
 create role authenticator noinherit; create role supabase_auth_admin noinherit;
 create schema auth; create schema storage; create schema graphql_public;
+create schema extensions; create schema cron;
+create table extensions.pg_stat_statements(query text);
+create table cron.job(id integer);
+create table cron.job_run_details(id integer);
+grant select on extensions.pg_stat_statements,cron.job,cron.job_run_details to public;
+grant delete on cron.job_run_details to public;
 grant usage on schema public, auth, storage, graphql_public to anon,authenticated,service_role;
 create table auth.users(id uuid primary key,email_confirmed_at timestamptz,is_anonymous boolean,deleted_at timestamptz,banned_until timestamptz);
 create table auth.sessions(id uuid primary key,user_id uuid,oauth_client_id uuid,not_after timestamptz);
@@ -118,6 +124,39 @@ test('unapplied SQL enforces isolated aggregate-only direct Data API role locall
         await assert.rejects(asReader(db,claims(),sql),/permission denied/);
       }
       assert.equal((await db.query('select count(*)::int as n from public.jobs')).rows[0].n,1);
+    });
+    await t.test('PUBLIC metadata SELECT/DELETE grants in inaccessible schemas do not grant direct access',async()=>{
+      for(const sql of ['select * from extensions.pg_stat_statements','select * from cron.job','select * from cron.job_run_details','delete from cron.job_run_details']) {
+        await assert.rejects(asReader(db,claims(),sql),/permission denied for schema/);
+      }
+      assert.equal((await asReader(db,claims())).rows[0].snapshot.metrics.profiles,2);
+    });
+    await t.test('reachable PUBLIC DELETE alone fails the audit without any SELECT grant',async()=>{
+      await db.exec('begin');
+      try{
+        await db.exec('revoke select on cron.job,cron.job_run_details from public; grant usage on schema cron to bjm_office_reader');
+        await assert.rejects(asReader(db,claims(),undefined,true),/inherited table or sequence privileges/);
+      }finally{await db.exec('rollback');}
+    });
+    await t.test('numeric-OID sequence calls bypass schema lookup, so PUBLIC sequence grants always fail audit',async()=>{
+      await db.exec('begin');
+      try{
+        await db.exec('create sequence cron.disposable_sequence; grant usage,select,update on sequence cron.disposable_sequence to public');
+        const sequenceOid=(await db.query("select c.oid from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='cron' and c.relname='disposable_sequence'")).rows[0].oid;
+        await assert.rejects(asReader(db,claims(),"select nextval('cron.disposable_sequence')",true),/permission denied for schema/);
+        assert.equal((await asReader(db,claims(),`select nextval(${sequenceOid}::oid::regclass) as value`,true)).rows[0].value,1);
+        assert.equal((await asReader(db,claims(),`select pg_sequence_last_value(${sequenceOid}::oid::regclass) as value`,true)).rows[0].value,1);
+        await assert.rejects(asReader(db,claims(),undefined,true),/inherited table or sequence privileges/);
+      }finally{await db.exec('rollback');}
+    });
+    await t.test('granting access to a schema with PUBLIC metadata SELECT or DELETE fails the audit',async()=>{
+      for(const schema of ['extensions','cron']){
+        await db.exec('begin');
+        try{
+          await db.exec(`grant usage on schema ${schema} to bjm_office_reader`);
+          await assert.rejects(asReader(db,claims(),undefined,true),/inherited table or sequence privileges/);
+        }finally{await db.exec('rollback');}
+      }
     });
     await t.test('nonowner, wrong client/audience/issuer/role/scope and stale/invalid claims deny direct RPC',async()=>{
       const invalids=[{sub:OTHER},{client_id:OTHER},{aud:'authenticated'},{aud:null},{iss:'https://evil.example/auth/v1'},{role:'authenticated'},

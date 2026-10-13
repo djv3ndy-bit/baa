@@ -235,11 +235,16 @@ begin
     where not pg_catalog.has_column_privilege(live_view.relowner,required.relation_oid,required.column_name,'SELECT')) then
     raise exception 'Office live-session view owner Auth read privileges changed' using errcode='42501';
   end if;
-  -- REVOKE FROM reader cannot override inherited PUBLIC permissions. Audit the
-  -- effective privileges on every user schema, including Storage and GraphQL.
+  -- REVOKE FROM reader cannot override inherited PUBLIC permissions. Audit
+  -- relation privileges in schemas the reader can reach, including Storage
+  -- and GraphQL. System schemas may carry PUBLIC metadata relation grants
+  -- without schema USAGE; no shared permissions are revoked to hide them.
+  -- Sequence privileges remain global: numeric-OID nextval/sequence readers
+  -- can bypass schema name lookup even when schema USAGE is absent.
   if exists (
     select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace
     where n.nspname !~ '^pg_' and n.nspname <> 'information_schema'
+      and pg_catalog.has_schema_privilege(reader_oid,n.oid,'USAGE')
       and case when c.relkind in ('r','p','v','m','f') then
         (pg_catalog.has_table_privilege(reader_oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or
          pg_catalog.has_any_column_privilege(reader_oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES')) else false end
