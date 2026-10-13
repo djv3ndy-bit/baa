@@ -22,6 +22,10 @@ The widget uses the MCP Apps bridge with a legacy ChatGPT fallback. Credentials 
 
 Every MCP request validates the exact bearer token with Supabase Auth, then enforces the configured owner, issuer, Office resource audience, dedicated OAuth client, `bjm_office_reader` role, `openid` scope and session lifetime. Ordinary customer tokens and privileged server keys are rejected.
 
+Public OAuth discovery is available with only the validated Office and Supabase HTTPS origins. Anonymous `/mcp` requests return a discovery challenge during setup; supplying credentials still requires the complete private configuration and activation switch before any tool or provider runs.
+
+The database review package validates live owner/client sessions through a private security-barrier view owned by the existing migration administrator. The aggregate role has no direct Auth schema/table access. The view's contract and grants are checked before reads; business sources remain restricted by column grants and role-specific RLS. Installation temporarily grants only the SET permission needed for function ownership, restores it before commit, and rolls back on failed checks.
+
 The request's validated token can call only the aggregate snapshot adapter. The proposed database role, restricted aggregate function and dedicated-client token hook are an **unapplied review package**, not evidence of deployed database isolation. The reader role must pass the effective-privilege audit, including inherited `PUBLIC` grants, before activation. Account-level Supabase Auth capabilities are distinct from business-data privileges; never disclose the access token.
 
 Keep `BJM_AI_OFFICE_AUTH_ENABLED=false` until hosted owner/nonowner login, OAuth refresh/revocation, and direct table/RPC/storage denial tests pass. No refunds, sends, publications, merges, deployments or customer changes are implemented as Office tools.

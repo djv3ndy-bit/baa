@@ -45,6 +45,8 @@ revoke all on function public.customer_write() from public;
 grant execute on function public.customer_write() to authenticated;
 insert into auth.users values('${OWNER}',now(),false,null,null),('${OTHER}',now(),false,null,null);
 insert into auth.sessions values('${SESSION}','${OWNER}','${CLIENT}',null);
+insert into auth.sessions values('${OTHER}','${OTHER}','${CLIENT}',null),
+ ('55555555-5555-4555-8555-555555555555','${OWNER}','${OTHER}',null);
 insert into public.profiles values('${OWNER}','cafe_owner_manager','owner@private.test'),('${OTHER}','barista','barista@private.test');
 insert into public.jobs values(gen_random_uuid(),true,'private');
 insert into public.applications values(gen_random_uuid(),'new','private');
@@ -77,9 +79,12 @@ const reviewedHelperBody = `
   else false end;
 `;
 async function setup() {
-  const db=new PGlite(); await db.exec(fixture); await db.exec(reviewSql);
-  await db.query(`insert into bjm_office_private.configuration values(true,$1,$2,$3,$4,true)`,[OWNER,CLIENT,'https://office.example/mcp','https://project.example/auth/v1']);
-  return db;
+  const db=new PGlite();
+  try {
+    await db.exec(fixture); await db.exec(reviewSql);
+    await db.query(`insert into bjm_office_private.configuration values(true,$1,$2,$3,$4,true)`,[OWNER,CLIENT,'https://office.example/mcp','https://project.example/auth/v1']);
+    return db;
+  } catch(error) { await db.close(); throw error; }
 }
 async function asReader(db, claimValues, sql='select public.office_read_snapshot() as snapshot', outerTransaction=false) {
   if (!outerTransaction) await db.exec('begin');
@@ -109,20 +114,54 @@ test('unapplied SQL enforces isolated aggregate-only direct Data API role locall
       assert.doesNotMatch(JSON.stringify(snapshot), /private|email|description|customer|owner_id|client_id|session_id/);
     });
     await t.test('reader cannot read any raw source or storage, mutate tables, or call legacy mutation RPC',async()=>{
-      for(const sql of ['select * from public.profiles','select * from public.support_tickets','select * from public.subscription_payments','select * from auth.users','select * from storage.objects',"insert into public.jobs values(gen_random_uuid(),true,'injected')",'update public.cafe_subscriptions set cancel_at_period_end=true','delete from public.applications','select public.customer_write()','set role authenticated','set role bjm_office_aggregate']) {
+      for(const sql of ['select * from public.profiles','select * from public.support_tickets','select * from public.subscription_payments','select * from auth.users','select * from auth.sessions','select * from bjm_office_private.live_owner_sessions','select * from storage.objects',"insert into public.jobs values(gen_random_uuid(),true,'injected')",'update public.cafe_subscriptions set cancel_at_period_end=true','delete from public.applications','select public.customer_write()','set role authenticated','set role bjm_office_aggregate']) {
         await assert.rejects(asReader(db,claims(),sql),/permission denied/);
       }
       assert.equal((await db.query('select count(*)::int as n from public.jobs')).rows[0].n,1);
     });
     await t.test('nonowner, wrong client/audience/issuer/role/scope and stale/invalid claims deny direct RPC',async()=>{
       const invalids=[{sub:OTHER},{client_id:OTHER},{aud:'authenticated'},{aud:null},{iss:'https://evil.example/auth/v1'},{role:'authenticated'},
-        {scope:''},{is_anonymous:true},{exp:1},{exp:null},{iat:null},{exp:Math.floor(Date.now()/1000)+7200},{session_id:OTHER},{nbf:Math.floor(Date.now()/1000)+600}];
+        {scope:''},{is_anonymous:true},{exp:1},{exp:null},{iat:null},{exp:Math.floor(Date.now()/1000)+7200},{session_id:OTHER},
+        {session_id:'55555555-5555-4555-8555-555555555555'},{nbf:Math.floor(Date.now()/1000)+600}];
       for(const invalid of invalids) await assert.rejects(asReader(db,claims(invalid)),/Office access denied/);
     });
     await t.test('disabled configuration, revoked session, wrong session client, and banned owner deny RPC',async()=>{
-      for(const sql of ['update bjm_office_private.configuration set enabled=false','delete from auth.sessions',`update auth.sessions set oauth_client_id='${OTHER}'`,"update auth.users set banned_until=now()+interval '1 day'"]){
+      for(const sql of ['update bjm_office_private.configuration set enabled=false',`update bjm_office_private.configuration set owner_id='${OTHER}'`,
+        'delete from auth.sessions',`update auth.sessions set oauth_client_id='${OTHER}'`,"update auth.sessions set not_after=now()-interval '1 day'",
+        "update auth.users set banned_until=now()+interval '1 day'",'update auth.users set is_anonymous=true',
+        'update auth.users set email_confirmed_at=null','update auth.users set deleted_at=now()']){
         await db.exec('begin');
         try{await db.exec(sql);await assert.rejects(asReader(db,claims(),undefined,true),/Office access denied/);}finally{await db.exec('rollback');}
+      }
+    });
+    await t.test('private view delegates only configured owner/client live session IDs and no raw Auth access',async()=>{
+      await db.exec('set role bjm_office_aggregate');
+      try{
+        assert.deepEqual((await db.query('select * from bjm_office_private.live_owner_sessions')).rows,[{session_id:SESSION,user_id:OWNER}]);
+        for(const sql of ['select * from auth.users','select * from auth.sessions']) await assert.rejects(db.query(sql),/permission denied/);
+      }finally{await db.exec('reset role');}
+      for(const role of ['anon','authenticated']){
+        await db.exec(`set role ${role}`);
+        try{await assert.rejects(db.query('select * from bjm_office_private.live_owner_sessions'),/permission denied/);}finally{await db.exec('reset role');}
+      }
+    });
+    await t.test('view definition, owner, options, object-comment baseline, and ACL drift fail before session lookup',async()=>{
+      for(const [change,expected] of [
+        ['create or replace view bjm_office_private.live_owner_sessions with(security_barrier=true,security_invoker=false) as select id as session_id,user_id from auth.sessions',/view contract/],
+        ['alter view bjm_office_private.live_owner_sessions owner to bjm_office_aggregate',/view contract/],
+        ['alter view bjm_office_private.live_owner_sessions set(security_barrier=false)',/view contract/],
+        ['alter view bjm_office_private.live_owner_sessions set(security_invoker=true)',/view contract/],
+        ["comment on view bjm_office_private.live_owner_sessions is 'invalid'",/view contract/],
+        ['grant select on bjm_office_private.live_owner_sessions to bjm_office_reader',/view grants/],
+        ['grant select(session_id) on bjm_office_private.live_owner_sessions to authenticated',/view grants/],
+        ['grant select on bjm_office_private.live_owner_sessions to bjm_office_aggregate with grant option',/view grants/],
+        ['grant update on bjm_office_private.live_owner_sessions to bjm_office_aggregate',/view grants/],
+        ['create rule extra_view_rule as on update to bjm_office_private.live_owner_sessions do instead nothing',/projection or rules/],
+        ['grant usage on schema auth to bjm_office_aggregate',/direct Auth privileges/],
+        ['grant select(id) on auth.sessions to bjm_office_aggregate',/direct Auth privileges/],
+      ]){
+        await db.exec('begin');
+        try{await db.exec(change);await assert.rejects(asReader(db,claims(),undefined,true),expected);}finally{await db.exec('rollback');}
       }
     });
     await t.test('missing source privilege produces partial nulls, never a false zero',async()=>{
@@ -213,5 +252,117 @@ test('review package refuses inherited PUBLIC routines before commit',async()=>{
     await assert.rejects(db.exec(reviewSql),/unreviewed routine/);
     await db.exec('rollback');
     assert.equal((await db.query("select count(*)::int as n from pg_roles where rolname='bjm_office_reader'")).rows[0].n,0);
+  }finally{await db.close();}
+});
+
+async function prepareNonSuperuserInstaller(db, allowAuthDelegation=false, allowSourceDelegation=false) {
+  await db.exec(fixture);
+  await db.exec(`
+    create role migration_runner login createrole noinherit nobypassrls;
+    create role migration_auditor;
+    grant migration_auditor to migration_runner with set true, inherit false, admin true;
+    do $$begin execute format('grant create on database %I to migration_runner',current_database()); end$$;
+    grant usage,create on schema public to migration_runner with grant option;
+    grant usage on schema auth to migration_runner ${allowAuthDelegation?'with grant option':''};
+    grant select on auth.users,auth.sessions to migration_runner ${allowSourceDelegation?'with grant option':''};
+    alter table public.profiles owner to migration_runner;
+    alter table public.jobs owner to migration_runner;
+    alter table public.applications owner to migration_runner;
+    alter table public.cafe_subscriptions owner to migration_runner;
+    alter table public.subscription_payments owner to migration_runner;
+    alter table public.support_tickets owner to migration_runner;
+    set session authorization migration_runner;
+    set createrole_self_grant='';
+  `);
+  assert.equal((await db.query('select rolsuper from pg_roles where rolname=current_user')).rows[0].rolsuper,false);
+}
+const installerMemberships = db => db.query(`
+  select pg_get_userbyid(roleid) as granted_role,pg_get_userbyid(grantor) as grantor,admin_option,inherit_option,set_option
+  from pg_auth_members where member='migration_runner'::regrole order by granted_role,grantor
+`);
+
+test('non-superuser CREATEROLE install is inert before callback and removes only its temporary SET grant',async()=>{
+  const db=new PGlite();
+  try{
+    await prepareNonSuperuserInstaller(db);
+    const before=(await installerMemberships(db)).rows;
+    await db.exec(reviewSql);
+    const memberships=(await installerMemberships(db)).rows;
+    assert.deepEqual(memberships.filter(row=>row.granted_role==='migration_auditor'),before);
+    const aggregate=memberships.filter(row=>row.granted_role==='bjm_office_aggregate');
+    assert.deepEqual(aggregate,[{granted_role:'bjm_office_aggregate',grantor:'postgres',admin_option:true,inherit_option:false,set_option:false}]);
+    assert.equal((await db.query("select pg_has_role(current_user,'bjm_office_aggregate','SET') as can_set")).rows[0].can_set,false);
+    assert.equal((await db.query('select count(*)::int as n from bjm_office_private.configuration')).rows[0].n,0);
+    await assert.rejects(asReader(db,claims()),/Office access denied/);
+    const customer={claims:{sub:OWNER,role:'authenticated',aud:'authenticated'},authentication_method:'password'};
+    await db.exec('set role supabase_auth_admin');
+    try{
+      assert.deepEqual((await db.query('select bjm_office_private.office_access_token_hook($1::jsonb) as event',[JSON.stringify(customer)])).rows[0].event,customer);
+    }finally{await db.exec('reset role');}
+  }finally{await db.close();}
+});
+
+test('non-superuser install preserves a pre-existing same-grantor membership and all its options',async()=>{
+  const db=new PGlite();
+  try{
+    await prepareNonSuperuserInstaller(db);
+    // Simulate an existing creator-side relationship before temporary ownership
+    // work. This tests restoring SET without revoking legitimate INHERIT or
+    // the separate bootstrap-granted ADMIN relationship.
+    const withPriorGrant=reviewSql.replace('-- Hosted postgres is CREATEROLE',
+      'grant bjm_office_aggregate to current_user with set false, inherit true, admin false granted by current_user;\n-- Hosted postgres is CREATEROLE');
+    await db.exec(withPriorGrant);
+    assert.deepEqual((await installerMemberships(db)).rows.filter(row=>row.granted_role==='bjm_office_aggregate'&&row.grantor==='migration_runner'),
+      [{granted_role:'bjm_office_aggregate',grantor:'migration_runner',admin_option:false,inherit_option:true,set_option:false}]);
+    assert.equal((await db.query("select pg_has_role(current_user,'bjm_office_aggregate','SET') as can_set")).rows[0].can_set,false);
+  }finally{await db.close();}
+});
+
+test('failed non-superuser install rolls back new roles and temporary membership without disturbing existing grants',async()=>{
+  const db=new PGlite();
+  try{
+    await prepareNonSuperuserInstaller(db);
+    const before=(await installerMemberships(db)).rows;
+    await db.exec('create function public.unreviewed_public_routine() returns integer language sql as $$select 1;$$');
+    await assert.rejects(db.exec(reviewSql),/unreviewed routine/);
+    await db.exec('rollback');
+    assert.equal((await db.query("select count(*)::int as n from pg_roles where rolname in ('bjm_office_reader','bjm_office_aggregate')")).rows[0].n,0);
+    assert.deepEqual((await installerMemberships(db)).rows,before);
+  }finally{await db.close();}
+});
+
+test('review package rejects an unreviewed applying-role/session-role switch before creating roles',async()=>{
+  const db=new PGlite();
+  try{
+    await db.exec(fixture);
+    await db.exec('create role switched_runner createrole; set role switched_runner');
+    await assert.rejects(db.exec(reviewSql),/authenticated migration session role/);
+    await db.exec('rollback; reset role');
+    assert.equal((await db.query("select count(*)::int as n from pg_roles where rolname in ('bjm_office_reader','bjm_office_aggregate')")).rows[0].n,0);
+  }finally{await db.close();}
+});
+
+test('non-superuser view install needs existing Auth reads and no schema/table grant options',async()=>{
+  const db=new PGlite();
+  try{
+    await prepareNonSuperuserInstaller(db,false,false);
+    assert.equal((await db.query("select has_schema_privilege(current_user,'auth','USAGE WITH GRANT OPTION') as can_delegate")).rows[0].can_delegate,false);
+    assert.equal((await db.query("select has_table_privilege(current_user,'auth.sessions','SELECT WITH GRANT OPTION') as can_delegate")).rows[0].can_delegate,false);
+    await db.exec(reviewSql);
+    assert.equal((await db.query("select has_schema_privilege('bjm_office_aggregate','auth','USAGE') as raw_usage")).rows[0].raw_usage,false);
+    assert.equal((await db.query("select has_any_column_privilege('bjm_office_aggregate','auth.sessions','SELECT') as raw_read")).rows[0].raw_read,false);
+  }finally{await db.close();}
+});
+
+test('non-superuser view install rolls back if its trusted owner cannot read Auth sources',async()=>{
+  const db=new PGlite();
+  try{
+    await prepareNonSuperuserInstaller(db,false,false);
+    const before=(await installerMemberships(db)).rows;
+    await db.exec('set session authorization postgres; revoke select on auth.sessions from migration_runner; set session authorization migration_runner');
+    await assert.rejects(db.exec(reviewSql),/owner Auth read privileges changed/);
+    await db.exec('rollback');
+    assert.equal((await db.query("select count(*)::int as n from pg_roles where rolname in ('bjm_office_reader','bjm_office_aggregate')")).rows[0].n,0);
+    assert.deepEqual((await installerMemberships(db)).rows,before);
   }finally{await db.close();}
 });

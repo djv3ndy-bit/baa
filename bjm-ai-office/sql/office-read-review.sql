@@ -6,12 +6,46 @@
 -- Existing customer grants are never silently revoked to make this package pass.
 
 begin;
+-- The verified hosted project uses PostgreSQL 17.6. SET/INHERIT membership
+-- options below require PostgreSQL 16+; refuse an unreviewed older dialect.
+do $$ begin
+  if current_user <> session_user then
+    raise exception 'Office review package requires the authenticated migration session role';
+  end if;
+  if pg_catalog.current_setting('server_version_num')::integer < 160000 then
+    raise exception 'Office review package requires PostgreSQL 16 or newer';
+  end if;
+end $$;
 create role bjm_office_reader nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
 create role bjm_office_aggregate nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+-- Hosted postgres is CREATEROLE, not a superuser. Its automatic ADMIN-only
+-- membership does not permit ALTER OWNER/SET ROLE. Save our exact grantor row,
+-- add only the missing SET ability, then restore it before COMMIT. Never revoke
+-- a pre-existing grant or depend on role-wide INHERIT during installation.
+do $$
+declare
+  installer text := current_user;
+  installer_oid oid := (select oid from pg_catalog.pg_roles where rolname=current_user);
+  prior jsonb;
+  changed boolean := not pg_catalog.pg_has_role(current_user,'bjm_office_aggregate','SET');
+begin
+  select pg_catalog.jsonb_build_object('set',m.set_option,'inherit',m.inherit_option,'admin',m.admin_option)
+    into prior from pg_catalog.pg_auth_members m
+    where m.roleid='bjm_office_aggregate'::regrole and m.member=installer_oid and m.grantor=installer_oid;
+  perform pg_catalog.set_config('bjm_office.install_membership',
+    pg_catalog.jsonb_build_object('installer',installer,'changed',changed,'prior',prior)::text,true);
+  if changed then
+    if prior is null then
+      execute pg_catalog.format('grant bjm_office_aggregate to %I with set true, inherit false, admin false granted by %I',installer,installer);
+    else
+      execute pg_catalog.format('grant bjm_office_aggregate to %I with set true granted by %I',installer,installer);
+    end if;
+  end if;
+end $$;
 create schema bjm_office_private;
 revoke all on schema bjm_office_private from public;
 grant usage on schema public, bjm_office_private to bjm_office_reader;
-grant usage on schema public, auth, bjm_office_private to bjm_office_aggregate;
+grant usage on schema public, bjm_office_private to bjm_office_aggregate;
 
 create table bjm_office_private.configuration (
   singleton boolean primary key default true check (singleton),
@@ -28,14 +62,50 @@ grant usage on schema bjm_office_private to supabase_auth_admin;
 -- A separately reviewed configuration change supplies the verified owner,
 -- predefined client, exact issuer/resource and enables the read boundary.
 
-grant select (id, user_id, oauth_client_id, not_after) on auth.sessions to bjm_office_aggregate;
-grant select (id, email_confirmed_at, is_anonymous, deleted_at, banned_until) on auth.users to bjm_office_aggregate;
+-- The applying role already has legitimate Auth SELECT/USAGE. Delegate only
+-- this configured owner's live client sessions through a private, ordinary
+-- security-barrier view; the aggregate role gets NO Auth schema/table grants.
+create view bjm_office_private.live_owner_sessions
+with (security_barrier=true, security_invoker=false) as
+select s.id as session_id, s.user_id
+from auth.sessions s
+join auth.users u on u.id=s.user_id
+join bjm_office_private.configuration cfg
+  on cfg.singleton and cfg.enabled and cfg.owner_id=s.user_id and cfg.client_id=s.oauth_client_id
+where (s.not_after is null or s.not_after > pg_catalog.now())
+  and u.email_confirmed_at is not null and u.is_anonymous is false
+  and u.deleted_at is null and (u.banned_until is null or u.banned_until <= pg_catalog.now());
+revoke all on bjm_office_private.live_owner_sessions from public,anon,authenticated,service_role,bjm_office_reader;
+grant select on bjm_office_private.live_owner_sessions to bjm_office_aggregate;
+-- Pin the exact reviewed view created above, using this server's deparser with
+-- an empty search_path. Only the trusted view owner can update the baseline.
+-- A server upgrade that changes formatting intentionally requires re-review.
+-- This detects drift; it does not defend against a malicious database admin.
+do $$
+declare prior_path text := pg_catalog.current_setting('search_path');
+begin
+  perform pg_catalog.set_config('search_path','',true);
+  execute pg_catalog.format('comment on view bjm_office_private.live_owner_sessions is %L',
+    'bjm-office-live-sessions-v1:' || pg_catalog.md5(pg_catalog.pg_get_viewdef('bjm_office_private.live_owner_sessions'::regclass,false)));
+  perform pg_catalog.set_config('search_path',prior_path,true);
+end $$;
 grant select (role) on public.profiles to bjm_office_aggregate;
 grant select (active) on public.jobs to bjm_office_aggregate;
 grant select (id) on public.applications to bjm_office_aggregate;
 grant select (status, cancel_at_period_end, complimentary_access) on public.cafe_subscriptions to bjm_office_aggregate;
 grant select (status, created_at) on public.subscription_payments to bjm_office_aggregate;
 grant select (status, created_at) on public.support_tickets to bjm_office_aggregate;
+do $$ begin
+  if exists (
+    select 1 from (values
+      ('public.profiles','role'),('public.jobs','active'),('public.applications','id'),
+      ('public.cafe_subscriptions','status'),('public.cafe_subscriptions','cancel_at_period_end'),('public.cafe_subscriptions','complimentary_access'),
+      ('public.subscription_payments','status'),('public.subscription_payments','created_at'),
+      ('public.support_tickets','status'),('public.support_tickets','created_at')
+    ) as required(relation_name,column_name)
+    where not pg_catalog.has_column_privilege('bjm_office_aggregate',required.relation_name,required.column_name,'SELECT')
+  ) then raise exception 'Office aggregate source-column SELECT delegation was not granted'; end if;
+end $$;
 
 create function bjm_office_private.context_valid()
 returns boolean language plpgsql stable security invoker set search_path = '' as $$
@@ -65,12 +135,8 @@ begin
     (claims ? 'nbf' and (claims->>'nbf')::bigint > epoch_now + 30) or
     not (claims ?& array['exp','iat','session_id']) then return false; end if;
   return exists (
-    select 1 from auth.sessions s join auth.users u on u.id = s.user_id
-    where s.id = (claims->>'session_id')::uuid and s.user_id = cfg.owner_id
-      and s.oauth_client_id = cfg.client_id
-      and (s.not_after is null or s.not_after > pg_catalog.now())
-      and u.email_confirmed_at is not null and not u.is_anonymous
-      and u.deleted_at is null and (u.banned_until is null or u.banned_until <= pg_catalog.now())
+    select 1 from bjm_office_private.live_owner_sessions s
+    where s.session_id = (claims->>'session_id')::uuid and s.user_id = cfg.owner_id
   );
 exception when invalid_text_representation or numeric_value_out_of_range then return false;
 end;
@@ -88,7 +154,13 @@ create policy office_aggregate_select on public.support_tickets for select to bj
 
 create function bjm_office_private.assert_isolated()
 returns void language plpgsql stable security invoker set search_path = '' as $$
-declare reader_oid oid := 'bjm_office_reader'::regrole;
+declare
+  reader_oid oid := 'bjm_office_reader'::regrole;
+  aggregate_oid oid := 'bjm_office_aggregate'::regrole;
+  live_view pg_catalog.pg_class%rowtype;
+  view_baseline text;
+  auth_sessions_oid oid := (select c.oid from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='auth' and c.relname='sessions');
+  auth_users_oid oid := (select c.oid from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='auth' and c.relname='users');
 begin
   if current_user <> 'bjm_office_aggregate' or exists (
     select 1 from pg_catalog.pg_proc p where p.oid in (
@@ -109,6 +181,60 @@ begin
       and (pg_catalog.has_schema_privilege(reader_oid,n.oid,'CREATE') or
            pg_catalog.has_schema_privilege('bjm_office_aggregate',n.oid,'CREATE'))
   ) then raise exception 'Office roles inherited schema CREATE privileges' using errcode='42501'; end if;
+  -- Validate the delegated Auth view BEFORE context_valid reads it. Its owner
+  -- must remain the trusted installer that owns this private schema/config.
+  select * into live_view from pg_catalog.pg_class where oid='bjm_office_private.live_owner_sessions'::regclass;
+  view_baseline := pg_catalog.obj_description(live_view.oid,'pg_class');
+  if live_view.relkind <> 'v' or
+     live_view.relowner <> (select nspowner from pg_catalog.pg_namespace where nspname='bjm_office_private') or
+     live_view.relowner <> (select relowner from pg_catalog.pg_class where oid='bjm_office_private.configuration'::regclass) or
+     live_view.relowner in (reader_oid,aggregate_oid) or
+     live_view.reloptions is null or pg_catalog.cardinality(live_view.reloptions) <> 2 or
+     not (live_view.reloptions @> array['security_barrier=true','security_invoker=false']) or
+     view_baseline is null or view_baseline !~ '^bjm-office-live-sessions-v1:[0-9a-f]{32}$' or
+     view_baseline <> 'bjm-office-live-sessions-v1:' || pg_catalog.md5(pg_catalog.pg_get_viewdef(live_view.oid,false)) then
+    raise exception 'Office live-session view contract changed' using errcode='42501';
+  end if;
+  if (select pg_catalog.array_agg(attname::text order by attnum) from pg_catalog.pg_attribute
+        where attrelid=live_view.oid and attnum>0 and not attisdropped) is distinct from array['session_id','user_id'] or
+     exists (select 1 from pg_catalog.pg_attribute where attrelid=live_view.oid and attnum>0
+        and (attisdropped or atttypid <> 'pg_catalog.uuid'::regtype or atttypmod <> -1)) or
+     (select count(*) from pg_catalog.pg_rewrite where ev_class=live_view.oid) <> 1 or
+     not exists (select 1 from pg_catalog.pg_rewrite where ev_class=live_view.oid and rulename='_RETURN' and ev_type='1' and is_instead) or
+     exists (select 1 from pg_catalog.pg_trigger where tgrelid=live_view.oid) then
+    raise exception 'Office live-session view projection or rules changed' using errcode='42501';
+  end if;
+  if auth_sessions_oid is null or auth_users_oid is null or exists (
+    select 1 from pg_catalog.pg_depend d join pg_catalog.pg_rewrite r on r.oid=d.objid
+    where d.classid='pg_catalog.pg_rewrite'::regclass and r.ev_class=live_view.oid
+      and d.refclassid='pg_catalog.pg_class'::regclass
+      and d.refobjid not in (live_view.oid,auth_sessions_oid,auth_users_oid,'bjm_office_private.configuration'::regclass)
+  ) or (select count(distinct d.refobjid) from pg_catalog.pg_depend d join pg_catalog.pg_rewrite r on r.oid=d.objid
+    where d.classid='pg_catalog.pg_rewrite'::regclass and r.ev_class=live_view.oid
+      and d.refclassid='pg_catalog.pg_class'::regclass
+      and d.refobjid in (auth_sessions_oid,auth_users_oid,'bjm_office_private.configuration'::regclass)) <> 3 then
+    raise exception 'Office live-session view dependencies changed' using errcode='42501';
+  end if;
+  if not pg_catalog.has_table_privilege(aggregate_oid,live_view.oid,'SELECT') or
+     exists (select 1 from pg_catalog.aclexplode(coalesce(live_view.relacl,pg_catalog.acldefault('r',live_view.relowner))) a
+       where a.grantee <> live_view.relowner and (a.grantee <> aggregate_oid or a.privilege_type <> 'SELECT' or a.is_grantable)) or
+     exists (select 1 from pg_catalog.pg_attribute c cross join lateral pg_catalog.aclexplode(c.attacl) a
+       where c.attrelid=live_view.oid and a.grantee <> live_view.relowner
+         and (a.grantee <> aggregate_oid or a.privilege_type <> 'SELECT' or a.is_grantable)) then
+    raise exception 'Office live-session view grants changed' using errcode='42501';
+  end if;
+  if pg_catalog.has_schema_privilege(aggregate_oid,'auth','USAGE') or exists (
+    select 1 from pg_catalog.pg_class c where c.oid in (auth_sessions_oid,auth_users_oid)
+      and (pg_catalog.has_table_privilege(aggregate_oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') or
+           pg_catalog.has_any_column_privilege(aggregate_oid,c.oid,'SELECT,INSERT,UPDATE,REFERENCES'))
+  ) then raise exception 'Office aggregate must not have direct Auth privileges' using errcode='42501'; end if;
+  if exists (select 1 from (values
+      (auth_sessions_oid,'id'),(auth_sessions_oid,'user_id'),(auth_sessions_oid,'oauth_client_id'),(auth_sessions_oid,'not_after'),
+      (auth_users_oid,'id'),(auth_users_oid,'email_confirmed_at'),(auth_users_oid,'is_anonymous'),(auth_users_oid,'deleted_at'),(auth_users_oid,'banned_until')
+    ) as required(relation_oid,column_name)
+    where not pg_catalog.has_column_privilege(live_view.relowner,required.relation_oid,required.column_name,'SELECT')) then
+    raise exception 'Office live-session view owner Auth read privileges changed' using errcode='42501';
+  end if;
   -- REVOKE FROM reader cannot override inherited PUBLIC permissions. Audit the
   -- effective privileges on every user schema, including Storage and GraphQL.
   if exists (
@@ -249,6 +375,34 @@ grant execute on function bjm_office_private.office_access_token_hook(jsonb) to 
 -- another Data API endpoint before this aggregate check is reached.
 set local role bjm_office_aggregate;
 select bjm_office_private.assert_isolated();
+-- Prove the ordinary view can resolve its owner-authorized Auth lookup even
+-- while configuration is empty, without giving the aggregate Auth privileges.
+do $$ begin perform 1 from bjm_office_private.live_owner_sessions limit 1; end $$;
 reset role;
+do $$
+declare
+  saved jsonb := pg_catalog.current_setting('bjm_office.install_membership')::jsonb;
+  installer text := current_user;
+  installer_oid oid := (select oid from pg_catalog.pg_roles where rolname=current_user);
+  restored jsonb;
+begin
+  if saved->>'installer' is distinct from installer then
+    raise exception 'Office installer role changed unexpectedly';
+  end if;
+  if (saved->>'changed')::boolean then
+    if saved->'prior' = 'null'::jsonb then
+      execute pg_catalog.format('revoke bjm_office_aggregate from %I granted by %I',installer,installer);
+    else
+      execute pg_catalog.format('grant bjm_office_aggregate to %I with set %s granted by %I',
+        installer,case when (saved#>>'{prior,set}')::boolean then 'true' else 'false' end,installer);
+    end if;
+  end if;
+  select pg_catalog.jsonb_build_object('set',m.set_option,'inherit',m.inherit_option,'admin',m.admin_option)
+    into restored from pg_catalog.pg_auth_members m
+    where m.roleid='bjm_office_aggregate'::regrole and m.member=installer_oid and m.grantor=installer_oid;
+  if pg_catalog.to_jsonb(restored) is distinct from nullif(saved->'prior','null'::jsonb) then
+    raise exception 'Office installer membership was not restored';
+  end if;
+end $$;
 grant bjm_office_reader to authenticator;
 commit;

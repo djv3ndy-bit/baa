@@ -7,20 +7,15 @@ const clean = value => typeof value === 'string' ? value.trim() : '';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TOKEN = 8192;
 
-function configuration(env) {
+// Discovery contains public identifiers only and is available before client setup.
+function discoveryConfiguration(env) {
   const supabaseUrl = new URL(clean(env.SUPABASE_URL));
   const officeUrl = new URL(clean(env.BJM_OFFICE_BASE_URL));
   if (supabaseUrl.protocol !== 'https:' || officeUrl.protocol !== 'https:' ||
       supabaseUrl.username || supabaseUrl.password || officeUrl.username || officeUrl.password ||
       supabaseUrl.search || supabaseUrl.hash || officeUrl.search || officeUrl.hash ||
       supabaseUrl.pathname !== '/' || officeUrl.pathname !== '/') throw new Error('Invalid origins');
-  const ownerId = clean(env.BJM_AI_OFFICE_OWNER_USER_ID);
-  const clientId = clean(env.BJM_AI_OFFICE_OAUTH_CLIENT_ID);
-  const publishableKey = clean(env.SUPABASE_PUBLISHABLE_KEY);
-  if (!UUID.test(ownerId) || !clientId || clientId.length > 512 ||
-      !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) throw new Error('Missing configuration');
   return {
-    ownerId, clientId, publishableKey,
     issuer: `${supabaseUrl.origin}/auth/v1`,
     resource: `${officeUrl.origin}/mcp`,
     metadataUrl: `${officeUrl.origin}/.well-known/oauth-protected-resource`,
@@ -28,8 +23,20 @@ function configuration(env) {
   };
 }
 
+function configuration(env) {
+  const discovery = discoveryConfiguration(env);
+  const ownerId = clean(env.BJM_AI_OFFICE_OWNER_USER_ID);
+  const clientId = clean(env.BJM_AI_OFFICE_OAUTH_CLIENT_ID);
+  const publishableKey = clean(env.SUPABASE_PUBLISHABLE_KEY);
+  if (!UUID.test(ownerId) || !clientId || clientId.length > 512 ||
+      !/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) throw new Error('Missing configuration');
+  return {
+    ...discovery, ownerId, clientId, publishableKey,
+  };
+}
+
 export function protectedResourceMetadata(env = process.env) {
-  const config = configuration(env);
+  const config = discoveryConfiguration(env);
   return {
     resource: config.resource,
     authorization_servers: [config.issuer],
@@ -57,6 +64,13 @@ function decodePart(value) {
 /** Dependencies are injectable for offline tests; production uses global fetch. */
 export async function authorizeOfficeRequest(req, options = {}) {
   const env = options.env || process.env;
+  let discovery;
+  try { discovery = discoveryConfiguration(env); } catch { return result(503, 'Office authentication is not configured'); }
+  const origin = req.headers?.origin;
+  if (origin !== undefined && origin !== discovery.origin) return result(403, 'Origin is not allowed');
+  // A challenge enables OAuth setup only. No MCP server or provider is invoked.
+  if (req.headers?.authorization === undefined) return result(401, 'Authentication required', discovery);
+
   let config;
   try { config = configuration(env); } catch { return result(503, 'Office authentication is not configured'); }
 
@@ -67,8 +81,6 @@ export async function authorizeOfficeRequest(req, options = {}) {
     return result(503, 'Office privileged database credentials must be removed');
   }
 
-  const origin = req.headers?.origin;
-  if (origin !== undefined && origin !== config.origin) return result(403, 'Origin is not allowed');
   const raw = req.rawHeaders || [];
   const authHeaders = raw.filter((value, index) => index % 2 === 0 && String(value).toLowerCase() === 'authorization');
   if (authHeaders.length > 1) return result(401, 'Authentication required', config);
