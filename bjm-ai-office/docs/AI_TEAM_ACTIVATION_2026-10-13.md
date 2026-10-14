@@ -1,3 +1,15 @@
+# October 14 direction — chat-only team, locally prepared
+
+**The new chat-only OAuth broker and narrow PostgreSQL gateway are prepared locally, not installed or live. Public Office website activation remains on hold. Use the current [README](../README.md) for this design; every setup/configuration/activation step below is a historical record for the previous Supabase-bearer/widget implementation. Do not execute those old steps to activate the new design.**
+
+The user chose the current chat as the team interface. Operations Manager coordinates 19 roles on request within their observe/recommend/prepare ceilings, using five restricted reporting tools. The new server registers no widget and gives ChatGPT only Office-owned `office.read` credentials. Upstream owner credentials remain inside the sign-in callback; a separate restricted gateway supplies reports. No autonomous workers, new chats or schedules are implied.
+
+All selected prior supervised checks were completed and temporary access was cleaned up, including the later ordinary/nonowner, private-object, combined wrong-client/resource and enforced-CSP checks. The earlier post-revocation Auth response classifier limitation remains recorded; cleanup was independently verified. The old preview is disabled/protected, the original approved callback restored and disposable fixtures/sessions cleaned up. These historical results do not prove the new broker, new gateway or a final production origin.
+
+The new SQL remains unapplied. Fresh approval and hosted proof must cover its exact origin/callback/client configuration, dedicated gateway credential, owner sign-in and local-session cleanup, five reports, denial/refresh/revocation behavior, customer-login preservation and actual chat workflows. Both documented ChatGPT callback formats are supported as one exact configured pin; copy the final URI from connection management rather than guessing. Keep the legacy mapping disabled and its exact-client hook/configuration intact until separately approved retirement. Roll back to the reviewed chat-only disabled baseline, never to an old JWT/privileged adapter.
+
+---
+
 # AI Office activation checkpoint — October 13, 2026
 
 **Status: the approved preview and local security tests passed, and temporary access cleanup is complete. The Office preview is disabled and protected. Production Office deployment and final activation remain pending.**

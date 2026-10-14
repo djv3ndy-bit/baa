@@ -2,20 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const source = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-for (const path of ['api/mcp.ts', 'server/index.ts']) {
-  test(`${path} requires owner before constructing or invoking MCP`, () => {
-    const text = source(path);
-    const validation = text.indexOf('const owner = await requireOfficeOwner(req, res);');
-    const gate = text.indexOf('if (!owner) return;');
-    assert.ok(validation > 0 && validation < gate);
-    assert.ok(gate < text.indexOf('const server = createOfficeMcpServer(owner.accessToken)'));
-    assert.ok(gate < text.indexOf('transport.handleRequest('));
-  });
-}
+test('hosted and local entrypoints share the opaque Office boundary without importing legacy JWT authorization', () => {
+  assert.match(source('api/mcp.ts'), /chat-owner-auth\.mjs/);
+  assert.match(source('server/index.ts'), /createMcpHandler/);
+  for(const path of ['api/mcp.ts','server/index.ts']) assert.doesNotMatch(source(path), /from ['"][^'"]*\/owner-auth\.mjs/);
+});
 test('public health never invokes private providers', () => {
   assert.doesNotMatch(source('api/health.ts'), /getSystemHealth|providers\./);
-  const healthBody = source('server/index.ts').split("app.get('/health'")[1].split('if (!process.env.VERCEL)')[0];
-  assert.doesNotMatch(healthBody, /getSystemHealth|SUPABASE|notionConfigured/);
+  assert.match(source('server/index.ts'), /app\.all\('\/health', healthHandler\)/);
+  assert.doesNotMatch(source('api/health.ts'), /getChatRuntime|chat-data|SUPABASE|notionConfigured/);
 });
 test('read-only factory registers only five read tools and no Notion writes', () => {
   const text = source('server/mcp.ts');

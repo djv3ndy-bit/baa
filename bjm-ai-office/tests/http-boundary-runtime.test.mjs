@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import handler from '../api/mcp.ts';
+import {createMcpHandler} from '../api/mcp.ts';
 import { requireOfficeOwner } from '../server/owner-auth.mjs';
+import {ChatOAuthError} from '../server/chat-oauth.mjs';
 
 const OWNER = '11111111-1111-4111-8111-111111111111';
 const OTHER = '22222222-2222-4222-8222-222222222222';
@@ -27,29 +28,26 @@ function response() {
   };
 }
 
-test('actual Vercel handler denies anonymous, customer-role, nonowner and revoked-session requests before MCP creation', async () => {
+test('actual Vercel handler rejects all legacy customer/owner JWTs and revoked Office tokens before MCP creation', async () => {
   const originalEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
-  Object.assign(process.env, env);
+  Object.assign(process.env, env, {BJM_CHAT_OAUTH_ENABLED:'true',BJM_CHAT_OAUTH_CLIENT_ID:'bjm-chat-fixture',
+    BJM_CHAT_UPSTREAM_CLIENT_ID:OTHER,BJM_CHAT_OAUTH_REDIRECT_URI:'https://chatgpt.com/connector/oauth/fixture',BJM_CHAT_OAUTH_FLOW_KEY:Buffer.alloc(32,7).toString('base64url')});
   delete process.env.SUPABASE_SECRET_KEY;
   delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   try {
     const cases = [
       { req: { method: 'POST', headers: {} }, expected: 401, authCalls: 0 },
       { req: request(OWNER, 'authenticated'), expected: 401, authCalls: 0 },
-      { req: request(OTHER), expected: 403, authCalls: 1, user: OTHER },
-      { req: request(), expected: 401, authCalls: 1, revoked: true },
+      { req: request(OTHER), expected: 401, authCalls: 0 },
+      { req: request(), expected: 401, authCalls: 0 },
+      { req: {method:'POST',headers:{authorization:'Bearer bjm_at_'+'a'.repeat(43)}}, expected:401,authCalls:1 },
       { req: { method: 'PUT', headers: {} }, expected: 405, authCalls: 0 },
     ];
     for (const item of cases) {
       let calls = 0;
-      globalThis.fetch = async (url, init) => {
-        calls++;
-        assert.equal(url, 'https://project.example/auth/v1/user');
-        assert.equal(init.headers.Authorization, item.req.headers.authorization);
-        return item.revoked ? new Response(null, { status: 401 })
-          : Response.json({ id: item.user, email_confirmed_at: '2026-01-01T00:00:00Z' });
-      };
+      globalThis.fetch = async () => assert.fail('No owner Auth or data request should run');
+      const handler=createMcpHandler(()=>({oauth:{async verifyAccessToken(){calls++;throw new ChatOAuthError(401,'invalid_token');}},store:async()=>assert.fail('No data read before authorization')}));
       const res = response();
       await handler(item.req, res);
       assert.equal(res.code, item.expected);
@@ -61,7 +59,7 @@ test('actual Vercel handler denies anonymous, customer-role, nonowner and revoke
   } finally { process.env = originalEnv; globalThis.fetch = originalFetch; }
 });
 
-test('the verified owner credential is returned only as private request context', async () => {
+test('legacy helper remains isolated compatibility source and returns its credential only as private request context', async () => {
   const originalEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
   Object.assign(process.env, env);

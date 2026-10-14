@@ -1,56 +1,46 @@
 import express from 'express';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createOfficeMcpServer } from './mcp.js';
-import { protectedResourceMetadata, requireOfficeOwner } from './owner-auth.mjs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createMcpHandler } from '../api/mcp.js';
+import protectedResourceHandler from '../api/oauth-protected-resource.js';
+import authorizationMetadataHandler from '../api/oauth-authorization-server.js';
+import healthHandler from '../api/health.js';
+import { createOAuthRouteHandler, privateResponseHeaders, type RuntimeProvider } from './chat-http.js';
+import { getChatRuntime } from './chat-runtime.mjs';
 
-const app = express();
-app.use(express.json({ limit: '1mb' }));
+export function createChatApp(getRuntime: RuntimeProvider = getChatRuntime) {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(express.json({ limit: '16kb' }));
+  app.use(express.urlencoded({ extended: false, limit: '16kb', parameterLimit: 32 }));
 
-app.get('/.well-known/oauth-protected-resource', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  try { res.json(protectedResourceMetadata()); }
-  catch { res.status(503).json({ error: 'Office authentication is not configured' }); }
-});
+  // Discovery and interactive OAuth routes precede the private MCP boundary.
+  app.all('/.well-known/oauth-protected-resource', protectedResourceHandler);
+  app.all('/.well-known/oauth-protected-resource/mcp', protectedResourceHandler);
+  app.all('/.well-known/oauth-authorization-server', authorizationMetadataHandler);
+  app.all('/oauth/authorize', createOAuthRouteHandler('authorize', 'GET', getRuntime));
+  app.all('/oauth/token', createOAuthRouteHandler('token', 'POST', getRuntime));
+  app.all('/oauth/revoke', createOAuthRouteHandler('revoke', 'POST', getRuntime));
+  app.all('/oauth/owner/callback', createOAuthRouteHandler('ownerCallback', 'GET', getRuntime));
+  app.all('/mcp', createMcpHandler(getRuntime));
 
-app.all('/mcp', async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
-    res.setHeader('Allow', 'GET, POST, DELETE');
-    return res.status(405).json({ error: 'Method not allowed.' });
-  }
-  const owner = await requireOfficeOwner(req, res);
-  if (!owner) return;
+  // Public liveness only; this handler never initializes private providers.
+  app.all('/health', healthHandler);
+  app.use((_req, res) => {
+    privateResponseHeaders(res);
+    res.status(404).json({ error: 'Not found.' });
+  });
+  app.use((error: any, _req: any, res: any, _next: any) => {
+    if (res.headersSent) { res.end(); return; }
+    privateResponseHeaders(res);
+    res.status(error?.type === 'entity.too.large' ? 413 : 400).json({ error: 'Invalid request.' });
+  });
+  return app;
+}
 
-  const server = createOfficeMcpServer(owner.accessToken);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  let closed = false;
-  const close = async () => {
-    if (closed) return;
-    closed = true;
-    try { await transport.close(); } catch {}
-    try { await server.close(); } catch {}
-  };
-  res.on('close', close);
-  try {
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.method === 'POST' ? req.body : undefined);
-  } catch {
-    console.error('BJM AI Office MCP request failed');
-    if (!res.headersSent) res.status(500).json({ error: 'MCP request failed.' });
-  } finally {
-    if (res.writableEnded) await close();
-  }
-});
-
-// Public liveness only. Provider/business health belongs behind owner authentication.
-app.get('/health', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.json({ ok: true, app: 'bjm-ai-office', status: 'process_reachable' });
-});
-
-if (!process.env.VERCEL) {
+const app = createChatApp();
+if (!process.env.VERCEL && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT || 8787);
-  app.listen(port, () => console.log(`BJM AI Office MCP server ready on ${port}`));
+  app.listen(port, () => console.log('BJM AI chat connection server ready.'));
 }
 export default app;

@@ -12,8 +12,8 @@ const snapshot = {
 };
 const OWNER_REQUEST_TOKEN = 'e30.e30.MOCK_TOKEN';
 
-async function connect(token) {
-  const server = createOfficeMcpServer(token);
+async function connect(token, options) {
+  const server = createOfficeMcpServer(token, options);
   const client = new Client({ name: 'office-offline-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -47,7 +47,9 @@ test('all five tools execute through the MCP SDK with one aggregate read and no 
     for (const tool of tools) {
       assert.equal(tool.annotations.readOnlyHint, true);
       assert.equal(tool.annotations.destructiveHint, false);
-      assert.deepEqual(tool._meta.securitySchemes, [{ type: 'oauth2', scopes: ['openid'] }]);
+      assert.deepEqual(tool._meta.securitySchemes, [{ type: 'oauth2', scopes: ['office.read'] }]);
+      assert.equal(tool._meta.ui, undefined);
+      assert.equal(tool._meta['openai/outputTemplate'], undefined);
       const result = await session.client.callTool({ name: tool.name, arguments: {} });
       assert.ok(result.structuredContent);
       assert.notEqual(result.isError, true, tool.name);
@@ -56,11 +58,9 @@ test('all five tools execute through the MCP SDK with one aggregate read and no 
       if (tool.name === 'get_owner_overview') assert.equal(result.structuredContent.business.metrics.profiles, 2);
     }
     assert.equal(requests.filter(r => r.init.method === 'POST').length, 1);
-    const resources = await session.client.listResources();
-    const widget = await session.client.readResource({ uri: resources.resources[0].uri });
-    assert.match(widget.contents[0].text, /https:\/\/office\.example\/assets\/office\.css/);
-    assert.match(widget.contents[0].text, /https:\/\/office\.example\/assets\/office\.js/);
-    assert.doesNotMatch(JSON.stringify(widget), /MOCK_TOKEN/);
+    assert.equal(session.client.getServerCapabilities().resources, undefined);
+    assert.match(session.client.getInstructions(), /BJM AI Team works in this chat on request/);
+    assert.doesNotMatch(session.client.getInstructions(), /MOCK_TOKEN/);
   } finally {
     await session?.close();
     globalThis.fetch = originalFetch;

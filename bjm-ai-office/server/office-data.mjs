@@ -13,7 +13,7 @@ const counts = (value, keys) => Object.fromEntries(keys.map(key => [key,
 const valuesAvailability = values => values.every(value => value !== null) ? 'available'
   : values.some(value => value !== null) ? 'partial' : 'unavailable';
 
-function configuration(env, accessToken) {
+function configuration(env, accessToken, snapshotLoader) {
   if (clean(env.SUPABASE_SECRET_KEY) || clean(env.SUPABASE_SERVICE_ROLE_KEY)) {
     return { reason: 'privileged_credentials_forbidden', availability: 'configuration_required' };
   }
@@ -22,6 +22,14 @@ function configuration(env, accessToken) {
     url = new URL(clean(env.SUPABASE_URL));
     if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash || url.username || url.password) throw new Error();
   } catch { return { reason: 'aggregate_adapter_not_configured', availability: 'configuration_required' }; }
+  // Only trusted server code supplies this closure after the opaque-token
+  // boundary. It never receives a customer credential or arbitrary SQL.
+  if (snapshotLoader !== undefined) {
+    if (typeof snapshotLoader !== 'function' || !/^[a-z0-9]{20}\.supabase\.co$/.test(url.hostname) || url.port) {
+      return { reason: 'aggregate_adapter_not_configured', availability: 'configuration_required' };
+    }
+    return { url: url.origin, source: 'postgres:office_chat_gateway' };
+  }
   const publishableKey = clean(env.SUPABASE_PUBLISHABLE_KEY);
   if (!/^sb_publishable_[A-Za-z0-9_-]+$/.test(publishableKey)) {
     return { reason: 'aggregate_adapter_not_configured', availability: 'configuration_required' };
@@ -31,7 +39,7 @@ function configuration(env, accessToken) {
       !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(accessToken)) {
     return { reason: 'verified_owner_context_required', availability: 'authentication_required' };
   }
-  return { url: url.origin, publishableKey };
+  return { url: url.origin, publishableKey, source: 'supabase:office_read_snapshot' };
 }
 
 async function limitedJson(response) {
@@ -58,25 +66,30 @@ export function createOfficeProviders(accessToken, options = {}) {
   const env = options.env || process.env;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   const now = options.now || Date.now;
-  const config = configuration(env, accessToken);
+  const config = configuration(env, accessToken, options.snapshotLoader);
   let snapshotPromise;
   let healthPromise;
 
   const unavailable = (reason, availability = 'unavailable') => ({ configured: !config.reason, availability, reason, generated_at: null, data: {} });
   async function loadSnapshot() {
     if (config.reason) return unavailable(config.reason, config.availability);
-    let response;
-    try {
-      response = await fetchImpl(`${config.url}/rest/v1/rpc/office_read_snapshot`, {
+    let data;
+    if (options.snapshotLoader) {
+      try { data = await options.snapshotLoader(); }
+      catch { return unavailable('aggregate_provider_unavailable'); }
+    } else {
+      let response;
+      try {
+        response = await fetchImpl(`${config.url}/rest/v1/rpc/office_read_snapshot`, {
         method: 'POST', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(5000),
         headers: { apikey: config.publishableKey, Authorization: `Bearer ${accessToken}`, Accept: 'application/json', 'Content-Type': 'application/json' },
         body: '{}',
-      });
-    } catch { return unavailable('aggregate_provider_unreachable'); }
-    if (!response.ok) return unavailable(response.status === 401 || response.status === 403
-      ? 'aggregate_access_denied' : response.status === 404 ? 'aggregate_rpc_not_installed' : 'aggregate_provider_unavailable');
-    let data;
-    try { data = await limitedJson(response); } catch { return unavailable('aggregate_response_invalid'); }
+        });
+      } catch { return unavailable('aggregate_provider_unreachable'); }
+      if (!response.ok) return unavailable(response.status === 401 || response.status === 403
+        ? 'aggregate_access_denied' : response.status === 404 ? 'aggregate_rpc_not_installed' : 'aggregate_provider_unavailable');
+      try { data = await limitedJson(response); } catch { return unavailable('aggregate_response_invalid'); }
+    }
     if (object(data).schema_version !== 1 || typeof data.generated_at !== 'string') return unavailable('aggregate_response_invalid');
     const generatedAt = Date.parse(data.generated_at);
     if (!Number.isFinite(generatedAt) || generatedAt > now() + 30000 || generatedAt < now() - 300000) return unavailable('aggregate_timestamp_invalid');
@@ -86,7 +99,7 @@ export function createOfficeProviders(accessToken, options = {}) {
   const snapshot = () => snapshotPromise ||= loadSnapshot();
   function metadata(result, valueList) {
     const availability = result.availability === 'available' ? valuesAvailability(valueList) : result.availability;
-    return { source: 'supabase:office_read_snapshot', configured: result.configured, availability,
+    return { source: config.source || (options.snapshotLoader ? 'postgres:office_chat_gateway' : 'supabase:office_read_snapshot'), configured: result.configured, availability,
       reason: result.reason || (availability === 'available' ? null : 'aggregate_fields_unavailable'), generated_at: result.generated_at };
   }
   async function getLiveOverview() {

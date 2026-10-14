@@ -86,11 +86,11 @@ test('actual metadata and MCP API handlers expose discovery while keeping MCP ex
     await mcpHandler({ method: 'POST', headers: {} }, anonymous);
     assert.equal(anonymous.statusCode, 401);
     assert.match(anonymous.headers['WWW-Authenticate'], /oauth-protected-resource/);
-    assert.deepEqual(anonymous.body, { error: 'Authentication required' });
+    assert.deepEqual(anonymous.body, { error: 'Authentication required.' });
 
     const bearer = response();
     await mcpHandler({ method: 'POST', headers: { authorization: 'Bearer e30.e30.OFFLINE_TEST' } }, bearer);
-    assert.equal(bearer.statusCode, 503);
+    assert.equal(bearer.statusCode, 401);
     assert.equal(calls, 0);
   } finally {
     process.env = previousEnv;

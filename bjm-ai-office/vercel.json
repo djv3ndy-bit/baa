@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "pnpm run build:chat",
+  "outputDirectory": "dist-chat",
   "rewrites": [
     {
       "source": "/mcp",
@@ -16,6 +19,26 @@
     {
       "source": "/.well-known/oauth-protected-resource/mcp",
       "destination": "/api/oauth-protected-resource"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "/api/oauth-authorization-server"
+    },
+    {
+      "source": "/oauth/authorize",
+      "destination": "/api/oauth-authorize"
+    },
+    {
+      "source": "/oauth/token",
+      "destination": "/api/oauth-token"
+    },
+    {
+      "source": "/oauth/revoke",
+      "destination": "/api/oauth-revoke"
+    },
+    {
+      "source": "/oauth/owner/callback",
+      "destination": "/api/owner-callback"
     }
   ],
   "headers": [
@@ -39,6 +62,18 @@
     },
     "api/health.ts": {
       "maxDuration": 10
+    },
+    "api/owner-callback.ts": {
+      "maxDuration": 60
+    },
+    "api/oauth-authorize.ts": {
+      "maxDuration": 30
+    },
+    "api/oauth-token.ts": {
+      "maxDuration": 30
+    },
+    "api/oauth-revoke.ts": {
+      "maxDuration": 30
     }
   },
   "git": {

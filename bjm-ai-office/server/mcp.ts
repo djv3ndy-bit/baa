@@ -2,35 +2,18 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { teamSnapshot } from './policy.js';
 import { createOfficeProviders } from './providers.js';
 import { notionConfigured } from './notion.js';
+import { teamWorkflowInstructions } from './team-workflow.js';
 
-const WIDGET_URI = 'ui://bjm-ai-office/owner-v1';
+export type OfficeProviders = ReturnType<typeof createOfficeProviders>;
 
-function cleanBaseUrl(value: string) { return String(value || '').trim().replace(/\/$/, ''); }
-export function officeBaseUrl() {
-  const explicit = cleanBaseUrl(process.env.BJM_OFFICE_BASE_URL || '');
-  if (explicit) return explicit;
-  const vercelHost = String(process.env.VERCEL_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
-  if (vercelHost) return `https://${vercelHost.replace(/^https?:\/\//, '').replace(/\/$/, '')}`;
-  return 'http://localhost:8787';
-}
-function widgetHtml() {
-  const baseUrl = officeBaseUrl();
-  const assetUrl = new URL('/assets/office.js', `${baseUrl}/`).toString();
-  const styleUrl = new URL('/assets/office.css', `${baseUrl}/`).toString();
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="${styleUrl}"></head><body><div id="root"></div><script type="module" src="${assetUrl}"></script></body></html>`;
-}
-
-export function createOfficeMcpServer(accessToken?: string) {
-  const { getLiveOverview, getSupportSummary, getBillingSummary, getSystemHealth, getDecisionSignals } = createOfficeProviders(accessToken);
-  const server = new McpServer({ name: 'bjm-ai-office', version: '0.4.1' });
-  const baseUrl = officeBaseUrl();
-  const resourceOrigin = new URL(baseUrl).origin;
+export function createOfficeMcpServer(accessToken?: string, options: { providers?: OfficeProviders } = {}) {
+  // Provider injection is a trusted server-side boundary, never an MCP argument.
+  // The compatibility factory remains unavailable without a request credential.
+  const { getLiveOverview, getSupportSummary, getBillingSummary, getSystemHealth, getDecisionSignals } = options.providers ?? createOfficeProviders(accessToken);
+  const server = new McpServer({ name: 'bjm-ai-office', version: '0.5.0' }, { instructions: teamWorkflowInstructions() });
   const toolMeta = {
-    ui: { resourceUri: WIDGET_URI }, 'openai/outputTemplate': WIDGET_URI,
-    securitySchemes: [{ type: 'oauth2', scopes: ['openid'] }],
+    securitySchemes: [{ type: 'oauth2', scopes: ['office.read'] }],
   };
-
-  server.registerResource('bjm-ai-office-widget', WIDGET_URI, {}, async () => ({ contents: [{ uri: WIDGET_URI, mimeType: 'text/html;profile=mcp-app', text: widgetHtml(), _meta: { ui: { prefersBorder: true, csp: { connectDomains: [resourceOrigin], resourceDomains: [resourceOrigin] } }, 'openai/widgetDescription': 'Private Barista Job Match AI Office for owner reports, team status, and approval decisions.' } }] }));
 
   server.registerTool('get_owner_overview', { title: 'BJM Owner Overview', description: 'Use this when the owner wants the AI Office overview. Unconfigured providers are not verified live business data.', inputSchema: {}, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, _meta: toolMeta }, async () => {
     const [business, support, billing, health, decisions] = await Promise.all([getLiveOverview(), getSupportSummary(), getBillingSummary(), getSystemHealth(), getDecisionSignals()]);

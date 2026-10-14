@@ -24,6 +24,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
       - run: pnpm typecheck
+      - run: pnpm build:chat
       - run: pnpm build
       - name: Verify deterministic widget bundle
         run: test -f dist/assets/office.js && test -f dist/assets/office.css
