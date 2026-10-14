@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PGlite } from '@electric-sql/pglite';
+import { serializers as postgresSerializers } from '../node_modules/postgres/src/types.js';
 import { chatDatabaseConfiguration, createChatStore } from '../server/chat-store.mjs';
 
 const project = 'lmwqrxoitraofaftpwhe';
@@ -38,7 +40,7 @@ test('SQL uses only fixed entrypoints and separately bound JSON/identity values'
   const value = { payload: "'); select * from auth.users; --" };
   await store('create_flow', value);
   await store.snapshot('a'.repeat(64), 'fixture-client', 'https://office.example/mcp');
-  assert.equal(calls[0].query, 'select bjm_office_gateway.auth_dispatch($1::text, $2::jsonb) as result');
+  assert.equal(calls[0].query, 'select bjm_office_gateway.auth_dispatch($1::text, $2::text::jsonb) as result');
   assert.equal(calls[0].query.includes(value.payload), false);
   assert.deepEqual(calls[0].params, ['create_flow', JSON.stringify(value)]);
   assert.equal(calls[1].query, 'select bjm_office_gateway.read_snapshot($1::text, $2::text, $3::text) as result');
@@ -46,6 +48,34 @@ test('SQL uses only fixed entrypoints and separately bound JSON/identity values'
   await assert.rejects(store.snapshot('not-a-hash', 'fixture-client', 'https://office.example/mcp'));
   assert.equal(calls.length, 2);
   await store.close();
+});
+test('pinned Postgres.js serializers deliver bounded JSON as an object rather than a twice-encoded JSONB string', async () => {
+  const db = await PGlite.create();
+  let store;
+  try {
+    await db.exec(`create schema bjm_office_gateway;
+      create function bjm_office_gateway.auth_dispatch(op text, args jsonb) returns jsonb language sql as $$
+        select case when jsonb_typeof(args)='object' then args else null end
+      $$;`);
+    const value = { flowHash: 'a'.repeat(64), encryptedPayload: 'fixture "quoted" \\ slash\nline café' };
+    const oldQuery = 'select bjm_office_gateway.auth_dispatch($1::text, $2::jsonb) as result';
+    const oldDescription = await db.describeQuery(oldQuery);
+    assert.deepEqual(oldDescription.queryParams.map(p => p.dataTypeID), [25, 3802]);
+    // PGlite obtains real PostgreSQL parameter OIDs; the installed Postgres.js
+    // serializers reproduce its Describe/Bind behavior without any network.
+    assert.equal((await db.query(oldQuery, ['create_flow', JSON.stringify(value)], { serializers: postgresSerializers })).rows[0].result, null);
+    store = createChatStore(env, { sqlFactory: () => ({
+      unsafe: async (query, params) => {
+        assert.deepEqual((await db.describeQuery(query)).queryParams.map(p => p.dataTypeID), [25, 25]);
+        return (await db.query(query, params, { serializers: postgresSerializers })).rows;
+      },
+      end: async () => {},
+    }) });
+    assert.deepEqual(await store('create_flow', value), value);
+  } finally {
+    await store?.close();
+    await db.close();
+  }
 });
 test('invalid refresh null commits normally and database errors expose no secret or input', async () => {
   let outcome = null;

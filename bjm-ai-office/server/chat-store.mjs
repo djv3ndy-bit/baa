@@ -60,7 +60,9 @@ export function createChatStore(env = process.env, options = {}) {
     try {
       // A null result can deliberately COMMIT refresh-family revocation.
       // Never surround this call with a rollback-on-invalid-grant transaction.
-      return oneResult(await client.unsafe('select bjm_office_gateway.auth_dispatch($1::text, $2::jsonb) as result', [operation, json]));
+      // Force a text bind: Postgres.js JSONB serialization would encode this
+      // already bounded JSON string a second time before PostgreSQL parses it.
+      return oneResult(await client.unsafe('select bjm_office_gateway.auth_dispatch($1::text, $2::text::jsonb) as result', [operation, json]));
     } catch { throw unavailable(); }
   };
   store.snapshot = async (accessHash, clientId, resource) => {
