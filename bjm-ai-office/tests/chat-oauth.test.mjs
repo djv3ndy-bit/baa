@@ -110,6 +110,31 @@ test('authorize stores only AES-GCM ciphertext and hash, with distinct upstream 
   const payload=JSON.parse(Buffer.concat([decipher.update(ciphertext),decipher.final()]).toString());assert.equal(payload.state,STATE);assert.equal(payload.challenge,challenge(VERIFIER));assert.equal(challenge(payload.upstreamVerifier),url.searchParams.get('code_challenge'));assert.notEqual(payload.upstreamVerifier,VERIFIER);
   assert.equal(response.headers['cache-control'],'no-store');assert.equal(response.headers['referrer-policy'],'no-referrer');
 });
+test('actual ChatGPT authorize query with optional en-US UI locale completes exact stable-callback PKCE flow',async()=>{
+  const stable='https://chatgpt.com/connector_platform_oauth_redirect',f=fixture({env:{BJM_CHAT_OAUTH_REDIRECT_URI:stable}});
+  const response=await begin(f,{redirect_uri:stable,ui_locales:'en-US'});assert.equal(response.code,302);assert.equal(f.operations.length,1);
+  const upstream=new URL(response.headers.location);assert.equal(upstream.searchParams.has('ui_locales'),false);assert.equal(upstream.searchParams.get('scope'),'openid');assert.equal(upstream.searchParams.get('resource'),RESOURCE);
+  const completed=await callback(f),location=new URL(completed.headers.location);assert.equal(location.origin+location.pathname,stable);assert.equal(location.searchParams.get('state'),STATE);assert.equal(location.searchParams.has('error'),false);
+  const exchanged=await exchange(f,location.searchParams.get('code'),{redirect_uri:stable});assert.equal(exchanged.code,200);assert.equal(exchanged.body.scope,CHAT_SCOPE);
+});
+test('optional UI locale accepts bounded BCP47 language preferences without forwarding them',async()=>{
+  for(const ui_locales of ['en','fr-CA fr en','zh-Hant-TW sr-Latn','de-DE-u-co-phonebk','EN-us']){
+    const f=fixture(),response=await begin(f,{ui_locales});assert.equal(response.code,302);assert.equal(f.operations.length,1);assert.equal(f.fetches.length,0);assert.equal(new URL(response.headers.location).searchParams.has('ui_locales'),false);
+  }
+});
+test('malformed, oversized or duplicated UI locales and unrelated parameters create no authorization flow',async()=>{
+  for(const ui_locales of ['', 'en_US','en--US','en-1234-1234','en-u-ca-gregory-u-nu-latn',' en','en ','en  fr','en\tfr','en\nfr','../en','en?scope=office.write','éñ',Array(9).fill('en').join(' '),`en-${Array(8).fill('abcdefgh').join('-')}`,Array(8).fill(`en-${Array(4).fill('abcdefgh').join('-')}`).join(' ')]){
+    const f=fixture(),response=await begin(f,{ui_locales});assert.equal(response.code,400);oauthError(response,'invalid_request');assert.equal(response.headers.location,undefined);assert.equal(f.operations.length,0);assert.equal(f.fetches.length,0);
+  }
+  for(const extra of ['&ui_locales=fr','&ui_locale=en-US','&prompt=login']){
+    const f=fixture(),response=res();await f.handlers.authorize(req('GET','/oauth/authorize?'+new URLSearchParams(authorizationParams({ui_locales:'en-US'}))+extra),response);assert.equal(response.code,400);oauthError(response,'invalid_request');assert.equal(f.operations.length,0);assert.equal(f.fetches.length,0);
+  }
+});
+test('optional UI locale does not weaken exact client, callback, resource, scope or PKCE requirements',async()=>{
+  for(const change of [{client_id:'unknown'},{redirect_uri:'https://evil.fixture.example/callback'},{state:''},{resource:RESOURCE+'/'},{scope:'office.read office.write'},{response_type:'token'},{code_challenge_method:'plain'},{code_challenge:'bad'}]){
+    const f=fixture(),response=await begin(f,{ui_locales:'en-US',...change});oauthError(response,['client_id','redirect_uri','state'].some(key=>key in change)?('client_id'in change?'invalid_client':'invalid_request'):'scope'in change?'invalid_scope':'invalid_request');assert.equal(f.operations.length,0);assert.equal(f.fetches.length,0);
+  }
+});
 test('unknown client/redirect, duplicate fields and empty state never create a flow or redirect to untrusted input',async()=>{
   for(const change of [{client_id:'unknown'},{redirect_uri:'https://evil.fixture.example/callback'},{state:''}]){const f=fixture(),response=await begin(f,change);assert.equal(response.code,400);assert.equal(response.headers.location,undefined);assert.equal(f.operations.length,0);}
   const f=fixture(),response=res();await f.handlers.authorize(req('GET','/oauth/authorize?'+new URLSearchParams(authorizationParams())+'&client_id=unknown'),response);assert.equal(response.code,400);assert.equal(f.operations.length,0);

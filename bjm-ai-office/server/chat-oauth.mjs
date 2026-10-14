@@ -78,6 +78,13 @@ function fields(params,allowed){
   for(const key of params.keys())if(!allowed.includes(key)||params.getAll(key).length!==1)reject();
   for(const value of params.values())if(value.length>4096)reject();
 }
+function optionalUiLocales(params){
+  if(!params.has('ui_locales'))return;
+  const value=params.get('ui_locales'),locales=value.split(' ');
+  if(!value||value.length>256||locales.length>8||locales.some(locale=>locale.length>64||!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(locale)))reject();
+  try{Intl.getCanonicalLocales(locales);}catch{reject();}
+  // This optional UI preference has no effect on authorization or stored flow.
+}
 async function form(req){
   if(!/^application\/x-www-form-urlencoded(?:\s*;|$)/i.test(String(req.headers?.['content-type']||'')))reject();
   let params;
@@ -159,7 +166,8 @@ export function createChatOAuthHandlers({env=process.env,store,fetchImpl=globalT
     let approvedRedirect;
     try{
       const config=configuration(),params=query(req,config);
-      fields(params,['response_type','client_id','redirect_uri','scope','state','code_challenge','code_challenge_method','resource']);
+      fields(params,['response_type','client_id','redirect_uri','scope','state','code_challenge','code_challenge_method','resource','ui_locales']);
+      optionalUiLocales(params);
       client(params,req,config);
       if(params.get('redirect_uri')!==config.redirectUri||!params.get('state')||params.get('state').length>1024)reject();
       approvedRedirect={config,state:params.get('state')};
