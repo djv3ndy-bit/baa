@@ -1,0 +1,4 @@
+# Vite and tsx use the esbuild versions pinned in pnpm-lock.yaml.
+# Keep dependency scripts denied unless explicitly reviewed here.
+allowBuilds:
+  esbuild: true
