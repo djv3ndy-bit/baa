@@ -12,13 +12,14 @@ function setup(t, options = {}) {
   const oldFetch = globalThis.fetch;
   const keys = [...new Set([
     'SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY',
-    'NATIVE_BILLING_ENVIRONMENT', 'VERCEL_ENV', 'VERCEL_TARGET_ENV', 'BILLING_ENABLED',
+    'NATIVE_BILLING_ENVIRONMENT', 'VERCEL_ENV', 'VERCEL_TARGET_ENV', 'BILLING_ENABLED', 'NATIVE_PURCHASES_ENABLED',
     'STRIPE_RESTRICTED_KEY', 'STRIPE_LIVEMODE', 'STRIPE_ACCOUNT_ID', 'STRIPE_MONTHLY_PRICE_ID',
     ...Object.keys(process.env).filter(key => key.startsWith('STRIPE_')),
     ...Object.keys(options.environment || {})
   ])];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   Object.assign(process.env, { SUPABASE_URL: BASE, SUPABASE_PUBLISHABLE_KEY: 'publishable-test', SUPABASE_SECRET_KEY: options.legacy ? 'legacy-service-key' : 'sb_secret_test' });
+  delete process.env.NATIVE_PURCHASES_ENABLED;
   for (const key of keys) if (key.startsWith('STRIPE_')) delete process.env[key];
   let testStripe;
   let previousStripeHttpClient;
@@ -577,6 +578,9 @@ const ANDROID_TEST_ENVIRONMENT = Object.freeze({
 const FREE_BILLING = Object.freeze({
   stripe_customer_id: null, stripe_subscription_id: null, stripe_checkout_attempt_id: null, status: 'free'
 });
+const ANDROID_NATIVE_TEST_ENVIRONMENT = Object.freeze({
+  ...ANDROID_TEST_ENVIRONMENT, BILLING_ENABLED: 'true', NATIVE_PURCHASES_ENABLED: 'true'
+});
 const CAFE = Object.freeze({ role: 'cafe_owner_manager', suspended_at: null, is_discoverable: true });
 const CLOSED_ANDROID_GATES = [
   ...Object.keys(ANDROID_TEST_ENVIRONMENT).filter(key => key !== 'STRIPE_LIVEMODE').map(key => [`missing ${key}`, { [key]: undefined }]),
@@ -604,6 +608,99 @@ test('Android test exception requires all selected Stripe links explicitly null 
     assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_TEST_ENVIRONMENT, billing), false);
   }
 });
+test('native-enabled isolated QA accepts the trialing free row without requiring Stripe configuration', () => {
+  assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_NATIVE_TEST_ENVIRONMENT, {
+    ...FREE_BILLING, status: 'trialing', complimentary_access: true
+  }), true);
+  assert.equal(isolatedAndroidTestDeletionWithoutStripe({
+    ...ANDROID_NATIVE_TEST_ENVIRONMENT, BILLING_ENABLED: 'false'
+  }, FREE_BILLING), true, 'the existing billing-disabled exception remains supported');
+});
+test('native-enabled isolated QA deletes only the authenticated cafe after owned cleanup', async t => {
+  const mock = setup(t, {
+    environment: ANDROID_NATIVE_TEST_ENVIRONMENT,
+    profiles: [{ ...CAFE, is_discoverable: false }],
+    subscriptions: [{ ...FREE_BILLING, status: 'trialing', complimentary_access: true }],
+    files: { 'cafe-images': [`${USER}/avatar.png`, `${OTHER}/keep.png`] }
+  });
+  await mock.run({ body: { confirmation: 'DELETE', user_id: OTHER } });
+  assert.equal(mock.res.statusCode, 200);
+  assert.deepEqual(mock.res.body, { success: true, appleRevocation: 'not_applicable' });
+  assert.deepEqual([...mock.files.get('cafe-images')], [`${OTHER}/keep.png`]);
+  assert.equal(mock.calls.at(-1).path, `/auth/v1/admin/users/${USER}`);
+  assert.equal(mock.calls.at(-1).method, 'DELETE');
+  assert.equal(mock.calls.some(call => new URL(call.url).origin !== ANDROID_NATIVE_TEST_ENVIRONMENT.SUPABASE_URL), false);
+  assert.equal(mock.calls.some(call => call.path.endsWith('/settle_stripe_checkout_attempt_for_deletion')), false);
+  const lock = mock.calls.findIndex(call => call.method === 'PATCH');
+  const billing = mock.calls.findIndex(call => call.path === '/rest/v1/cafe_subscriptions');
+  const storage = mock.calls.findIndex(call => call.path.startsWith('/storage/'));
+  assert.ok(lock >= 0 && lock < billing && billing < storage && storage < mock.calls.length - 1);
+});
+for (const [label, changed] of [
+  ['missing native flag', { NATIVE_PURCHASES_ENABLED: undefined }],
+  ['disabled native flag', { NATIVE_PURCHASES_ENABLED: 'false' }],
+  ['ambiguous native flag', { NATIVE_PURCHASES_ENABLED: '1' }],
+  ['missing billing flag', { BILLING_ENABLED: undefined }],
+  ['ambiguous billing flag', { BILLING_ENABLED: '0' }],
+  ['Apple database', { SUPABASE_URL: 'https://iqtpsxxlpncaeabbcxht.supabase.co' }],
+  ['shared production database', { SUPABASE_URL: 'https://lmwqrxoitraofaftpwhe.supabase.co' }],
+  ['unknown database', { SUPABASE_URL: BASE }],
+  ['Production receipt mode', { NATIVE_BILLING_ENVIRONMENT: 'Production' }],
+  ['missing receipt mode', { NATIVE_BILLING_ENVIRONMENT: undefined }],
+  ['production deployment', { VERCEL_ENV: 'production' }],
+  ['missing deployment type', { VERCEL_ENV: undefined }],
+  ['generic Preview target', { VERCEL_TARGET_ENV: 'preview' }],
+  ['missing custom target', { VERCEL_TARGET_ENV: undefined }],
+  ['configured Stripe key', { STRIPE_RESTRICTED_KEY: 'rk_test_fixture' }],
+  ['configured Stripe account', { STRIPE_ACCOUNT_ID: 'acct_fixture' }],
+  ['unknown nonempty Stripe setting', { STRIPE_FUTURE_CONFIGURATION: 'configured' }],
+  ['Stripe live mode', { STRIPE_LIVEMODE: 'true' }]
+]) {
+  test(`native-enabled QA remains fail-closed for ${label}`, async t => {
+    const environment = { ...ANDROID_NATIVE_TEST_ENVIRONMENT, ...changed };
+    assert.equal(isolatedAndroidTestDeletionWithoutStripe(environment, FREE_BILLING), false);
+    const mock = setup(t, { environment, profiles: [CAFE], subscriptions: [FREE_BILLING] });
+    await mock.run();
+    assert.equal(mock.res.statusCode, 502);
+    assert.equal(mock.identityDeleted(), false);
+    assert.equal(mock.calls.some(call => call.path.startsWith('/storage/')), false);
+    assert.equal(mock.calls.at(-1).path, '/rest/v1/rpc/release_stripe_checkout');
+  });
+}
+for (const field of ['stripe_customer_id', 'stripe_subscription_id', 'stripe_checkout_attempt_id']) {
+  for (const kind of ['linked', 'absent', 'undefined']) {
+    test(`native-enabled QA rejects ${kind} ${field}`, async t => {
+      const billing = { ...FREE_BILLING, [field]: kind === 'linked' ? 'linked-history' : undefined };
+      if (kind === 'absent') delete billing[field];
+      assert.equal(isolatedAndroidTestDeletionWithoutStripe(ANDROID_NATIVE_TEST_ENVIRONMENT, billing), false);
+      const mock = setup(t, { environment: ANDROID_NATIVE_TEST_ENVIRONMENT, profiles: [CAFE], subscriptions: [billing] });
+      await mock.run();
+      assert.equal(mock.res.statusCode, 502);
+      assert.equal(mock.identityDeleted(), false);
+      assert.equal(mock.calls.some(call => call.path.startsWith('/storage/')), false);
+    });
+  }
+}
+for (const [label, rejected] of [
+  ['billing lookup', call => call.path === '/rest/v1/cafe_subscriptions'],
+  ['storage enumeration', call => call.path.startsWith('/storage/v1/object/list/')],
+  ['owned identity deletion', call => call.path === `/auth/v1/admin/users/${USER}`]
+]) {
+  test(`native-enabled QA preserves failure restoration for ${label}`, async t => {
+    const mock = setup(t, {
+      environment: ANDROID_NATIVE_TEST_ENVIRONMENT, profiles: [{ ...CAFE, is_discoverable: false }],
+      subscriptions: [FREE_BILLING], override: call => rejected(call) ? response({}, 503) : undefined
+    });
+    await mock.run();
+    assert.equal(mock.res.statusCode, 502);
+    assert.equal(mock.res.body.success, undefined);
+    const lock = mock.calls.find(call => call.method === 'PATCH' && call.search.includes('suspended_at=is.null'));
+    const restore = mock.calls.find(call => call.method === 'PATCH' && call.search.includes('suspended_at=eq.'));
+    assert.equal(new URLSearchParams(restore.search).get('suspended_at'), `eq.${lock.body.suspended_at}`);
+    assert.deepEqual(restore.body, { suspended_at: null, is_discoverable: false });
+    assert.equal(mock.calls.at(-1).path, '/rest/v1/rpc/release_stripe_checkout');
+  });
+}
 for (const field of ['stripe_customer_id', 'stripe_subscription_id', 'stripe_checkout_attempt_id']) {
   for (const missing of [true, false]) {
     test(`Android exception rejects ${missing ? 'absent' : 'undefined'} selected ${field}`, async t => {

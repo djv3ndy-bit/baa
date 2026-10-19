@@ -15,8 +15,11 @@ export function isolatedAndroidTestDeletionWithoutStripe(environment, billing) {
   if (environment.SUPABASE_URL !== "https://ojvjlvojvozvhktbclcg.supabase.co" ||
       environment.NATIVE_BILLING_ENVIRONMENT !== "Sandbox" ||
       environment.VERCEL_ENV !== "preview" ||
-      environment.VERCEL_TARGET_ENV !== "android-testing" ||
-      environment.BILLING_ENABLED !== "false") return false;
+      environment.VERCEL_TARGET_ENV !== "android-testing") return false;
+  // Native Google Sandbox checkout requires both flags. This test-only
+  // exception still requires no Stripe configuration or selected Stripe links.
+  if (environment.BILLING_ENABLED !== "false" &&
+      !(environment.BILLING_ENABLED === "true" && environment.NATIVE_PURCHASES_ENABLED === "true")) return false;
   if (!billing || typeof billing !== "object" || Array.isArray(billing) ||
       ["stripe_customer_id", "stripe_subscription_id", "stripe_checkout_attempt_id"].some(name => !Object.hasOwn(billing, name) || billing[name] !== null)) return false;
   return !Object.entries(environment).some(([name, value]) => name.startsWith("STRIPE_") &&
