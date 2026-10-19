@@ -175,10 +175,11 @@ test('Android final purchase refresh removes success when newer Google status ha
 
 test('Android cancellation keeps Google confirmation while verified access remains active', async () => {
   const h = googleHarness(); await h.c.load(); await h.c.buy();
-  h.setStatus({ ...googlePaid, autoRenews: false, currentPeriodEnd: googleExpired.currentPeriodEnd });
+  h.setStatus({ ...googlePaid, autoRenews: false, currentPeriodEnd: new Date(Date.now() + 60_000).toISOString() });
   await h.c.manage('google');
   assert.equal(h.state().subscription.access, 'pro'); assert.equal(h.state().subscription.autoRenews, false);
   assert.equal(h.state().notice, 'Your Pro access is confirmed.');
+  h.c.dispose();
 });
 
 test('Android failed Google status refresh retains last confirmed access and notice', async () => {

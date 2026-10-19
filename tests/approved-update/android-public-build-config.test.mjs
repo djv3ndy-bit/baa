@@ -53,8 +53,9 @@ test('dedicated public internal profile configures a store AAB without changing 
 });
 
 test('local EAS public config resolves without builder-only file metadata; remote requires exact Firebase app', () => {
-  assert.equal(config(local), app);
-  assert.equal(config({ ...local, GOOGLE_SERVICES_JSON: '/builder-only/file' }), app);
+  const optimized = { ...app, plugins: [...app.plugins, './plugins/with-android-release-optimization.cjs'] };
+  assert.deepEqual(JSON.parse(JSON.stringify(config(local))), optimized);
+  assert.deepEqual(JSON.parse(JSON.stringify(config({ ...local, GOOGLE_SERVICES_JSON: '/builder-only/file' }))), optimized);
   assert.throws(() => config(remote), /Android public push notifications require GOOGLE_SERVICES_JSON/);
   assert.throws(() => config({ ...remote, GOOGLE_SERVICES_JSON: '/builder-only/file' }), /could not be read/);
   const result = config({ ...remote, GOOGLE_SERVICES_JSON: '/eas/firebase.json' }, firebase);

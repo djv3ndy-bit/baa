@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {AndroidPushError,androidPushIdentity,readAndroidPushConfiguration} from './configuration.mjs';
 import {createAndroidFcmAuthClient} from './googleFcmAuth.mjs';
 
@@ -27,7 +28,10 @@ export function androidFcmMessage(row,notification) {
       body:isMessage?'Open BaristaMatch to read it.':clean(notification.body,240)},
     data:{body:JSON.stringify(data)},
     android:{restricted_package_name:androidPushIdentity.packageName,priority:'HIGH',ttl:'300s',
-      notification:{channel_id:'baristamatch-alerts',sound:'default',visibility:'PRIVATE'}},
+      // Firebase-auto background notifications omit custom data from tray
+      // extras. A unique recipient tag preserves account-scoped dismissal.
+      notification:{channel_id:'baristamatch-alerts',sound:'default',visibility:'PRIVATE',
+        tag:`bjm-v1:${data.recipientUserId.toLowerCase()}:${randomUUID()}`}},
   }};
 }
 

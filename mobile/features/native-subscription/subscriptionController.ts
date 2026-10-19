@@ -1,4 +1,4 @@
-import { PurchaseCoordinator, purchaseIsBlocked, reviewerAccess, reviewerExpiryTimer, type BillingProvider, type PurchaseDependencies, type PurchaseOutcome, type StoreProduct, type StorePurchase, type VerifiedSubscription } from './purchaseCoordinator';
+import { PurchaseCoordinator, purchaseIsBlocked, reviewerAccess, reviewerExpiryTimer, androidGoogleAccessDeadline, androidGoogleAccessNeedsConfirmation, type BillingProvider, type PurchaseDependencies, type PurchaseOutcome, type StoreProduct, type StorePurchase, type VerifiedSubscription } from './purchaseCoordinator';
 import { checkedSubscription, nativePurchaseDependencies, type BillingTransport, type PurchaseStore } from './nativeBillingClient';
 
 export type SubscriptionStore = PurchaseStore & {
@@ -13,6 +13,7 @@ export type SubscriptionViewState = {
   busy: boolean;
   error: string;
   notice: string;
+  googleAccessNeedsConfirmation?: boolean;
 };
 export const initialSubscriptionState: SubscriptionViewState = { subscription: null, product: null, busy: false, error: '', notice: '' };
 type Dependencies = {
@@ -36,6 +37,8 @@ export class SubscriptionController {
   private coordinator: PurchaseCoordinator | null;
   private reviewAccessEnabled: boolean;
   private cancelReviewExpiry: () => void = () => {};
+  private cancelGoogleExpiry: () => void = () => {};
+  private googleRefreshPending = false;
   constructor(private deps: Dependencies) {
     this.reviewAccessEnabled = deps.platform === 'android' && deps.reviewAccessEnabled === true;
     this.coordinator = deps.store ? new PurchaseCoordinator(nativePurchaseDependencies({ ...deps, store: deps.store,
@@ -77,12 +80,34 @@ export class SubscriptionController {
         error: 'We could not confirm current access. Check your connection and try again.' });
     }
   }
+  private scheduleGoogleExpiry(subscription: VerifiedSubscription) {
+    this.cancelGoogleExpiry();
+    this.cancelGoogleExpiry = () => {};
+    const end = androidGoogleAccessDeadline(subscription, this.deps.platform);
+    const needsConfirmation = androidGoogleAccessNeedsConfirmation(subscription, this.deps.platform);
+    if (!needsConfirmation) this.googleRefreshPending = false;
+    this.publish({ googleAccessNeedsConfirmation: needsConfirmation, ...(needsConfirmation ? { product: null,
+      ...(this.state.notice.startsWith('Your Pro access is ') ? { notice: '' } : {}) } : {}) });
+    // A newly fetched overdue response remains unconfirmed; do not loop requests
+    // or infer that an automatically renewing subscription has actually renewed.
+    if (!end || needsConfirmation) return;
+    this.cancelGoogleExpiry = reviewerExpiryTimer(end, () => {
+      if (this.disposed || this.state.subscription !== subscription
+        || !androidGoogleAccessNeedsConfirmation(subscription, this.deps.platform)) return;
+      this.publish({ googleAccessNeedsConfirmation: true, product: null,
+        ...(this.state.notice.startsWith('Your Pro access is ') ? { notice: '' } : {}) });
+      if (this.running) this.googleRefreshPending = true;
+      else void this.load();
+    });
+  }
   private async accountIsCurrent() {
     const account = await this.deps.account();
     if (this.disposed) return false;
     if (account?.id === this.deps.accountId && account.role === 'cafe_owner_manager') return true;
     this.cancelReviewExpiry();
-    this.publish({ subscription: null, product: null, error: '', notice: '' });
+    this.cancelGoogleExpiry();
+    this.googleRefreshPending = false;
+    this.publish({ subscription: null, product: null, error: '', notice: '', googleAccessNeedsConfirmation: false });
     this.deps.accountChanged();
     return false;
   }
@@ -99,6 +124,7 @@ export class SubscriptionController {
       && !reviewerAccess(subscription, this.reviewAccessEnabled) && this.state.notice.startsWith('Reviewer ');
     this.publish({ subscription, ...(clearGoogleConfirmation || clearReviewConfirmation ? { notice: '' } : {}) });
     this.scheduleReviewExpiry(subscription);
+    this.scheduleGoogleExpiry(subscription);
     return subscription;
   }
   private async run(work: () => Promise<void>) {
@@ -117,6 +143,9 @@ export class SubscriptionController {
       if (!this.disposed && !first.done) {
         this.queued.delete(first.value[0]);
         void this.recover(first.value[1]);
+      } else if (!this.disposed && this.googleRefreshPending) {
+        this.googleRefreshPending = false;
+        void this.load();
       }
     }
   }
@@ -155,6 +184,7 @@ export class SubscriptionController {
         : result.subscription.access === 'pro' ? 'Your Pro access is confirmed.'
           : restore ? 'No active in-app subscription was confirmed for this BaristaMatch account.' : 'Review your current subscription before purchasing.') });
       this.scheduleReviewExpiry(result.subscription);
+      this.scheduleGoogleExpiry(result.subscription);
     } else if (result.kind === 'account_changed') {
       this.publish({ subscription: null, product: null }); this.deps.accountChanged();
     } else if (result.kind === 'cancelled') {
@@ -176,7 +206,7 @@ export class SubscriptionController {
   }
   async buy() {
     return this.run(async () => {
-      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error) return;
+      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error || this.state.googleAccessNeedsConfirmation) return;
       const resume = this.state.subscription.canResumeAppleCheckout === true && this.state.product.provider === 'apple';
       if (purchaseIsBlocked(this.state.subscription) && !resume) return;
       const result = resume ? await this.coordinator.resume(this.state.product) : await this.coordinator.buy(this.state.product);
@@ -218,6 +248,8 @@ export class SubscriptionController {
   dispose() {
     this.disposed = true;
     this.cancelReviewExpiry();
+    this.cancelGoogleExpiry();
+    this.googleRefreshPending = false;
     this.queued.clear();
     void this.deps.store?.dispose().catch(() => {});
   }

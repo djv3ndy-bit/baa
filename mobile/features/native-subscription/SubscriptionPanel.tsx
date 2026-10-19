@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Action, Icon } from '../approved-dashboard/DashboardPrimitives';
 import { dashboardTheme as t } from '../approved-dashboard/theme';
-import { purchaseIsBlocked, reviewerAccess, type StoreProduct, type VerifiedSubscription, type BillingProvider } from './purchaseCoordinator';
+import { purchaseIsBlocked, reviewerAccess, androidGoogleAccessNeedsConfirmation, type StoreProduct, type VerifiedSubscription, type BillingProvider } from './purchaseCoordinator';
 
 export type SubscriptionPanelProps = {
   role: string;
@@ -12,6 +12,8 @@ export type SubscriptionPanelProps = {
   error?: string;
   canRestore?: boolean;
   reviewAccessEnabled?: boolean;
+  platform?: string;
+  googleAccessNeedsConfirmation?: boolean;
   onBack: () => void;
   onBuy: () => void;
   onRestore: () => void;
@@ -28,6 +30,7 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
   const review = reviewerAccess(subscription, props.reviewAccessEnabled);
   const hasReview = props.reviewAccessEnabled === true && subscription?.reviewAccess !== undefined;
   const reviewUnavailable = hasReview && !review;
+  const googleUnavailable = props.googleAccessNeedsConfirmation === true || androidGoogleAccessNeedsConfirmation(subscription, props.platform);
   const reviewExpiry = hasReview && subscription?.reviewAccess?.expiresAt;
   const reviewExpired = typeof reviewExpiry === 'string' && Number.isFinite(Date.parse(reviewExpiry)) && Date.parse(reviewExpiry) <= Date.now();
   const providerName = (provider: BillingProvider) => provider === 'apple' ? 'Apple' : provider === 'google' ? 'Google Play' : 'Stripe';
@@ -35,9 +38,9 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
     ? [...new Set(subscription.subscriptions.filter(row => row.canManage).map(row => row.provider))]
     : subscription?.provider && subscription.canManage ? [subscription.provider] : [];
   const end = hasReview ? reviewExpiry : subscription?.status === 'grace' ? subscription.gracePeriodEnd : subscription?.currentPeriodEnd;
-  const subscribed = !reviewUnavailable && subscription?.access === 'pro';
+  const subscribed = !reviewUnavailable && !googleUnavailable && subscription?.access === 'pro';
   const canResume = !hasReview && !!product && product.provider === 'apple' && subscription?.access === 'free' && subscription.status === 'pending' && subscription.canResumeAppleCheckout === true && !props.error;
-  const canBuy = !hasReview && !!product && !!subscription && !props.error && !purchaseIsBlocked(subscription);
+  const canBuy = !hasReview && !googleUnavailable && !!product && !!subscription && !props.error && !purchaseIsBlocked(subscription);
   const periodEnd = end && Number.isFinite(Date.parse(end))
     ? hasReview ? new Date(end).toLocaleString(undefined, { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
       : new Date(end).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : null;
@@ -47,16 +50,17 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
       <Text style={s.title}>Your next hire starts here.</Text>
       <Text style={s.copy}>Your first job is free for 30 days. Matching and interview messaging stay included.</Text>
       {props.error ? <View style={s.feedback}><Text accessibilityRole="alert" style={s.error}>{props.error}</Text><Action label="Try again" disabled={busy} onPress={props.onRetry} /></View> : null}
-      {props.notice && !(reviewUnavailable && props.notice.startsWith('Reviewer Pro access')) ? <Text accessibilityLiveRegion="polite" style={s.notice}>{props.notice}</Text> : null}
+      {props.notice && !(reviewUnavailable && props.notice.startsWith('Reviewer Pro access')) && !(googleUnavailable && props.notice.startsWith('Your Pro access is ')) ? <Text accessibilityLiveRegion="polite" style={s.notice}>{props.notice}</Text> : null}
       {busy && !subscription ? <Text accessibilityLiveRegion="polite" style={s.copy}>Checking your subscription…</Text> : null}
       <View style={s.card}><Text style={s.eyebrow}>FREE</Text><Text style={s.price}>$0</Text><Text style={s.copy}>Post your first job free for 30 days. A second job or reopening an expired post requires Pro. View applicants, message your matches, and schedule interviews.</Text><Text style={s.included}>Included with your café account</Text></View>
       <View style={s.card}><Text style={s.eyebrow}>CAFÉ PRO</Text>
         {review ? <><Text style={s.current}>Reviewer Pro access</Text><Text style={s.copy}>Temporary access for app review. No payment is required and this access does not renew.</Text></>
           : reviewUnavailable ? <><Text style={s.current}>{reviewExpired ? 'Reviewer access ended' : 'Reviewer access needs confirmation'}</Text><Text style={s.copy}>Refresh your status to check current access before purchasing.</Text><Action label="Check access status" disabled={busy} onPress={props.onRetry} /></>
-            : subscribed ? <Text style={s.current}>Your Pro access is active</Text> : product ? <View style={s.priceRow}><Text style={s.price}>{product.displayPrice}</Text><Text style={s.period}>per month</Text></View> : <Text style={s.copy}>Purchase pricing is not available yet.</Text>}
+            : googleUnavailable ? <><Text style={s.current}>Checking current Google Play access</Text><Text style={s.copy}>The last verified access period ended. Refresh your status to confirm whether it renewed. No new purchase will start.</Text><Action label="Check access status" disabled={busy} onPress={props.onRetry} /></>
+              : subscribed ? <Text style={s.current}>Your Pro access is active</Text> : product ? <View style={s.priceRow}><Text style={s.price}>{product.displayPrice}</Text><Text style={s.period}>per month</Text></View> : <Text style={s.copy}>Purchase pricing is not available yet.</Text>}
         <Text style={s.copy}>For cafés that are growing their team.</Text>
         {(subscribed || hasReview) && periodEnd ? <Text style={s.copy}>{hasReview ? reviewExpired ? 'Reviewer access ended' : 'Reviewer access ends' : subscription?.status === 'grace' ? 'Grace access ends' : subscription?.autoRenews ? 'Current period ends' : 'Access ends'} {periodEnd}.</Text> : null}
-        {!hasReview && subscription?.status === 'grace' ? <Text style={s.notice}>Your access remains active while the store retries your payment. Open subscription management to review your payment method.</Text> : null}
+        {!hasReview && !googleUnavailable && subscription?.status === 'grace' ? <Text style={s.notice}>Your access remains active while the store retries your payment. Open subscription management to review your payment method.</Text> : null}
         {!hasReview && subscription?.status === 'payment_required' ? <Text style={s.notice}>Your subscription needs payment attention. Open management before purchasing again.</Text> : null}
         <View style={s.benefits}>{benefits.map(benefit => <View style={s.benefit} key={benefit}><Icon name="checkmark-circle-outline" color={t.accent} size={21} /><Text style={s.benefitText}>{benefit}</Text></View>)}</View>
         {canBuy ? <><Action primary label={busy ? 'Checking purchase…' : `Subscribe for ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>Renews automatically each month unless canceled in your {product!.provider === 'apple' ? 'Apple' : 'Google Play'} subscription settings. The store confirms the price and terms before you purchase.</Text></>

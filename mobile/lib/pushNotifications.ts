@@ -8,6 +8,7 @@ import { supabase } from './supabase';
 import { notificationDestination } from './notificationRouting';
 import { getAppEnvironment } from '../features/review-mode/environment';
 import { createAndroidFcmRegistration, isolatedAndroidFcmEnabled, publicAndroidFcmEnabled, PUBLIC_ANDROID_FCM_SCOPE } from './androidFcmRegistration';
+import { androidNotificationRecipient, clearAndroidAccountNotifications } from './androidNotificationCleanup';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -17,6 +18,18 @@ export type PhoneNotificationOutcome = { status: 'enabled' | 'denied' | 'unavail
 const TOKEN_KEY = 'baristamatch_phone_token_v1';
 const registrations = new Set<Promise<PhoneNotificationOutcome>>();
 const handled = new Set<string>();
+const retiredAndroidNotifications = new Set<string>(), exitingAndroidOwners = new Set<string>();
+const androidOwnerExitVersions = new Map<string, number>();
+const androidExitListeners = new Set<(owner: string) => void>();
+let androidExitVersion = 0, androidResponseVersion = 0;
+function retireAndroidNotification(identifier: string) {
+  retiredAndroidNotifications.add(identifier);
+  if (retiredAndroidNotifications.size > 100) retiredAndroidNotifications.delete(retiredAndroidNotifications.values().next().value!);
+}
+function retireAndroidOwner(owner: string) {
+  androidOwnerExitVersions.set(owner, ++androidExitVersion); exitingAndroidOwners.add(owner);
+  for (const listener of androidExitListeners) listener(owner);
+}
 const projectId = () => Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 const permissionEnabled = (permission: Notifications.NotificationPermissionsStatus) => permission.granted || permission.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 const directAndroid = () => {
@@ -45,6 +58,16 @@ const androidFcm = createAndroidFcmRegistration({
   requestPermission: Notifications.requestPermissionsAsync,
   token: Notifications.getDevicePushTokenAsync,
   async invalidateNativeToken() { await Notifications.setAutoServerRegistrationEnabledAsync(false); await Notifications.unregisterForNotificationsAsync(); },
+  async clearNotifications(owner) {
+    retireAndroidOwner(owner);
+    await clearAndroidAccountNotifications(owner, {
+      scheduled: Notifications.getAllScheduledNotificationsAsync, presented: Notifications.getPresentedNotificationsAsync,
+      cancel: Notifications.cancelScheduledNotificationAsync, dismiss: Notifications.dismissNotificationAsync,
+      lastResponse: Notifications.getLastNotificationResponseAsync, clearLastResponse: Notifications.clearLastNotificationResponseAsync,
+      responseVersion: () => androidResponseVersion,
+      retire: retireAndroidNotification,
+    });
+  },
   async save(token, userId) {
     const { error } = await supabase.from('android_device_push_tokens').upsert({ fcm_token: token, user_id: userId,
       platform: 'android', firebase_project_id: 'baristamatch', package_name: 'com.baristajobmatch.app', enabled: true }, { onConflict: 'fcm_token' });
@@ -60,7 +83,16 @@ const androidFcm = createAndroidFcmRegistration({
 
 async function register(requestPermission: boolean): Promise<PhoneNotificationOutcome> {
   if (Platform.OS === 'android' && process.env.EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED === 'true') {
-    try { return await androidFcm.register(requestPermission); }
+    try {
+      if (!directAndroid()) throw new Error('Android notifications are unavailable.');
+      const before = await supabase.auth.getSession();
+      const result = await androidFcm.register(requestPermission);
+      if (result.status === 'enabled' && before.data.session) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user.id === before.data.session.user.id) exitingAndroidOwners.delete(data.session.user.id);
+      }
+      return result;
+    }
     catch { throw new Error('Android notifications could not be enabled. Please try again.'); }
   }
   if (!Device.isDevice || !['ios', 'android'].includes(Platform.OS)) return { status: 'unavailable' };
@@ -134,21 +166,33 @@ export function listenForPhoneNotifications(options: { isNavigationReady?: () =>
   const direct = directAndroid();
   const stopAndroidFcm = direct ? androidFcm.listen() : () => {};
   let live = true, received = false, pending: Notifications.NotificationResponse | null = null;
+  let observedUser: string | null | undefined;
+  const retirePending = (owner: string) => {
+    if (pending && androidNotificationRecipient(pending.notification.request) === owner) {
+      retireAndroidNotification(pending.notification.request.identifier); pending = null;
+    }
+  };
+  if (direct) androidExitListeners.add(retirePending);
   async function open(response: Notifications.NotificationResponse | null) {
     if (!live || !response) return;
     const destination = notificationDestination(response.notification.request.content.data);
     if (!destination) return;
     const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
+    const owner = androidNotificationRecipient(response.notification.request);
+    const exitVersion = owner ? androidOwnerExitVersions.get(owner) : undefined;
+    const retired = () => direct && (retiredAndroidNotifications.has(response.notification.request.identifier)
+      || !!owner && (exitingAndroidOwners.has(owner) || androidOwnerExitVersions.get(owner) !== exitVersion));
+    if (retired()) { retireAndroidNotification(response.notification.request.identifier); return; }
     if (handled.has(key)) return;
     pending = response;
     // A restored Android session can resolve before the startup screen's home
     // redirect. Keep the native response until that redirect has completed.
     if (direct && options.isNavigationReady?.() === false) return;
     const { data, error } = await supabase.auth.getSession();
-    if (!live || error || !data.session || pending !== response || handled.has(key)) return;
+    if (!live || error || !data.session || pending !== response || handled.has(key) || retired()) return;
     if (direct) {
       const latest = await supabase.auth.getSession();
-      if (!live || pending !== response || handled.has(key)) return;
+      if (!live || pending !== response || handled.has(key) || retired()) return;
       if (latest.error || latest.data.session?.user.id !== data.session.user.id
         || response.notification.request.content.data.recipientUserId !== latest.data.session.user.id) { pending = null; return; }
       if (options.isNavigationReady?.() === false) return;
@@ -160,12 +204,20 @@ export function listenForPhoneNotifications(options: { isNavigationReady?: () =>
     if (!direct) router.push(destination as never);
     void Notifications.clearLastNotificationResponseAsync().catch(() => {});
   }
-  void Notifications.getLastNotificationResponseAsync().then(response => { if (!received) return open(response); }).catch(() => {});
-  const listener = Notifications.addNotificationResponseReceivedListener(response => { received = true; void open(response).catch(() => {}); });
+  const initialExitVersion = androidExitVersion;
+  void Notifications.getLastNotificationResponseAsync().then(response => {
+    const owner = response && androidNotificationRecipient(response.notification.request);
+    if (!received && !(direct && owner && (androidOwnerExitVersions.get(owner) || 0) > initialExitVersion)) return open(response);
+  }).catch(() => {});
+  const listener = Notifications.addNotificationResponseReceivedListener(response => { if (direct) androidResponseVersion++; received = true; void open(response).catch(() => {}); });
   const retryPending = () => { if (live && pending) void open(pending).catch(() => {}); };
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const next = session?.user.id || null;
+    if (direct && observedUser && (event === 'SIGNED_OUT' || next !== observedUser)) retireAndroidOwner(observedUser);
+    observedUser = next;
+    if (direct && event === 'SIGNED_IN' && next) exitingAndroidOwners.delete(next);
     if ((event === 'SIGNED_IN' || (direct && event === 'INITIAL_SESSION')) && pending) setTimeout(retryPending, 0);
   });
-  const stop = () => { live = false; pending = null; listener.remove(); subscription.unsubscribe(); stopAndroidFcm(); };
+  const stop = () => { live = false; pending = null; androidExitListeners.delete(retirePending); listener.remove(); subscription.unsubscribe(); stopAndroidFcm(); };
   return Object.assign(stop, { retryPending: () => { if (direct) retryPending(); } });
 }

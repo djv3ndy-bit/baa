@@ -5,6 +5,8 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 const app = JSON.parse(fs.readFileSync(new URL('../mobile/app.json', import.meta.url))).expo;
+const optimizedApp = { ...app, plugins: [...app.plugins, './plugins/with-android-release-optimization.cjs'] };
+const assertOptimizedApp = result => assert.deepEqual(JSON.parse(JSON.stringify(result)), optimizedApp);
 const source = fs.readFileSync(new URL('../mobile/app.config.js', import.meta.url), 'utf8');
 const valid = {
   project_info: { project_number: '397053773139', project_id: 'baristamatch' },
@@ -26,10 +28,10 @@ function resolveConfig(env = {}, files = {}) {
   return module.exports({ config: app });
 }
 
-test('production Android requires a real Firebase client file while iOS and local config remain unaffected', () => {
+test('production Android requires Firebase; local config gains only Android optimization and iOS remains unchanged', () => {
   assert.throws(() => resolveConfig(production), /Production Android push notifications require GOOGLE_SERVICES_JSON/);
-  assert.equal(resolveConfig(), app);
-  assert.equal(resolveConfig({ ...production, EAS_BUILD_PROFILE: 'preview' }), app);
+  assertOptimizedApp(resolveConfig());
+  assertOptimizedApp(resolveConfig({ ...production, EAS_BUILD_PROFILE: 'preview' }));
   assert.equal(resolveConfig({ ...production, EAS_BUILD_PLATFORM: 'ios', GOOGLE_SERVICES_JSON: '/missing-android-file' }), app);
 });
 
@@ -103,8 +105,8 @@ test('known builder metadata rejects license testing in another profile or platf
 test('EAS local resolution accepts the pinned profile env without unavailable builder metadata or secret files', () => {
   const localEnv = androidLocal;
   assert.equal(localEnv.EAS_BUILD_PROFILE, undefined); assert.equal(localEnv.EAS_BUILD_PLATFORM, undefined);
-  assert.equal(resolveConfig(localEnv), app);
-  assert.equal(resolveConfig({ ...localEnv, GOOGLE_SERVICES_JSON: '/eas/unavailable-secret-file.json' }), app);
+  assertOptimizedApp(resolveConfig(localEnv));
+  assertOptimizedApp(resolveConfig({ ...localEnv, GOOGLE_SERVICES_JSON: '/eas/unavailable-secret-file.json' }));
   assert.throws(() => resolveConfig({ ...localEnv, EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING: 'true', EXPO_PUBLIC_API_BASE_URL: 'https://www.baristajobmatch.com/api' }), /pinned isolated/);
   const configured = resolveConfig({ ...localEnv, GOOGLE_SERVICES_JSON: '/local/google-services.json' }, { '/local/google-services.json': JSON.stringify(valid) });
   assert.equal(configured.android.googleServicesFile, '/local/google-services.json');
@@ -126,7 +128,7 @@ test('the Android build cannot reuse the Apple key or silently use a generic key
     assert.throws(() => resolveConfig({ ...androidLocal, [androidKeyName]: key,
       EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: androidPublicKey }), /pinned isolated/);
   }
-  assert.equal(resolveConfig({ ...androidLocal, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'generic-production-public' }), app);
+  assertOptimizedApp(resolveConfig({ ...androidLocal, EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'generic-production-public' }));
   for (const name of ['EXPO_PUBLIC_API_BASE_URL', 'EXPO_PUBLIC_SUPABASE_URL']) {
     assert.throws(() => resolveConfig({ ...androidLocal, [name]: eas.build['payment-review'].env[name] }), /pinned isolated/);
   }

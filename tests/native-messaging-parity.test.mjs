@@ -298,6 +298,7 @@ function pushHarness(options = {}) {
   const module = loadTs('lib/pushNotifications.ts', { 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: { setItem: async (key, value) => stored.set(key, value), getItem: async key => stored.get(key) || null, removeItem: async key => stored.delete(key) } }, 'expo-constants': { default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } } }, 'expo-device': { isDevice: true }, 'expo-notifications': notification, 'expo-router': { router: { push: route => routes.push(route) } }, './supabase': { supabase: client }, './notificationRouting': routing,
     '../features/review-mode/environment': { getAppEnvironment: () => assert.fail('The iOS notification path must not read Android review configuration.') },
     './androidFcmRegistration': loadTs('lib/androidFcmRegistration.ts'),
+    './androidNotificationCleanup': loadTs('lib/androidNotificationCleanup.ts'),
   });
   return { module, calls, routes, listeners, stored, permission, setSession(value) { session = value; } };
 }

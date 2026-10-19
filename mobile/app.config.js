@@ -54,6 +54,10 @@ module.exports = ({ config }) => {
   }
   // Android credentials do not gate an iOS release or local configuration checks.
   if (platform === 'ios') return config;
+  const optimizationPlugin = './plugins/with-android-release-optimization.cjs';
+  if (!(config.plugins || []).some(plugin => (Array.isArray(plugin) ? plugin[0] : plugin) === optimizationPlugin)) {
+    config = { ...config, plugins: [...(config.plugins || []), optimizationPlugin] };
+  }
   const required = (profile === 'production' || androidReview || androidPublic) && platform === 'android';
   const localFile = path.join(__dirname, 'google-services.json');
   const supplied = process.env.GOOGLE_SERVICES_JSON || (fs.existsSync(localFile) ? localFile : '');

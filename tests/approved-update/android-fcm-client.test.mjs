@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { loadTypescript, plain } from './load-typescript.mjs';
 
 const module = loadTypescript('mobile/lib/androidFcmRegistration.ts');
+const cleanup = loadTypescript('mobile/lib/androidNotificationCleanup.ts');
 const key = 'sb_publishable_SYNTHETIC_ANDROID_TEST_ONLY';
 const isolated = { review: true, apiBase: 'https://android-testing.baristajobmatch.com/api',
   supabaseUrl: 'https://ojvjlvojvozvhktbclcg.supabase.co', publishableKey: key };
@@ -24,6 +25,7 @@ function harness(options = {}) {
     async requestPermission() { calls.push('request-permission'); return permission = { granted: options.grant !== false, canAskAgain: true }; },
     async token() { calls.push('native-token'); return options.token ? options.token() : token; },
     async invalidateNativeToken() { calls.push('invalidate'); if (options.invalidate) await options.invalidate(); token = native('synthetic_fcm_after_reset'); },
+    async clearNotifications(id) { calls.push(['clear-notifications', id]); if (options.clear) await options.clear(id); },
     async save(value, id) { calls.push(['save', value, id]); if (options.save) await options.save(value, id); if (rows.has(value) && rows.get(value) !== id) throw new Error('RLS ownership conflict'); rows.set(value, id); },
     async remove(value, id) { calls.push(['remove', value, id]); if (options.remove) await options.remove(value, id); if (rows.get(value) === id) rows.delete(value); },
     tokenListener(callback) { tokenCallback = callback; return () => { removes++; tokenCallback = null; }; },
@@ -245,8 +247,9 @@ test('confirmed deletion waits an issued registration and blocks refresh while r
   fails = false; h.account(null, false); await h.controller.confirmedDeletion('cafe-a'); assert.equal(h.saved(), null); stop();
 });
 
-function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError, initialUser = 'cafe-a', initialResponse = null, responseRead, pushRoute, publicEnv = {} } = {}) {
+function adapter({ platform = 'android', flag = 'true', environment = isolated, device = false, sessionRead, nativeError, invalidateError, expoError, storageError, initialUser = 'cafe-a', initialResponse = null, responseRead, pushRoute, publicEnv = {}, presented = [], scheduled = [], cleanupError } = {}) {
   let user = initialUser, responseCallback, tokenCallback;
+  let tray = [...presented], plans = [...scheduled], lastResponse = initialResponse;
   const calls = [], routes = [], storage = new Map(), authCallbacks = [];
   const notifications = {
     AndroidImportance: { HIGH: 4 }, IosAuthorizationStatus: { PROVISIONAL: 3 },
@@ -257,9 +260,12 @@ function adapter({ platform = 'android', flag = 'true', environment = isolated, 
     async setAutoServerRegistrationEnabledAsync(enabled) { calls.push(['expo-auto', enabled]); },
     async getExpoPushTokenAsync() { calls.push('expo'); if (expoError) throw new Error(expoError); return { data: 'ExponentPushToken[synthetic]' }; },
     addPushTokenListener(callback) { tokenCallback = callback; return { remove() { calls.push('token-stop'); tokenCallback = null; } }; },
-    async getLastNotificationResponseAsync() { return responseRead ? responseRead() : initialResponse; },
+    async getLastNotificationResponseAsync() { return responseRead ? responseRead() : lastResponse; },
     addNotificationResponseReceivedListener(callback) { responseCallback = callback; return { remove() { calls.push('response-stop'); } }; },
-    async clearLastNotificationResponseAsync() { calls.push('clear-response'); },
+    async clearLastNotificationResponseAsync() { calls.push('clear-response'); lastResponse = null; },
+    async getPresentedNotificationsAsync() { return tray; }, async getAllScheduledNotificationsAsync() { return plans; },
+    async dismissNotificationAsync(id) { calls.push(['dismiss', id]); if (cleanupError) throw new Error(cleanupError); tray = tray.filter(item => item.request.identifier !== id); },
+    async cancelScheduledNotificationAsync(id) { calls.push(['cancel-scheduled', id]); if (cleanupError) throw new Error(cleanupError); plans = plans.filter(item => item.identifier !== id); },
   };
   const supabase = {
     auth: { async getSession() { return sessionRead ? sessionRead() : { data: { session: user ? { user: { id: user } } : null } }; },
@@ -275,11 +281,12 @@ function adapter({ platform = 'android', flag = 'true', environment = isolated, 
       async getItem(k) { if (storageError) throw new Error(storageError); return storage.get(k) || null; }, async setItem(k, value) { storage.set(k, value); }, async removeItem(k) { storage.delete(k); },
     } }, 'expo-constants': { default: { easConfig: { projectId: 'synthetic-expo-project' } } },
     'expo-device': { isDevice: device }, 'expo-notifications': notifications, 'expo-router': { router: { push: route => { pushRoute?.(route); routes.push(route); } } },
-    './supabase': { supabase }, './notificationRouting': routing, './androidFcmRegistration': module,
+    './supabase': { supabase }, './notificationRouting': routing, './androidFcmRegistration': module, './androidNotificationCleanup': cleanup,
     '../features/review-mode/environment': { getAppEnvironment: () => environment },
   }, { process: { env: { EXPO_PUBLIC_ANDROID_DIRECT_FCM_ENABLED: flag, EXPO_PUBLIC_ANDROID_TEST_SUPABASE_PUBLISHABLE_KEY: key, ...publicEnv } } });
   return { push, calls, routes, storage, token: token => tokenCallback?.(token), account(id, event = id ? 'SIGNED_IN' : 'SIGNED_OUT') { user = id; authCallbacks.forEach(callback => callback(event, id ? { user: { id } } : null)); },
-    response(data, id = 'notification-one') { responseCallback({ actionIdentifier: 'default', notification: { request: { identifier: id, content: { data } } } }); } };
+    presented: () => tray, scheduled: () => plans,
+    response(data, id = 'notification-one') { lastResponse = { actionIdentifier: 'default', notification: { request: { identifier: id, content: { data } } } }; responseCallback(lastResponse); } };
 }
 
 test('actual isolated Android adapter permits the Play-services emulator, writes only FCM and cleans up owned rows', async () => {
@@ -439,7 +446,7 @@ test('storage read failure invalidates delivery, preserving the existing handle 
   const h = harness({ saved: previous, read: async () => { throw new Error('storage unavailable'); },
     invalidate: async () => { throw new Error('native reset failed'); } });
   await assert.rejects(h.controller.register(), /native reset failed/);
-  assert.deepEqual(h.saved(), previous); assert.deepEqual(h.calls, ['invalidate']); assert.equal(h.rows.size, 0);
+  assert.deepEqual(h.saved(), previous); assert.deepEqual(h.calls, ['invalidate', ['clear-notifications', 'cafe-a']]); assert.equal(h.rows.size, 0);
 });
 
 test('Android review sign-in gives Google testing instructions while Apple wording stays byte-identical', () => {
@@ -591,9 +598,191 @@ test('bad public Android configuration never falls back to legacy Expo registrat
   for (const env of [{ ...publicEnv, EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE: 'false' },
     { ...publicEnv, EXPO_PUBLIC_ANDROID_PUBLIC_SUPABASE_PUBLISHABLE_KEY: key },
     { ...publicEnv, EXPO_PUBLIC_ANDROID_NATIVE_BILLING_API_BASE_URL: isolated.apiBase }]) {
-    const h = adapter({ environment: publicEnvironment, publicEnv: env, device: true });
+    let sessionReads = 0;
+    const h = adapter({ environment: publicEnvironment, publicEnv: env, device: true,
+      sessionRead: async () => { sessionReads++; throw new Error('Session reads are forbidden for invalid config'); } });
     await assert.rejects(h.push.registerForPhoneNotifications(), /Android notifications could not be enabled/);
     assert.throws(() => h.push.listenForPhoneNotifications(), /configured public build/);
-    assert.ok(!h.calls.includes('expo')); assert.ok(!h.calls.includes('native')); assert.equal(h.calls.length, 0);
+    assert.ok(!h.calls.includes('expo')); assert.ok(!h.calls.includes('native')); assert.equal(h.calls.length, 0); assert.equal(sessionReads, 0);
   }
+});
+
+
+// Exit cleanup must use exact recipient ownership, rather than global tray APIs.
+test('Android cleanup removes only departing-recipient delivered, scheduled and last alerts', async () => {
+  const a = tap('cafe-a', 'a').notification.request, b = tap('barista-b', 'b').notification.request;
+  const unknown = { identifier: 'legacy', content: { data: { route: '/messages' } } };
+  const removed = [], retired = [];
+  let scheduled = [a, b, unknown], presented = [a, b, unknown], last = tap('cafe-a', 'last-a');
+  await cleanup.clearAndroidAccountNotifications('cafe-a', {
+    scheduled: async () => scheduled, presented: async () => presented.map(request => ({ request })),
+    cancel: async id => { removed.push(['scheduled', id]); scheduled = scheduled.filter(r => r.identifier !== id); },
+    dismiss: async id => { removed.push(['presented', id]); presented = presented.filter(r => r.identifier !== id); },
+    lastResponse: async () => last, clearLastResponse: async () => { last = null; }, responseVersion: () => 0,
+    retire: id => retired.push(id),
+  });
+  assert.deepEqual(removed, [['scheduled', 'a'], ['presented', 'a']]);
+  assert.deepEqual(scheduled.map(r => r.identifier), ['b', 'legacy']);
+  assert.deepEqual(presented.map(r => r.identifier), ['b', 'legacy']);
+  assert.equal(last, null); assert.deepEqual(retired.sort(), ['a', 'a', 'last-a']);
+});
+
+test('Android cleanup preserves an alert ID reassigned to another recipient during native enumeration', async () => {
+  const a = tap('cafe-a', 'shared').notification.request, b = tap('barista-b', 'shared').notification.request;
+  let reads = 0; const removed = [];
+  await cleanup.clearAndroidAccountNotifications('cafe-a', {
+    scheduled: async () => ++reads === 1 ? [a] : [b], presented: async () => [{ request: b }],
+    cancel: async id => removed.push(id), dismiss: async id => removed.push(id),
+    lastResponse: async () => tap('barista-b', 'b'), clearLastResponse: async () => removed.push('last'),
+    responseVersion: () => 0, retire() {},
+  });
+  assert.deepEqual(removed, []);
+});
+
+test('Android cleanup never clears a newer native response received while old lookup waits', async () => {
+  const gate = deferred(); let version = 0; const calls = [];
+  const work = cleanup.clearAndroidAccountNotifications('cafe-a', {
+    scheduled: async () => [], presented: async () => [], cancel: async () => {}, dismiss: async () => {},
+    lastResponse: () => gate.promise, clearLastResponse: async () => calls.push('clear'),
+    responseVersion: () => version, retire: id => calls.push(id),
+  });
+  await settle(); version++; gate.resolve(tap('cafe-a', 'old-a')); await work;
+  assert.deepEqual(calls, ['old-a']);
+});
+
+test('Android logout clears only its alerts and prevents a pending old tap from reopening after same-account login', async () => {
+  let ready = false;
+  const h = adapter({ initialResponse: tap(), presented: [tap().notification, tap('barista-b', 'b').notification],
+    scheduled: [tap('cafe-a', 'scheduled-a').notification.request, tap('barista-b', 'scheduled-b').notification.request] });
+  const stop = h.push.listenForPhoneNotifications({ isNavigationReady: () => ready });
+  h.account('cafe-a', 'INITIAL_SESSION'); await h.push.registerForPhoneNotifications(); await settle();
+  assert.deepEqual(h.routes, []);
+  await h.push.unregisterThisDeviceNotifications('cafe-a'); h.account(null); await settle();
+  assert.deepEqual(h.presented().map(n => n.request.identifier), ['b']);
+  assert.deepEqual(h.scheduled().map(n => n.identifier), ['scheduled-b']);
+  h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'cold-notification');
+  h.account('cafe-a'); ready = true; stop.retryPending(); await settle();
+  h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'cold-notification'); await settle();
+  assert.deepEqual(h.routes, []);
+  h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'new-a'); await settle();
+  assert.deepEqual(h.routes, ['/messages']); stop();
+});
+
+test('Android signout invalidates an in-flight notification lookup without clearing a new account alert', async () => {
+  const gate = deferred(); let hold = false;
+  const h = adapter({ sessionRead: async () => hold ? gate.promise : { data: { session: { user: { id: 'cafe-a' } } } },
+    presented: [tap('cafe-a', 'old-a').notification, tap('barista-b', 'new-b').notification] });
+  const stop = h.push.listenForPhoneNotifications(); h.account('cafe-a', 'INITIAL_SESSION');
+  hold = true; h.response({ route: '/messages', recipientUserId: 'cafe-a' }, 'old-a');
+  h.account(null); gate.resolve({ data: { session: { user: { id: 'cafe-a' } } } }); await settle();
+  assert.deepEqual(h.routes, []); assert.ok(h.presented().some(n => n.request.identifier === 'new-b')); stop();
+});
+
+test('Android account replacement clears A alerts, preserving B alerts and B refresh after a stale A logout', async () => {
+  const h = adapter({ presented: [tap('cafe-a', 'old-a').notification, tap('barista-b', 'new-b').notification] });
+  const stop = h.push.listenForPhoneNotifications(); h.account('cafe-a', 'INITIAL_SESSION');
+  await h.push.registerForPhoneNotifications(); h.account('barista-b'); await settle();
+  await h.push.registerForPhoneNotifications();
+  await assert.rejects(h.push.unregisterThisDeviceNotifications('cafe-a'), /could not be removed/);
+  h.token(native('new_b_refresh')); await settle();
+  assert.ok(h.calls.some(c => Array.isArray(c) && c[0] === 'upsert' && c[2].fcm_token === 'new_b_refresh' && c[2].user_id === 'barista-b'));
+  assert.deepEqual(h.presented().map(n => n.request.identifier), ['new-b']);
+  h.response({ route: '/messages', recipientUserId: 'barista-b' }, 'new-b'); await settle();
+  assert.deepEqual(h.routes, ['/messages']); stop();
+});
+
+test('confirmed Android deletion clears its alerts despite unreadable cache and always runs original auth cleanup', async () => {
+  const h = adapter({ storageError: 'PRIVATE_CACHE_ERROR', presented: [tap('cafe-a', 'old-a').notification, tap('barista-b', 'b').notification] });
+  assert.equal(await h.push.clearAndroidNotificationsAfterDeletion('cafe-a', async () => { h.calls.push('auth-clear'); return true; }), true);
+  assert.deepEqual(h.presented().map(n => n.request.identifier), ['b']);
+  assert.ok(h.calls.indexOf('native-unregister') < h.calls.indexOf('auth-clear'));
+});
+
+test('Android notification-removal failure preserves retry state without exposing native error details', async () => {
+  let fails = true;
+  const h = harness({ clear: async () => { if (fails) throw new Error('PRIVATE_NOTIFICATION_ERROR'); } });
+  await h.controller.register(); await assert.rejects(h.controller.unregister('cafe-a'), /PRIVATE_NOTIFICATION_ERROR/);
+  assert.equal(h.saved().userId, 'cafe-a'); fails = false; await h.controller.unregister('cafe-a'); assert.equal(h.saved(), null);
+  const adapterFailure = adapter({ cleanupError: 'PRIVATE_NOTIFICATION_ERROR', presented: [tap().notification] });
+  await adapterFailure.push.registerForPhoneNotifications();
+  await assert.rejects(adapterFailure.push.unregisterThisDeviceNotifications('cafe-a'), error => error.message === 'Android notifications could not be removed. Please try again.');
+});
+
+test('signed-out Android startup clears only the cached departing owner and iOS never dismisses account alerts', async () => {
+  const h = adapter({ initialUser: null, presented: [tap().notification, tap('barista-b', 'b').notification] });
+  h.storage.set(module.ANDROID_FCM_TOKEN_KEY, JSON.stringify({ userId: 'cafe-a', token: 'synthetic_old' }));
+  await h.push.registerForPhoneNotifications(); assert.deepEqual(h.presented().map(n => n.request.identifier), ['b']);
+  const ios = adapter({ platform: 'ios', device: true, presented: [tap().notification], scheduled: [tap().notification.request] });
+  const stop = ios.push.listenForPhoneNotifications(); ios.account('cafe-a', 'INITIAL_SESSION');
+  await ios.push.registerForPhoneNotifications(); await ios.push.unregisterThisDeviceNotifications('cafe-a'); ios.account(null); await settle();
+  assert.equal(ios.presented().length, 1); assert.equal(ios.scheduled().length, 1);
+  assert.ok(!ios.calls.some(c => Array.isArray(c) && ['dismiss', 'cancel-scheduled'].includes(c[0]))); stop();
+});
+
+
+test('Android cleanup preserves a newer native last response even without a warm JS callback', async () => {
+  let reads = 0; const cleared = [];
+  await cleanup.clearAndroidAccountNotifications('cafe-a', {
+    scheduled: async () => [], presented: async () => [], cancel: async () => {}, dismiss: async () => {},
+    lastResponse: async () => ++reads === 1 ? tap('cafe-a', 'old-a') : tap('barista-b', 'new-b'),
+    clearLastResponse: async () => cleared.push('clear'), responseVersion: () => 0, retire() {},
+  });
+  assert.deepEqual(cleared, []);
+});
+
+test('Android delivered-alert cleanup still runs when scheduled enumeration fails and retains the retry error', async () => {
+  const cleared = [];
+  await assert.rejects(cleanup.clearAndroidAccountNotifications('cafe-a', {
+    scheduled: async () => { throw new Error('scheduled unavailable'); },
+    presented: async () => [{ request: tap().notification.request }], cancel: async () => {},
+    dismiss: async id => cleared.push(id), lastResponse: async () => null, clearLastResponse: async () => {},
+    responseVersion: () => 0, retire() {},
+  }), /scheduled unavailable/);
+  assert.deepEqual(cleared, ['cold-notification']);
+});
+
+
+const tagOwnerA = 'a0000000-0000-4000-8000-000000000001';
+const tagOwnerB = 'b0000000-0000-4000-8000-000000000002';
+const tagNonce = 'c0000000-0000-4000-8000-000000000003';
+const foreignRequest = (owner, extra = {}) => ({
+  identifier: `expo-notifications://foreign_notifications?tag=${encodeURIComponent(`bjm-v1:${owner}:${tagNonce}`)}&id=0`,
+  content: { data: { 'android.title': 'New message', 'android.text': 'Open BaristaMatch to read it.', ...extra } },
+});
+
+test('Android recipient decoder accepts only its exact native fallback tag and rejects ambiguous ownership', () => {
+  const request = foreignRequest(tagOwnerA);
+  assert.equal(cleanup.androidNotificationRecipient(request), tagOwnerA);
+  assert.equal(cleanup.androidNotificationRecipient({ ...request, content: { data: { recipientUserId: tagOwnerA } } }), tagOwnerA);
+  assert.equal(cleanup.androidNotificationRecipient({ ...request, content: { data: { recipientUserId: tagOwnerB } } }), null);
+  const legacy = 'expo-notifications://foreign_notifications?tag=FCM-Notification%3A34481902&id=0';
+  const wrong = [legacy, request.identifier + '&tag=other', request.identifier + '&extra=1',
+    request.identifier.replace('&id=0', '&id=1'), request.identifier.replace('?tag=', '?id=0&tag=').replace('&id=0', ''),
+    request.identifier.replace('expo-notifications:', 'https:'), request.identifier.replace('foreign_notifications', 'other'),
+    request.identifier.replace('bjm-v1', 'bjm-v2'), request.identifier.replace(tagOwnerA, 'not-a-user'),
+    request.identifier.replace(tagNonce, 'not-a-delivery'), request.identifier.replace('%3A', '%ZZ'),
+    request.identifier.replace('bjm-v1', 'bjm-v1%253A')];
+  for (const identifier of wrong) assert.equal(cleanup.androidNotificationRecipient({ identifier, content: request.content }), null, identifier);
+  assert.equal(cleanup.androidNotificationRecipient(tap('cafe-a').notification.request), 'cafe-a');
+});
+
+test('Android cleanup handles the observed generic native fallback shape only when its new tag proves ownership', async () => {
+  const a = foreignRequest(tagOwnerA), b = foreignRequest(tagOwnerB);
+  const k = { ...a, identifier: 'expo-notifications://foreign_notifications?tag=FCM-Notification%3A34481902&id=0' };
+  let tray = [a, b, k]; const dismissed = [];
+  await cleanup.clearAndroidAccountNotifications(tagOwnerA, {
+    presented: async () => tray.map(request => ({ request })), scheduled: async () => [], cancel: async () => {},
+    dismiss: async id => { dismissed.push(id); tray = tray.filter(request => request.identifier !== id); },
+    lastResponse: async () => null, clearLastResponse: async () => {}, responseVersion: () => 0, retire() {},
+  });
+  assert.deepEqual(dismissed, [a.identifier]); assert.deepEqual(tray.map(request => request.identifier), [b.identifier, k.identifier]);
+});
+
+test('Android adapter logout removes recipient-tagged Firebase-auto alerts while preserving another owner and legacy K', async () => {
+  const a = foreignRequest(tagOwnerA), b = foreignRequest(tagOwnerB);
+  const legacy = { ...a, identifier: 'expo-notifications://foreign_notifications?tag=FCM-Notification%3A34481902&id=0' };
+  const h = adapter({ initialUser: tagOwnerA, presented: [{ request: a }, { request: b }, { request: legacy }] });
+  const stop = h.push.listenForPhoneNotifications(); h.account(tagOwnerA, 'INITIAL_SESSION');
+  await h.push.registerForPhoneNotifications(); await h.push.unregisterThisDeviceNotifications(tagOwnerA);
+  assert.deepEqual(h.presented().map(item => item.request.identifier), [b.identifier, legacy.identifier]); stop();
 });

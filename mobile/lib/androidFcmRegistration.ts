@@ -53,6 +53,7 @@ export function createAndroidFcmRegistration(deps: {
   requestPermission: () => Promise<Permission>;
   token: () => Promise<NativeToken>;
   invalidateNativeToken: () => Promise<void>;
+  clearNotifications: (userId: string) => Promise<void>;
   save: (token: string, userId: string) => Promise<void>;
   remove: (token: string, userId: string) => Promise<void>;
   tokenListener: (callback: (token: NativeToken) => void) => () => void;
@@ -77,16 +78,19 @@ export function createAndroidFcmRegistration(deps: {
       return { userId: value.userId, token: nativeToken({ type: 'android', data: value.token }) };
     } catch { resetRequired = true; return null; }
   };
-  const resetNative = async () => {
+  const resetNative = async (ownerId?: string | null, clearAlerts = true) => {
     resetRequired = true;
+    let owner = ownerId || activeUser;
+    if (!owner) { try { owner = (await saved())?.userId || null; } catch { /* Native invalidation must not depend on readable storage. */ } }
     // Expo's Android implementation calls FirebaseMessaging.deleteToken(). The
     // old server row may outlive this session, but its token must stop delivery.
-    await deps.invalidateNativeToken();
+    const results = await Promise.allSettled([deps.invalidateNativeToken(), clearAlerts && owner ? deps.clearNotifications(owner) : Promise.resolve()]);
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
     await deps.storage.removeItem(ANDROID_FCM_TOKEN_KEY);
     resetRequired = false;
   };
   const lostAccount = async (userId: string): Promise<AndroidFcmOutcome> => {
-    if (resetRequired || await deps.userId() !== userId) await resetNative();
+    if (resetRequired || await deps.userId() !== userId) await resetNative(userId);
     return { status: 'no-session' };
   };
 
@@ -108,11 +112,11 @@ export function createAndroidFcmRegistration(deps: {
       catch (error) {
         // Unreadable storage cannot prove this native token belongs to the
         // signed-in account. Stop delivery rather than leave an old owner live.
-        await resetNative();
+        await resetNative(userId);
         throw error;
       }
       if (resetRequired || (previous && previous.userId !== userId)) {
-        await resetNative(); previous = null; resetForRegistration = true;
+        await resetNative(previous?.userId || userId); previous = null; resetForRegistration = true;
         if (refreshed) return { status: 'no-session' };
       }
       await deps.channel();
@@ -121,7 +125,7 @@ export function createAndroidFcmRegistration(deps: {
         // token. Rotate once before the first public direct registration, so
         // the shared Expo sender cannot also deliver to the same native token.
         if (!await current(userId, stamp)) return { status: 'no-session' };
-        await resetNative();
+        await resetNative(userId, false);
         if (refreshed || !await current(userId, stamp)) return { status: 'no-session' };
       }
       let permission = await deps.permissions();
@@ -140,7 +144,7 @@ export function createAndroidFcmRegistration(deps: {
       catch (error) {
         // Storage loss cannot leave a previous account's native token active.
         // No database write has been issued; resetRequired survives any failure.
-        await resetNative();
+        await resetNative(userId);
         throw error;
       }
       if (!await current(userId, stamp)) return lostAccount(userId);
@@ -149,7 +153,7 @@ export function createAndroidFcmRegistration(deps: {
         // A restored/missing cache can hide a previous owner's server row.
         // Never transfer that row or leave its native token delivering alerts.
         // The saved handle survives if native invalidation itself fails.
-        await resetNative();
+        await resetNative(userId);
         throw error;
       }
       if (!await current(userId, stamp)) return lostAccount(userId);
@@ -159,6 +163,10 @@ export function createAndroidFcmRegistration(deps: {
   }
 
   async function unregister(expectedUserId?: string) {
+    const before = generation, observed = await deps.userId();
+    if (before !== generation || (expectedUserId && observed && observed !== expectedUserId)) {
+      throw new Error('Your account changed. Open settings again before signing out.');
+    }
     // Invalidate unfinished reads and refresh callbacks before waiting for writes.
     generation++; activeUser = null; closing = true;
     try {
@@ -166,13 +174,13 @@ export function createAndroidFcmRegistration(deps: {
         if (!deps.requireEnabled()) throw new Error('Android notifications require the isolated test build.');
         const userId = await deps.userId();
         if (!userId) {
-          if (await deps.userId() === null) await resetNative();
+          if (await deps.userId() === null) await resetNative(expectedUserId);
           return;
         }
         if (expectedUserId && userId !== expectedUserId) throw new Error('Your account changed. Open settings again before signing out.');
         const previous = await saved(), tokens = new Set<string>();
-        if (resetRequired) { await resetNative(); return; }
-        if (previous && previous.userId !== userId) { await resetNative(); return; }
+        if (resetRequired) { await resetNative(previous?.userId || userId); return; }
+        if (previous && previous.userId !== userId) { await resetNative(previous.userId); return; }
         if (previous?.userId === userId) tokens.add(previous.token);
         if ((await deps.permissions()).granted) tokens.add(nativeToken(await deps.token()));
         for (const token of tokens) {
@@ -180,7 +188,7 @@ export function createAndroidFcmRegistration(deps: {
           await deps.remove(token, userId);
         }
         if (await deps.userId() !== userId) throw new Error('Your account changed. Open settings again before signing out.');
-        await resetNative();
+        await resetNative(userId);
       });
     } finally { closing = false; }
   }
@@ -192,14 +200,15 @@ export function createAndroidFcmRegistration(deps: {
       if (!deps.requireEnabled()) throw new Error('Android notifications require the isolated test build.');
       const userId = await deps.userId();
       if (userId && userId !== expectedUserId) return;
-      const previous = await saved();
+      let previous: SavedToken | null = null;
+      try { previous = await saved(); } catch { /* Confirmed deletion still clears this known owner's local alerts. */ }
       if (previous && previous.userId !== expectedUserId) return;
       const latest = await deps.userId();
       if (latest && latest !== expectedUserId) return;
       // A skipped deletion must preserve a newly signed-in user's listener and
       // queued work. Only the confirmed owner's cleanup invalidates callbacks.
       generation++; activeUser = null; closing = true;
-      try { await resetNative(); }
+      try { await resetNative(expectedUserId); }
       finally { closing = false; }
     });
   }
@@ -224,11 +233,12 @@ export function createAndroidFcmRegistration(deps: {
         return;
       }
       if (userId !== knownUser) {
+        const previousUser = knownUser;
         const hadUser = knownUser !== null;
         knownUser = userId; generation++; activeUser = null;
         if (hadUser) {
           resetRequired = true;
-          void enqueue(resetNative).catch(() => {});
+          void enqueue(() => resetNative(previousUser)).catch(() => {});
         }
       }
     });

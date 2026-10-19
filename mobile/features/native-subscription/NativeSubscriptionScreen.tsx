@@ -71,7 +71,7 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     });
   };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dashboardTheme.background }} edges={Platform.OS === 'android' ? [] : ['top', 'right', 'bottom', 'left']}>
-    <SubscriptionPanel role="cafe_owner_manager" {...state} canRestore={hasStore} reviewAccessEnabled={reviewAccessEnabled}
+    <SubscriptionPanel role="cafe_owner_manager" {...state} platform={Platform.OS} canRestore={hasStore} reviewAccessEnabled={reviewAccessEnabled}
       onBack={() => router.canGoBack() ? router.back() : router.replace('/settings')}
       onBuy={() => { void controller.current?.buy(); }} onRestore={() => { void controller.current?.restore(); }}
       onManage={provider => { void controller.current?.manage(provider); }} onRetry={() => { void controller.current?.load(); }}

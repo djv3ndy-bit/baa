@@ -179,3 +179,21 @@ test('unchanged legacy Expo transport remains in production and Apple review eve
     assert.equal((await sendPushToUsers([user],notice)).disabled,true);
   } finally {for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
 });
+
+
+test('isolated Android sender supplies a unique recipient-bound native tag without changing the existing payload',()=>{
+  const payloads=Array.from({length:12},()=>androidFcmMessage(row,notice).message);
+  const tags=payloads.map(message=>message.android.notification.tag);
+  assert.equal(new Set(tags).size,tags.length);
+  const tag=new RegExp(`^bjm-v1:${user}:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`);
+  for(const message of payloads) {
+    assert.match(message.android.notification.tag,tag);
+    assert.deepEqual({...message.android.notification,tag:undefined},{channel_id:'baristamatch-alerts',sound:'default',visibility:'PRIVATE',tag:undefined});
+    assert.deepEqual(JSON.parse(message.data.body),{route:notice.data.route,type:'message',recipientUserId:user});
+    assert.deepEqual(message.notification,{title:'New message',body:'Open BaristaMatch to read it.'});
+    assert.equal(message.android.ttl,'300s'); assert.equal(message.android.restricted_package_name,'com.baristajobmatch.app');
+    assert.ok(!message.android.notification.tag.includes(row.fcm_token));
+  }
+  assert.ok(androidFcmMessage({...row,user_id:user.toUpperCase()},notice).message.android.notification.tag.startsWith(`bjm-v1:${user}:`));
+  assert.ok(androidFcmMessage({...row,user_id:other},notice).message.android.notification.tag.startsWith(`bjm-v1:${other}:`));
+});

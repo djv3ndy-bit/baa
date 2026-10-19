@@ -24,6 +24,17 @@ export function reviewerAccess(subscription: VerifiedSubscription | null, enable
     && grant?.active === true && typeof grant.expiresAt === 'string' && Number.isFinite(Date.parse(grant.expiresAt))
     && Date.parse(grant.expiresAt) > Date.now() ? grant : null;
 }
+/** A cached Google grant must be refreshed at its verified deadline, not treated as a renewal or a Free downgrade. */
+export function androidGoogleAccessDeadline(subscription: VerifiedSubscription | null, platform?: string): string | null {
+  if (platform !== 'android' || subscription?.provider !== 'google' || subscription.access !== 'pro'
+    || subscription.reviewAccess !== undefined || !['active', 'grace'].includes(subscription.status)) return null;
+  const end = subscription.status === 'grace' ? subscription.gracePeriodEnd : subscription.currentPeriodEnd;
+  return typeof end === 'string' && Number.isFinite(Date.parse(end)) ? end : null;
+}
+export function androidGoogleAccessNeedsConfirmation(subscription: VerifiedSubscription | null, platform?: string): boolean {
+  const end = androidGoogleAccessDeadline(subscription, platform);
+  return end !== null && Date.parse(end) <= Date.now();
+}
 /** Recheck display at expiry, including deadlines beyond the native timer limit. */
 export function reviewerExpiryTimer(expiresAt: string, expired: () => void): () => void {
   const end = Date.parse(expiresAt);
