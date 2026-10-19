@@ -33,7 +33,10 @@ export function createReconciler({ repository, providers, environment, maxAttemp
       // to buy again; the next attempt checks the provider's ack status afresh.
       if (status.needsAcknowledgement) {
         check(typeof adapter.acknowledge === 'function', 'ACKNOWLEDGEMENT_UNAVAILABLE');
-        await adapter.acknowledge(proof);
+        // Only the opt-in Google adapter receives its freshly verified context.
+        // No global purchase-token cache and no change to ordinary ACK calls.
+        if (provider === 'google' && status.googleQaPredecessor) await adapter.acknowledge(proof, status);
+        else await adapter.acknowledge(proof);
       }
       return status;
     }

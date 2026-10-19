@@ -30,6 +30,13 @@ export function verifiedAppleStatus(transaction, renewal, providerStatus, expect
 export function verifiedGoogleStatus(subscription, expected, now = Date.now()) {
   requireValue(subscription?.kind === 'androidpublisher#subscriptionPurchaseV2', 'INVALID_RESPONSE');
   requireValue(subscription.externalAccountIdentifiers?.obfuscatedExternalAccountId === expected.binding && typeof expected.binding === 'string' && expected.binding.length > 0, 'ACCOUNT_MISMATCH');
+  return { ...verifiedGooglePurchaseDetails(subscription, expected, now), binding: expected.binding };
+}
+
+/** Server-only purchase validation WITHOUT ownership. Only the strict binding
+ * verifier or the separately verified QA predecessor resolver may add binding. */
+export function verifiedGooglePurchaseDetails(subscription, expected, now = Date.now()) {
+  requireValue(subscription?.kind === 'androidpublisher#subscriptionPurchaseV2', 'INVALID_RESPONSE');
   requireValue(Boolean(subscription.testPurchase) === (expected.environment === 'Sandbox'), 'ENVIRONMENT_MISMATCH');
   requireValue(Array.isArray(subscription.lineItems) && subscription.lineItems.length === 1, 'UNSUPPORTED_PURCHASE');
   const line = subscription.lineItems[0];
@@ -41,7 +48,7 @@ export function verifiedGoogleStatus(subscription, expected, now = Date.now()) {
   const access = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', 'SUBSCRIPTION_STATE_CANCELED'].includes(state) && end > now ? 'pro' : 'free';
   const status = pending ? 'pending' : access === 'pro' ? (state === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD' ? 'grace' : 'active') : ['SUBSCRIPTION_STATE_PAUSED', 'SUBSCRIPTION_STATE_ON_HOLD'].includes(state) ? 'payment_required' : 'expired';
   return { provider: 'google', providerSubscriptionId: expected.purchaseToken, transactionId: line.latestSuccessfulOrderId || subscription.latestOrderId || expected.purchaseToken,
-    binding: expected.binding, productId: line.productId, basePlanId: expected.basePlanId, environment: expected.environment, access, status,
+    productId: line.productId, basePlanId: expected.basePlanId, environment: expected.environment, access, status,
     currentPeriodEnd: iso(end), gracePeriodEnd: state === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD' ? iso(end) : null,
     autoRenews: line.autoRenewingPlan?.autoRenewEnabled === true,
     canManage: ['active', 'grace', 'payment_required'].includes(status),

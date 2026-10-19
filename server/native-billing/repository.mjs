@@ -55,7 +55,30 @@ export function nativeBillingRepository(adminRows) {
       if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid billing revision');
       return { userId: row.user_id, revision };
     },
+    async googleQaPredecessor(subscriptionId) {
+      // Existing service-only RPC; never return its private row to the client.
+      const row = await rpc('native_billing_read', { p_provider: 'google', p_environment: 'Sandbox', p_subscription_id: subscriptionId });
+      if (row === null) return null;
+      if (!row || row.provider !== 'google' || row.environment !== 'Sandbox' || row.provider_subscription_id !== subscriptionId) {
+        throw new Error('Invalid Google predecessor lookup');
+      }
+      return Object.freeze({ userId: row.user_id, revision: Number(row.revision), productId: row.product_id,
+        status: row.status, periodEnd: row.current_period_end, verifiedAt: row.verified_at, supersededBy: row.superseded_by });
+    },
     apply(status) {
+      if (status.googleQaPredecessor) {
+        const old = status.googleQaPredecessor;
+        if (status.provider !== 'google' || status.environment !== 'Sandbox') throw new Error('Invalid Google predecessor scope');
+        return rpc('native_billing_apply_google_qa_resubscribe', {
+          p_user_id: status.userId, p_binding: status.binding, p_subscription_id: status.providerSubscriptionId,
+          p_product_id: status.productId, p_base_plan_id: status.basePlanId, p_transaction_id: status.transactionId,
+          p_status: status.status, p_period_end: status.currentPeriodEnd, p_grace_end: status.gracePeriodEnd,
+          p_auto_renews: status.autoRenews, p_expected_revision: status.expectedRevision,
+          p_predecessor_id: old.id, p_predecessor_revision: old.revision, p_predecessor_period_end: old.periodEnd,
+          p_predecessor_provider_expiry: old.providerExpiry,
+          p_predecessor_provider_state: old.providerState,
+        });
+      }
       return rpc('native_billing_apply', {
         p_user_id: status.userId, p_binding: status.binding, p_provider: status.provider, p_environment: status.environment,
         p_subscription_id: status.providerSubscriptionId, p_product_id: status.productId, p_transaction_id: status.transactionId,

@@ -3,6 +3,7 @@ import { createProviderRuntime, readProviderConfiguration } from '../server/nati
 import { nativeBillingRepository } from '../server/native-billing/repository.mjs';
 import { createReconciler } from '../server/native-billing/reconcile.mjs';
 import { verificationHandler } from '../server/native-billing/verificationHandler.mjs';
+import { readQaGoogleResubscribeConfiguration } from '../server/native-billing/googleQaResubscribe.mjs';
 
 const repository = nativeBillingRepository(adminRows);
 const runtimes = new Map();
@@ -11,7 +12,8 @@ export default verificationHandler({
   runtimeFor(provider) {
     if (!runtimes.has(provider)) {
       const config = readProviderConfiguration(provider);
-      runtimes.set(provider, createProviderRuntime(config).catch(error => { runtimes.delete(provider); throw error; }));
+      const qaResubscribeConfiguration=provider==='google'?readQaGoogleResubscribeConfiguration(process.env):null;
+      runtimes.set(provider, createProviderRuntime(config,{repository,qaResubscribeConfiguration}).catch(error => { runtimes.delete(provider); throw error; }));
     }
     return runtimes.get(provider);
   },

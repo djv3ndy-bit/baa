@@ -3,6 +3,7 @@ import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { appleProvider, googleProvider, verifiedGoogleNotification } from './providers.mjs';
 import { PurchaseVerificationError } from './verifiedStatus.mjs';
 import {createGoogleAuthClient,readGoogleWifConfiguration} from './googleAuth.mjs';
+import {qaGoogleResubscribeProvider} from './googleQaResubscribe.mjs';
 
 // These identities are the existing app.json bundle/package and eas.json app.
 const bundleId = 'com.baristajobmatch.app';
@@ -68,6 +69,9 @@ export async function createProviderRuntime(config, {
   loadApple = () => import('@apple/app-store-server-library'),
   loadGoogle = () => import('google-auth-library'),
   loadOidc = () => import('@vercel/oidc'),
+  repository,
+  logQaDiagnostic,
+  qaResubscribeConfiguration,
 } = {}) {
   if (config.provider === 'apple') {
     const { AppStoreServerAPIClient, SignedDataVerifier, Environment } = await loadApple();
@@ -77,11 +81,18 @@ export async function createProviderRuntime(config, {
     return { environment: config.environment, provider: appleProvider({ ...config, client, verifier }) };
   }
   check(config.provider === 'google');
+  if(qaResubscribeConfiguration) check(config.environment==='Sandbox' && config.authMode==='vercel_oidc'
+    && config.packageName===qaResubscribeConfiguration.packageName && config.productId===qaResubscribeConfiguration.productId
+    && config.basePlanId===qaResubscribeConfiguration.basePlanId
+    && config.wif?.customEnvironmentId==='env_E4F5E2NjsH4RaKOs0Jxp4Zo3AxDQ');
   const google = await loadGoogle();
   const { OAuth2Client } = google;
   const authClient = await createGoogleAuthClient(config,{loadGoogle:async()=>google,loadOidc});
   const oauthClient = new OAuth2Client();
-  return { environment: config.environment, provider: googleProvider({ ...config, authClient }),
+  const provider=qaResubscribeConfiguration
+    ? qaGoogleResubscribeProvider({configuration:qaResubscribeConfiguration,authClient,repository,loadOidc,
+      ...(logQaDiagnostic?{logDiagnostic:logQaDiagnostic}:{})}) : googleProvider({ ...config, authClient });
+  return { environment: config.environment, provider,
     notification: (authorization, body) => verifiedGoogleNotification({ authorization, body, oauthClient,
       audience: config.audience, serviceAccountEmail: config.serviceAccountEmail, packageName: config.packageName }) };
 }
