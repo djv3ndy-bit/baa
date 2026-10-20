@@ -62,7 +62,7 @@ export default function ReviewLogin() {
       <Text style={styles.label}>Test-account password</Text>
       <ConversationTextInput onFocus={() => focus('password')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('password', event.nativeEvent.layout.y)} testID="review-password-input" accessibilityLabel="Test-account password" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry textContentType="password" returnKeyType="done" onSubmitEditing={signIn} style={styles.input} />
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
+      <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'android' ? 'Sign in to test account' : undefined} accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in to test account</Text>}
       </Pressable>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>

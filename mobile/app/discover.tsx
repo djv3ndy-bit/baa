@@ -1,7 +1,7 @@
 import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { AppBottomNav } from '@/components/AppBottomNav';
 import { getCurrentContext, AppRole } from '@/lib/session';
@@ -103,7 +103,7 @@ function DiscoverScreen() {
         {params.jobId && role === 'barista' ? <View><Text style={s.sectionTitle}>Requested job</Text>{data.requestedJob ? jobCard(data.requestedJob) : <Text style={s.copy}>This job is no longer available. It may have been paused or removed.</Text>}</View> : null}
         <Text style={s.copy}>Matches use the exact saved city or ZIP. Update your profile to change your search area.</Text><Pressable onPress={() => router.push('/profile')} style={s.secondary}><Text style={s.secondaryText}>Update search area</Text></Pressable>
         <TextInput accessibilityLabel={role === 'barista' ? 'Search jobs' : 'Search baristas'} placeholder={role === 'barista' ? 'Search title, café, skill…' : 'Search name, skill…'} value={search} onChangeText={setSearch} style={s.search} />
-        <Text accessibilityLiveRegion="polite" style={s.sectionTitle}>{role === 'barista' ? visibleJobs.length : visibleCandidates.length} {role === 'barista' ? 'jobs' : 'baristas'}</Text>
+        <Text accessibilityLiveRegion="polite" style={s.sectionTitle}>{role === 'barista' ? visibleJobs.length : visibleCandidates.length} {role === 'barista' ? (Platform.OS === 'android' && visibleJobs.length === 1 ? 'job' : 'jobs') : 'baristas'}</Text>
         {role === 'barista' ? visibleJobs.map(jobCard) : visibleCandidates.map(person => profileCard(person, person.id))}
         {!(role === 'barista' ? visibleJobs.length : visibleCandidates.length) ? <View style={s.empty}><Text style={s.name}>{query ? 'No matching results' : 'No results in your saved area yet'}</Text><Text style={s.copy}>{query ? 'Try another name, title or skill.' : 'New profiles and opportunities will appear here as they become available.'}</Text>{query ? <Pressable style={s.secondary} onPress={() => setSearch('')}><Text style={s.secondaryText}>Clear search</Text></Pressable> : null}</View> : null}
       </> : tab === 'received' ? <><Text style={s.sectionTitle}>Interested in you</Text><Text style={s.copy}>Review these profiles even if they are outside your saved search area or have no current job listing.</Text>{received.map(row => profileCard(data.profiles[row.sender_id], row.sender_id))}{!received.length ? <Text style={s.copy}>No new profile interests yet. Mutual connections are in Matches.</Text> : null}</> : <>

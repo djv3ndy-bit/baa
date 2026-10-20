@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 
-import { mobileCallbackUrlFromParams } from '@/lib/authCallback';
+import { MOBILE_AUTH_CALLBACK_PREFIX } from '@/lib/authCallback';
+import { ANDROID_AUTH_HANDOFF_PARAM, androidAuthCallbackHandoff } from '@/lib/androidAuthCallbackHandoff';
 import { androidAuthCallbackMessage, androidAuthCallbackReference, createAndroidAuthCallback, type AndroidAuthCallbackState } from '@/lib/androidAuthCallback';
 import { completeMobileAuth, getCurrentContext, requireCurrentUser } from '@/lib/session';
 
 export default function AndroidAuthCallbackScreen() {
   const [state, setState] = useState<AndroidAuthCallbackState>({ phase: 'working' });
-  const routeUrl = mobileCallbackUrlFromParams(useLocalSearchParams());
+  const params = useLocalSearchParams();
+  const handoff = typeof params[ANDROID_AUTH_HANDOFF_PARAM] === 'string' ? params[ANDROID_AUTH_HANDOFF_PARAM] as string : null;
   const navigationReady = !!useRootNavigationState()?.key;
-  const routeUrlRef = useRef(routeUrl);
+  const routeUrlRef = useRef(handoff);
+  const deliveryRef = useRef<{ ref: string; delivery: { url: string; source: 'initial' | 'current' } } | null>(null);
   const navigationReadyRef = useRef(navigationReady);
-  routeUrlRef.current = routeUrl;
+  routeUrlRef.current = handoff;
   navigationReadyRef.current = navigationReady;
   const callbackRef = useRef<ReturnType<typeof createAndroidAuthCallback> | null>(null);
   if (!callbackRef.current) callbackRef.current = createAndroidAuthCallback({
@@ -24,18 +27,29 @@ export default function AndroidAuthCallbackScreen() {
     delay: (callback, milliseconds) => { const timer = setTimeout(callback, milliseconds); return () => clearTimeout(timer); },
   });
   const callback = callbackRef.current;
+  const receiveRoute = useCallback(() => {
+    const input = routeUrlRef.current;
+    if (input === null) { callback.receive(null); return; }
+    if (deliveryRef.current?.ref !== input) {
+      deliveryRef.current = { ref: input, delivery: androidAuthCallbackHandoff.take(input) ?? { url: MOBILE_AUTH_CALLBACK_PREFIX, source: 'current' } };
+    }
+    const delivery = deliveryRef.current.delivery;
+    callback.receive(delivery.url, delivery.source);
+  }, [callback]);
 
   useFocusEffect(useCallback(() => {
-    let active = true;
     callback.activate();
     callback.setNavigationReady(navigationReadyRef.current);
-    // Prefer the current warm route over Android's possibly stale initial URL.
-    callback.receive(routeUrlRef.current);
-    const subscription = Linking.addEventListener('url', event => callback.receive(event.url));
-    void Linking.getInitialURL().then(url => { if (active) callback.receive(url, 'initial'); }).catch(() => {});
-    return () => { active = false; subscription.remove(); callback.deactivate(); };
-  }, [callback]));
-  useEffect(() => { callback.receive(routeUrl); }, [callback, routeUrl]);
+    // The official native-intent hook captured the raw URL before Router
+    // discarded its fragment. Consume only this route's one-time reference.
+    receiveRoute();
+    return () => {
+      callback.deactivate();
+      if (deliveryRef.current) androidAuthCallbackHandoff.clear(deliveryRef.current.ref);
+      deliveryRef.current = null;
+    };
+  }, [callback, receiveRoute]));
+  useEffect(receiveRoute, [receiveRoute, handoff]);
   useEffect(() => { callback.setNavigationReady(navigationReady); }, [callback, navigationReady]);
 
   const failed = state.phase === 'failed';
@@ -45,7 +59,12 @@ export default function AndroidAuthCallbackScreen() {
       <Text style={styles.copy}>{androidAuthCallbackMessage(state)}</Text>
       <Text style={styles.reference}>Support reference: {androidAuthCallbackReference(state)}</Text>
       {state.reason !== 'callback_changed' && <Pressable accessibilityRole="button" onPress={callback.retry} style={styles.primary}><Text style={styles.primaryText}>Try again</Text></Pressable>}
-      <Pressable accessibilityRole="button" onPress={() => { callback.deactivate(); router.replace('/login'); }} style={styles.linkButton}><Text style={styles.linkText}>Return to login</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => {
+        callback.deactivate();
+        if (deliveryRef.current) androidAuthCallbackHandoff.clear(deliveryRef.current.ref);
+        deliveryRef.current = null;
+        router.replace('/login');
+      }} style={styles.linkButton}><Text style={styles.linkText}>Return to login</Text></Pressable>
     </> : <>
       <ActivityIndicator color="#a95820" size="large" />
       <Text style={styles.title}>Finishing your sign-in…</Text>

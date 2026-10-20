@@ -92,11 +92,23 @@ export class PurchaseCoordinator {
     return account?.id === id && account.role === 'cafe_owner_manager';
   }
 
-  private async reconcile(accountId: string, purchase: StorePurchase, attemptId?: string): Promise<PurchaseOutcome> {
+  private async reconcile(accountId: string, purchase: StorePurchase, attemptId?: string, refreshCompletedGoogle = false): Promise<PurchaseOutcome> {
     // A newer signed proof for the same transaction may report revocation.
     // Suppress identical event delivery, never a changed provider confirmation.
     const key = `${accountId}:${purchase.provider}:${purchase.id}:${purchase.proof}`;
     if (this.completed.has(key)) {
+      if (refreshCompletedGoogle && purchase.provider === 'google') {
+        // An explicit Restore must check the provider again even when the same
+        // token was finished on this screen. Callback deduplication must not
+        // hide a renewal or revocation while RTDN is delayed. This purchase was
+        // already finished successfully; do not finish it a second time.
+        try {
+          const subscription = checkedStatus(await this.deps.verify(accountId, purchase, attemptId), accountId);
+          if (!await this.sameCafe(accountId)) return { kind: 'account_changed' };
+          if (['pending', 'payment_required'].includes(subscription.status)) return { kind: 'verification_pending' };
+          return { kind: 'verified', subscription };
+        } catch { return { kind: 'verification_pending' }; }
+      }
       const subscription = checkedStatus(await this.deps.status(accountId), accountId);
       return await this.sameCafe(accountId) ? { kind: 'verified', subscription } : { kind: 'account_changed' };
     }
@@ -195,7 +207,7 @@ export class PurchaseCoordinator {
         if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
         // Backend must reject a receipt belonging to a different BaristaMatch
         // account; restoration is never permission to transfer ownership.
-        const result = await this.reconcile(account.id, purchase);
+        const result = await this.reconcile(account.id, purchase, undefined, true);
         if (result.kind !== 'verified') return result;
       }
       const subscription = checkedStatus(await this.deps.status(account.id), account.id);

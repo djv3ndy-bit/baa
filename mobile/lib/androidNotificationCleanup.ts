@@ -1,5 +1,18 @@
 type Request = { identifier: string; content: { data?: unknown } };
-type Response = { notification: { request: Request } };
+const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+function notificationRequest(value: unknown): Request | null {
+  try {
+    if (!record(value) || typeof value.identifier !== 'string' || !value.identifier || !record(value.content)) return null;
+    return value as Request;
+  } catch { return null; }
+}
+
+/** A partial native history record cannot establish Android notification ownership. */
+export function androidNotificationRequestFromResponse(value: unknown): Request | null {
+  try { return record(value) && record(value.notification) ? notificationRequest(value.notification.request) : null; }
+  catch { return null; }
+}
 
 function taggedRecipient(identifier: string): string | null {
   // Expo SDK54 preserves the native tag/id as this exact foreign-notification
@@ -14,54 +27,57 @@ function taggedRecipient(identifier: string): string | null {
   return new RegExp(`^bjm-v1:(${uuid}):${uuid}$`).exec(tag)?.[1] || null;
 }
 
-export function androidNotificationRecipient(request: Request): string | null {
-  const data = request.content.data;
-  const fromData = data && typeof data === 'object' && 'recipientUserId' in data
-    && typeof data.recipientUserId === 'string' ? data.recipientUserId : null;
-  const fromTag = taggedRecipient(request.identifier);
-  if (fromData && fromTag && fromData !== fromTag) return null;
-  return fromData || fromTag;
+export function androidNotificationRecipient(value: unknown): string | null {
+  const request = notificationRequest(value);
+  if (!request) return null;
+  try {
+    const data = request.content.data;
+    const fromData = record(data) && typeof data.recipientUserId === 'string' ? data.recipientUserId : null;
+    const fromTag = taggedRecipient(request.identifier);
+    if (fromData && fromTag && fromData !== fromTag) return null;
+    return fromData || fromTag;
+  } catch { return null; }
 }
 
 /** Remove only alerts tagged to the departing Android account, never all alerts. */
 export async function clearAndroidAccountNotifications(owner: string, deps: {
-  scheduled: () => Promise<Request[]>;
-  presented: () => Promise<{ request: Request }[]>;
+  scheduled: () => Promise<unknown[]>;
+  presented: () => Promise<unknown[]>;
   cancel: (identifier: string) => Promise<void>;
   dismiss: (identifier: string) => Promise<void>;
-  lastResponse: () => Promise<Response | null>;
+  lastResponse: () => Promise<unknown>;
   clearLastResponse: () => Promise<void>;
   responseVersion: () => number;
   retire: (identifier: string) => void;
 }) {
-  const owned = (request: Request) => androidNotificationRecipient(request) === owner;
-  async function removeOwned(list: () => Promise<Request[]>, remove: (identifier: string) => Promise<void>) {
+  const owned = (request: unknown): request is Request => androidNotificationRecipient(request) === owner;
+  async function removeOwned(list: () => Promise<unknown[]>, remove: (identifier: string) => Promise<void>) {
     for (const request of await list()) {
       if (!owned(request)) continue;
       // A scheduled ID can be reused, or a tray item replaced, while native
       // enumeration is pending. Preserve an ID now belonging to another user.
-      if (!(await list()).some(current => current.identifier === request.identifier && owned(current))) continue;
+      if (!(await list()).some(current => owned(current) && current.identifier === request.identifier)) continue;
       deps.retire(request.identifier);
       await remove(request.identifier);
     }
   }
   async function clearResponse() {
     const version = deps.responseVersion();
-    const response = await deps.lastResponse();
-    if (response && owned(response.notification.request)) {
-      deps.retire(response.notification.request.identifier);
+    const request = androidNotificationRequestFromResponse(await deps.lastResponse());
+    if (request && owned(request)) {
+      deps.retire(request.identifier);
       // Do not clear a newer response received while the native lookup waited.
       if (version !== deps.responseVersion()) return;
-      const latest = await deps.lastResponse();
-      if (version === deps.responseVersion() && latest && owned(latest.notification.request)
-        && latest.notification.request.identifier === response.notification.request.identifier) await deps.clearLastResponse();
+      const latest = androidNotificationRequestFromResponse(await deps.lastResponse());
+      if (version === deps.responseVersion() && latest && owned(latest)
+        && latest.identifier === request.identifier) await deps.clearLastResponse();
     }
   }
   // One unavailable native list must not prevent the other best-effort cleanup.
   // Surface failure afterward, so the controller retains its retry handle.
   const results = await Promise.allSettled([
     removeOwned(deps.scheduled, deps.cancel),
-    removeOwned(async () => (await deps.presented()).map(item => item.request), deps.dismiss),
+    removeOwned(async () => (await deps.presented()).map(item => record(item) ? item.request : null), deps.dismiss),
     clearResponse(),
   ]);
   for (const result of results) if (result.status === 'rejected') throw result.reason;

@@ -8,7 +8,7 @@ import { supabase } from './supabase';
 import { notificationDestination } from './notificationRouting';
 import { getAppEnvironment } from '../features/review-mode/environment';
 import { createAndroidFcmRegistration, isolatedAndroidFcmEnabled, publicAndroidFcmEnabled, PUBLIC_ANDROID_FCM_SCOPE } from './androidFcmRegistration';
-import { androidNotificationRecipient, clearAndroidAccountNotifications } from './androidNotificationCleanup';
+import { androidNotificationRecipient, androidNotificationRequestFromResponse, clearAndroidAccountNotifications } from './androidNotificationCleanup';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
@@ -168,21 +168,26 @@ export function listenForPhoneNotifications(options: { isNavigationReady?: () =>
   let live = true, received = false, pending: Notifications.NotificationResponse | null = null;
   let observedUser: string | null | undefined;
   const retirePending = (owner: string) => {
-    if (pending && androidNotificationRecipient(pending.notification.request) === owner) {
-      retireAndroidNotification(pending.notification.request.identifier); pending = null;
+    const request = androidNotificationRequestFromResponse(pending);
+    if (request && androidNotificationRecipient(request) === owner) {
+      retireAndroidNotification(request.identifier); pending = null;
     }
   };
   if (direct) androidExitListeners.add(retirePending);
   async function open(response: Notifications.NotificationResponse | null) {
     if (!live || !response) return;
-    const destination = notificationDestination(response.notification.request.content.data);
+    const androidRequest = direct ? androidNotificationRequestFromResponse(response) : null;
+    if (direct && (!androidRequest || !androidNotificationRecipient(androidRequest))) return;
+    const request = androidRequest || response.notification.request;
+    const notificationData = request.content.data as Record<string, unknown> | undefined;
+    const destination = notificationDestination(notificationData);
     if (!destination) return;
-    const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
-    const owner = androidNotificationRecipient(response.notification.request);
+    const key = `${request.identifier}:${response.actionIdentifier}`;
+    const owner = androidNotificationRecipient(request);
     const exitVersion = owner ? androidOwnerExitVersions.get(owner) : undefined;
-    const retired = () => direct && (retiredAndroidNotifications.has(response.notification.request.identifier)
+    const retired = () => direct && (retiredAndroidNotifications.has(request.identifier)
       || !!owner && (exitingAndroidOwners.has(owner) || androidOwnerExitVersions.get(owner) !== exitVersion));
-    if (retired()) { retireAndroidNotification(response.notification.request.identifier); return; }
+    if (retired()) { retireAndroidNotification(request.identifier); return; }
     if (handled.has(key)) return;
     pending = response;
     // A restored Android session can resolve before the startup screen's home
@@ -193,8 +198,9 @@ export function listenForPhoneNotifications(options: { isNavigationReady?: () =>
     if (direct) {
       const latest = await supabase.auth.getSession();
       if (!live || pending !== response || handled.has(key) || retired()) return;
-      if (latest.error || latest.data.session?.user.id !== data.session.user.id
-        || response.notification.request.content.data.recipientUserId !== latest.data.session.user.id) { pending = null; return; }
+      if (latest.error || latest.data.session?.user.id !== data.session.user.id || owner !== latest.data.session.user.id
+        || androidNotificationRecipient(request) !== latest.data.session.user.id
+        || (request.content.data as Record<string, unknown> | undefined)?.recipientUserId !== latest.data.session.user.id) { pending = null; return; }
       if (options.isNavigationReady?.() === false) return;
       // A failed navigation must not consume the only cold-start response.
       try { router.push(destination as never); } catch { return; }
@@ -206,7 +212,7 @@ export function listenForPhoneNotifications(options: { isNavigationReady?: () =>
   }
   const initialExitVersion = androidExitVersion;
   void Notifications.getLastNotificationResponseAsync().then(response => {
-    const owner = response && androidNotificationRecipient(response.notification.request);
+    const owner = response && androidNotificationRecipient(direct ? androidNotificationRequestFromResponse(response) : response.notification.request);
     if (!received && !(direct && owner && (androidOwnerExitVersions.get(owner) || 0) > initialExitVersion)) return open(response);
   }).catch(() => {});
   const listener = Notifications.addNotificationResponseReceivedListener(response => { if (direct) androidResponseVersion++; received = true; void open(response).catch(() => {}); });
