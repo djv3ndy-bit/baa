@@ -83,18 +83,24 @@ export function selectMonthlyProduct(value: unknown, plan: ApprovedStorePlan): S
     if (!plan.basePlanId || !Array.isArray(row.subscriptionOffers)) throw new Error('Subscription plan unavailable');
     const eligible = row.subscriptionOffers.filter((offer: any) => {
       const phases = offer.pricingPhasesAndroid?.pricingPhaseList;
-      return offer.basePlanIdAndroid === plan.basePlanId && !offer.installmentPlanDetailsAndroid && Array.isArray(phases) && phases.length === 1 && phases[0].billingPeriod === 'P1M' && phases[0].recurrenceMode === 1;
+      // Expo-IAP normalizes a regular base plan to id=basePlanId and type
+      // 'introductory'; a discounted offer has its own id/type='promotional'.
+      // Keep both checks because an offer may reuse the base plan's ID.
+      return offer.basePlanIdAndroid === plan.basePlanId && offer.id === plan.basePlanId && offer.type === 'introductory'
+        && !offer.installmentPlanDetailsAndroid && Array.isArray(phases) && phases.length === 1
+        && phases[0].billingPeriod === 'P1M' && phases[0].recurrenceMode === 1;
     });
     if (eligible.length !== 1) throw new StoreProductReviewError('Subscription terms need review');
     const offer = eligible[0], phase = offer.pricingPhasesAndroid.pricingPhaseList[0];
     if (!/^\d+$/.test(phase.priceAmountMicros)) throw new Error('Store price unavailable');
     price = Number(phase.priceAmountMicros) / 1_000_000;
     currency = phase.priceCurrencyCode; displayPrice = phase.formattedPrice; offerToken = offer.offerTokenAndroid;
-    if (!offerToken) throw new Error('Subscription offer unavailable');
+    if (typeof offerToken !== 'string' || !offerToken.trim()) throw new Error('Subscription offer unavailable');
   }
   if (!Number.isFinite(price) || price <= 0 || !/^[A-Z]{3}$/.test(currency) || typeof displayPrice !== 'string' || !displayPrice.trim()) throw new Error('Store price unavailable');
   if (plan.prices[currency] !== price) throw new StoreProductReviewError('Store price needs review');
-  return { product: { id: plan.id, provider: plan.provider, displayPrice, currency, period: 'month' }, offerToken };
+  return { product: { id: plan.id, provider: plan.provider, displayPrice, currency, period: 'month',
+    ...(plan.provider === 'google' ? { basePlanId: plan.basePlanId } : {}) }, offerToken };
 }
 
 // Retain the lock across screen recreation until the actual SDK call settles.
@@ -199,7 +205,8 @@ export class ExpoStoreGateway<P extends NativePurchase> {
     await this.checkStorefront();
     if (this.disposed) throw new Error('Store connection closed');
     if (activeStoreRequests.has(`${this.plan.provider}:${this.plan.id}`) || this.waiter || this.interrupted || this.restoring) return { kind: 'pending' };
-    if (!this.selected || product.id !== this.selected.product.id || product.provider !== this.plan.provider || product.displayPrice !== this.selected.product.displayPrice) throw new Error('Review the current store price');
+    if (!this.selected || product.id !== this.selected.product.id || product.provider !== this.plan.provider
+      || product.basePlanId !== this.selected.product.basePlanId || product.displayPrice !== this.selected.product.displayPrice) throw new Error('Review the current store price');
     if (this.plan.provider === 'apple' ? !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(accountBinding) : !/^[A-Za-z0-9_-]{1,64}$/.test(accountBinding)) throw new Error('Purchase account unavailable');
     return new Promise<PurchaseResult>((resolve, reject) => {
       this.waiter = { productId: product.id, binding: accountBinding, settle: resolve, reject: () => reject(new Error('Store unavailable')) };

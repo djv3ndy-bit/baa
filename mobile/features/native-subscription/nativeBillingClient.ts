@@ -14,7 +14,13 @@ const record = (value: unknown): Record<string, any> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Subscription confirmation is unavailable.');
   return value as Record<string, any>;
 };
-export function checkedSubscription(value: unknown, accountId: string): VerifiedSubscription {
+export function androidReviewerAccessEnabled(platform: string, environment: { review: boolean; apiBase: string; supabaseUrl: string; publishableKey: string }): boolean {
+  return platform === 'android' && environment.review === true
+    && environment.apiBase === 'https://android-testing.baristajobmatch.com/api'
+    && environment.supabaseUrl === 'https://ojvjlvojvozvhktbclcg.supabase.co'
+    && /^sb_publishable_[A-Za-z0-9_-]+$/.test(environment.publishableKey);
+}
+export function checkedSubscription(value: unknown, accountId: string, reviewAccessEnabled = false): VerifiedSubscription {
   const row = record(value);
   if (row.accountId !== accountId || row.verified !== true || !['free', 'pro'].includes(row.access)
     || ![null, 'apple', 'google', 'stripe'].includes(row.provider) || !statuses.includes(row.status)
@@ -29,13 +35,19 @@ export function checkedSubscription(value: unknown, accountId: string): Verified
     throw new Error('Subscription confirmation is unavailable.');
   }
   if (row.canResumeAppleCheckout !== undefined && typeof row.canResumeAppleCheckout !== 'boolean') throw new Error('Subscription confirmation is unavailable.');
+  if (row.reviewAccess !== undefined && (!reviewAccessEnabled || !row.reviewAccess || typeof row.reviewAccess !== 'object'
+    || Array.isArray(row.reviewAccess) || row.reviewAccess.active !== true || typeof row.reviewAccess.expiresAt !== 'string'
+    || !Number.isFinite(Date.parse(row.reviewAccess.expiresAt)) || Date.parse(row.reviewAccess.expiresAt) <= Date.now()
+    || row.access !== 'pro' || row.canPurchase !== false)) {
+    throw new Error('Subscription confirmation is unavailable.');
+  }
   return row as VerifiedSubscription;
 }
 
 /** The caller supplies the existing authenticatedApi transport. Its expected
  * account check stays in force on every request, including verification. */
-export function nativePurchaseDependencies({ account, call, store }: { account: AccountReader; call: BillingTransport; store: PurchaseStore }): PurchaseDependencies {
-  let prepared: { accountId: string; attemptId: string; binding: string; productId: string; recovery?: boolean } | null = null;
+export function nativePurchaseDependencies({ account, call, store, reviewAccessEnabled = false }: { account: AccountReader; call: BillingTransport; store: PurchaseStore; reviewAccessEnabled?: boolean }): PurchaseDependencies {
+  let prepared: { accountId: string; attemptId: string; binding: string; productId: string; provider: StoreProduct['provider']; basePlanId?: string; storefront: string; recovery?: boolean } | null = null;
   const requireAccount = async (expected?: string) => {
     const current = await account();
     if (!current || current.role !== 'cafe_owner_manager' || (expected && current.id !== expected)) throw new Error('Please review the signed-in café account.');
@@ -43,7 +55,7 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
   };
   const status = async (accountId: string) => {
     await requireAccount(accountId);
-    const result = checkedSubscription(await call('/native-billing?action=status', {}, 'GET', accountId), accountId);
+    const result = checkedSubscription(await call('/native-billing?action=status', {}, 'GET', accountId), accountId, reviewAccessEnabled);
     await requireAccount(accountId);
     return result;
   };
@@ -51,11 +63,14 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
     account, status,
     async preflight(accountId, product) {
       await requireAccount(accountId);
+      const selection = { provider: product.provider, productId: product.id, basePlanId: product.basePlanId };
+      if (selection.provider === 'google' && !selection.basePlanId) throw new Error('Subscription plan unavailable.');
       const storefront = await store.country();
-      const response = record(await call('/native-billing?action=prepare', { provider: product.provider, productId: product.id, storefront }, 'POST', accountId));
+      const response = record(await call('/native-billing?action=prepare', { provider: selection.provider, productId: selection.productId, storefront,
+        ...(selection.provider === 'google' ? { basePlanId: selection.basePlanId } : {}) }, 'POST', accountId));
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (!uuid.test(response.attemptId) || !uuid.test(response.accountBinding)) throw new Error('Purchase preparation could not be confirmed.');
-      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id };
+      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, ...selection, storefront };
       return { attemptId: response.attemptId, accountBinding: response.accountBinding };
     },
     async resumePreflight(accountId, product) {
@@ -65,18 +80,20 @@ export function nativePurchaseDependencies({ account, call, store }: { account: 
       const response = record(await call('/native-billing?action=resume', { provider: product.provider, productId: product.id, storefront }, 'POST', accountId));
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       if (!uuid.test(response.attemptId) || !uuid.test(response.accountBinding)) throw new Error('Purchase recovery could not be confirmed.');
-      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id, recovery: true };
+      prepared = { accountId, attemptId: response.attemptId, binding: response.accountBinding, productId: product.id, provider: product.provider, basePlanId: product.basePlanId, storefront, recovery: true };
       return { attemptId: response.attemptId, accountBinding: response.accountBinding };
     },
     async purchase(product, binding) {
       const attempt = prepared;
-      if (!attempt || attempt.productId !== product.id || attempt.binding !== binding) throw new Error('Please reload the subscription before purchasing.');
+      if (!attempt || attempt.productId !== product.id || attempt.provider !== product.provider
+        || attempt.basePlanId !== product.basePlanId || attempt.binding !== binding) throw new Error('Please reload the subscription before purchasing.');
       await requireAccount(attempt.accountId);
       // A lost launch response may mean the reservation has started. Never
       // retry it or ask the store to charge unless the start is confirmed.
       try {
         const started = attempt.recovery ? { started: true }
-          : record(await call('/native-billing?action=start', { attemptId: attempt.attemptId }, 'POST', attempt.accountId));
+          : record(await call('/native-billing?action=start', { attemptId: attempt.attemptId,
+            ...(attempt.provider === 'google' ? { provider: attempt.provider, productId: attempt.productId, basePlanId: attempt.basePlanId, storefront: attempt.storefront } : {}) }, 'POST', attempt.accountId));
         if (started.started !== true) return { kind: 'pending' };
         await requireAccount(attempt.accountId);
         const result = attempt.recovery ? await store.resume!(product, binding) : await store.buy(product, binding);

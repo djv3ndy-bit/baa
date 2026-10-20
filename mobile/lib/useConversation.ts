@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from './supabase';
 import { getCurrentContext } from './session';
@@ -25,10 +25,19 @@ export function useConversation(id: string, kind: ConversationKind) {
     const scope: Scope = { key: routeKey, id, kind, userId: '', live: true, ready: false, guard: new LatestMessageRequest(), reload: async () => {} };
     active.current = scope;
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    const androidRecovery = Platform.OS === 'android';
+    let fallback: ReturnType<typeof setTimeout> | undefined;
+    let reloadInFlight: Promise<void> | null = null, reloadAgain = false;
     const current = () => scope.live && active.current === scope;
+    const canRecover = () => current() && scope.ready && AppState.currentState === 'active';
+    const stopFallback = () => { if (fallback !== undefined) clearTimeout(fallback); fallback = undefined; };
+    function scheduleFallback() {
+      stopFallback();
+      if (androidRecovery && canRecover()) fallback = setTimeout(() => { fallback = undefined; void scope.reload(); }, 15000);
+    }
     setStateKey(routeKey); setLoading(true); setReady(false); setMessages([]); setMe(''); setOtherUserId(''); setName('Conversation'); setLoadError(''); setReadError('');
 
-    scope.reload = async () => {
+    const reload = async () => {
       if (!current() || !scope.ready) return;
       const latest = scope.guard.begin();
       setRefreshing(true);
@@ -43,6 +52,16 @@ export function useConversation(id: string, kind: ConversationKind) {
       } catch (error) { if (current() && latest()) setLoadError(messageError(error, 'Messages could not load. Please try again.')); }
       finally { if (current() && latest()) { setLoading(false); setRefreshing(false); } }
     };
+    scope.reload = androidRecovery ? () => {
+      if (!canRecover()) return Promise.resolve();
+      stopFallback();
+      if (reloadInFlight) { reloadAgain = true; return reloadInFlight; }
+      // Keep one request in flight and coalesce live events without invalidating a slow fetch.
+      reloadInFlight = (async () => {
+        do { reloadAgain = false; await reload(); } while (reloadAgain && canRecover());
+      })().finally(() => { reloadInFlight = null; scheduleFallback(); });
+      return reloadInFlight;
+    } : reload;
 
     async function boot() {
       try {
@@ -71,20 +90,25 @@ export function useConversation(id: string, kind: ConversationKind) {
         setMe(user.id); setOtherUserId(other);
         setName(user.id === match.barista_id ? (kind === 'discovery' ? match.cafe?.cafe_name : match.job?.owner?.cafe_name) || 'Café' : match.barista?.display_name || 'Barista');
         scope.ready = true; setReady(true);
-        channel = supabase.channel(`mobile-chat-${kind}-${id}`)
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: kind === 'discovery' ? 'discovery_messages' : 'messages', filter: `${kind === 'discovery' ? 'match_id' : 'application_id'}=eq.${id}` }, () => { void scope.reload(); })
-          .subscribe();
+        const conversationChannel = supabase.channel(`mobile-chat-${kind}-${id}`)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: kind === 'discovery' ? 'discovery_messages' : 'messages', filter: `${kind === 'discovery' ? 'match_id' : 'application_id'}=eq.${id}` }, () => { void scope.reload(); });
+        channel = androidRecovery
+          ? conversationChannel.subscribe(status => { if (status === 'SUBSCRIBED') void scope.reload(); })
+          : conversationChannel.subscribe();
         await scope.reload();
       } catch (error) { if (current()) { setLoadError(messageError(error)); setLoading(false); setReady(false); } }
     }
     void boot();
-    const appState = AppState.addEventListener('change', state => { if (state === 'active') void scope.reload(); });
+    const appState = AppState.addEventListener('change', state => {
+      if (state === 'active') void scope.reload();
+      else if (androidRecovery) { stopFallback(); reloadAgain = false; }
+    });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (scope.userId && (event === 'SIGNED_OUT' || (session && session.user.id !== scope.userId))) {
-        scope.live = false; scope.guard.invalidate(); setMessages([]); setReady(false); setMe(''); router.replace('/login');
+        scope.live = false; scope.guard.invalidate(); stopFallback(); reloadAgain = false; setMessages([]); setReady(false); setMe(''); router.replace('/login');
       }
     });
-    return () => { scope.live = false; scope.guard.invalidate(); appState.remove(); subscription.unsubscribe(); if (channel) void supabase.removeChannel(channel); };
+    return () => { scope.live = false; scope.guard.invalidate(); stopFallback(); reloadAgain = false; appState.remove(); subscription.unsubscribe(); if (channel) void supabase.removeChannel(channel); };
   }, [id, kind, routeKey, attempt]));
 
   const scope = active.current, sameRoute = stateKey === routeKey;

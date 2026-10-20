@@ -13,16 +13,17 @@ const free = { accountId: 'cafe-a', verified: true, access: 'free', provider: nu
 const paid = { ...free, access: 'pro', provider: 'apple', status: 'active', canManage: true, canPurchase: false, autoRenews: true };
 function harness(options = {}) {
   let state, account = { id: 'cafe-a', role: 'cafe_owner_manager' }, status = options.status || free;
+  const selectedProduct = options.product || product, selectedPurchase = options.purchase || purchase;
   const calls = [], states = [];
   const store = {
     connect: async () => { calls.push('connect'); },
-    product: async () => product, country: async () => 'USA',
-    buy: async () => { calls.push('buy'); return { kind: 'purchased', purchase }; },
-    restore: async () => { calls.push('restore'); return [purchase]; },
+    product: async () => selectedProduct, country: async () => selectedProduct.provider === 'google' ? 'US' : 'USA',
+    buy: async () => { calls.push('buy'); return { kind: 'purchased', purchase: selectedPurchase }; },
+    restore: async () => { calls.push('restore'); return [selectedPurchase]; },
     finish: async () => { calls.push('finish'); },
     manage: async () => {}, dispose: async () => { calls.push('dispose'); }, ...options.store,
   };
-  const c = new SubscriptionController({ accountId: 'cafe-a', account: async () => account,
+  const c = new SubscriptionController({ accountId: 'cafe-a', platform: options.platform, account: async () => account,
     store: options.noStore ? null : store,
     call: async (path, body, method, accountId) => {
       calls.push(path); assert.equal(accountId, 'cafe-a');
@@ -31,7 +32,7 @@ function harness(options = {}) {
       if (path.endsWith('prepare')) return { attemptId: '10000000-0000-4000-8000-000000000001', accountBinding: '20000000-0000-4000-8000-000000000001' };
       if (path.endsWith('start')) return { started: true };
       if (path.endsWith('cancel')) return { cancelled: true };
-      if (path === '/native-purchases') { status = options.verifiedStatus || paid; return { verified: true, accountId: 'cafe-a', purchase: { provider: 'apple', status: options.purchaseStatus || 'active' } }; }
+      if (path === '/native-purchases') { status = options.verifiedStatus || paid; return { verified: true, accountId: 'cafe-a', purchase: { provider: selectedPurchase.provider, status: options.purchaseStatus || 'active' } }; }
       throw Error('Unexpected call');
     },
     changed: next => { state = next; states.push(next); }, accountChanged: () => calls.push('account-changed'),
@@ -141,4 +142,70 @@ test('management uses only providers still confirmed for the current account', a
   h.setStatus({ ...paid, subscriptions: [{ provider: 'apple', access: 'pro', canManage: true }] });
   const count = h.calls.filter(call => call === 'manage-stripe').length;
   await h.c.manage('stripe'); assert.equal(h.calls.filter(call => call === 'manage-stripe').length, count);
+});
+
+const googleProduct = { ...product, provider: 'google', basePlanId: 'synthetic-monthly' };
+const googlePurchase = { ...purchase, provider: 'google' };
+const googlePaid = { ...paid, provider: 'google' };
+const googleExpired = { ...free, provider: 'google', status: 'expired', canManage: true, currentPeriodEnd: '2026-10-11T05:41:06.474Z' };
+function googleHarness(options = {}) {
+  return harness({ platform: 'android', product: googleProduct, purchase: googlePurchase, verifiedStatus: googlePaid, ...options });
+}
+
+test('Android management refresh removes prior Google confirmation after verified expiry', async () => {
+  const h = googleHarness(); await h.c.load(); await h.c.buy();
+  assert.equal(h.state().notice, 'Your Pro access is confirmed.');
+  h.setStatus(googleExpired); await h.c.manage('google');
+  assert.equal(h.state().subscription.access, 'free'); assert.equal(h.state().subscription.status, 'expired');
+  assert.equal(h.state().notice, ''); assert.ok(h.calls.includes('manage-google'));
+  assert.equal(h.calls.filter(v => v === 'buy').length, 1);
+});
+
+test('Android final purchase refresh removes success when newer Google status has expired', async () => {
+  let verifiedStatusReads = 0, purchaseVerified = false;
+  const h = googleHarness({ call: async path => {
+    if (path === '/native-purchases') purchaseVerified = true;
+    if (purchaseVerified && path.endsWith('status') && ++verifiedStatusReads === 2) return googleExpired;
+  } });
+  await h.c.load(); await h.c.buy();
+  assert.ok(h.states.some(state => state.notice === 'Your Pro access is confirmed.'));
+  assert.equal(h.state().subscription.access, 'free'); assert.equal(h.state().notice, '');
+  assert.ok(h.calls.includes('finish')); assert.equal(h.calls.filter(v => v === 'buy').length, 1);
+});
+
+test('Android cancellation keeps Google confirmation while verified access remains active', async () => {
+  const h = googleHarness(); await h.c.load(); await h.c.buy();
+  h.setStatus({ ...googlePaid, autoRenews: false, currentPeriodEnd: new Date(Date.now() + 60_000).toISOString() });
+  await h.c.manage('google');
+  assert.equal(h.state().subscription.access, 'pro'); assert.equal(h.state().subscription.autoRenews, false);
+  assert.equal(h.state().notice, 'Your Pro access is confirmed.');
+  h.c.dispose();
+});
+
+test('Android failed Google status refresh retains last confirmed access and notice', async () => {
+  let fail = false;
+  const h = googleHarness({ call: async path => { if (fail && path.endsWith('status')) throw Error('private provider failure'); } });
+  await h.c.load(); await h.c.buy(); fail = true; await h.c.manage('google');
+  assert.equal(h.state().subscription.access, 'pro'); assert.equal(h.state().notice, 'Your Pro access is confirmed.');
+  assert.match(h.state().error, /last confirmed status/); assert.doesNotMatch(h.state().error, /private provider/);
+});
+
+for (const platform of ['ios', undefined]) test(`Google notice behavior is unchanged on ${platform || 'unspecified'} platform`, async () => {
+  const h = googleHarness({ platform }); await h.c.load(); await h.c.buy();
+  h.setStatus(googleExpired); await h.c.manage('google');
+  assert.equal(h.state().subscription.access, 'free'); assert.equal(h.state().notice, 'Your Pro access is confirmed.');
+});
+
+test('Android Google expiry preserves other outcome notices', async () => {
+  const h = googleHarness({ store: { restore: async () => { throw Error('store timeout'); } } });
+  await h.c.load(); await h.c.buy(); await h.c.restore();
+  const notice = h.state().notice; assert.match(notice, /could not finish checking/);
+  h.setStatus(googleExpired); await h.c.manage('google');
+  assert.equal(h.state().subscription.access, 'free'); assert.equal(h.state().notice, notice);
+});
+
+test('Android Apple subscription notice remains unchanged on an expired status refresh', async () => {
+  const h = harness({ platform: 'android' }); await h.c.load(); await h.c.buy();
+  h.setStatus({ ...googleExpired, provider: 'apple' }); await h.c.manage('apple');
+  assert.equal(h.state().subscription.access, 'free'); assert.equal(h.state().notice, 'Your Pro access is confirmed.');
 });

@@ -1,0 +1,35 @@
+# Packaging-only candidate: standalone Android mobile source; no unrelated repository data.
+/*
+!/.easignore
+!/mobile
+
+# Generated/runtime/local files are supplied separately or recreated on the builder.
+/mobile/**/node_modules/
+/mobile/.expo/
+/mobile/dist/
+/mobile/.eas/
+/mobile/android/
+/mobile/ios/
+/mobile/docs/
+/mobile/*.md
+/mobile/.env
+/mobile/.env.*
+/mobile/**/*.log
+/mobile/**/.DS_Store
+/mobile/**/.git/
+
+# Never package local credentials or private signing material.
+/mobile/google-services.json
+/mobile/**/credentials.json
+/mobile/**/*service-account*.json
+/mobile/**/*service_account*.json
+/mobile/**/*.jks
+/mobile/**/*.keystore
+/mobile/**/*.p12
+/mobile/**/*.pfx
+/mobile/**/*.p8
+/mobile/**/*.key
+/mobile/**/*.pem
+
+# Immutable public CA used by the existing Android network module (not a private key).
+!/mobile/modules/baristamatch-network/android/src/main/res/raw/baristamatch_isrg_root_x1.pem

@@ -244,7 +244,10 @@ function screen(name, mocks) {
     useEffect: fn => { const key = effectCursor++; if (!(key in effects)) effects[key] = fn(); },
   };
   const router = { replace: value => routes.push(value), push: value => routes.push(value) };
-  const component = compile(name, { ...mocks, react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-native': native, 'expo-router': { router, useLocalSearchParams: () => mocks.params || {}, useFocusEffect: react.useEffect }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' }, 'expo-image-picker': mocks.picker || {} }).default;
+  const component = compile(name, { '@/features/review-mode/environment': {
+    getMobileAuthWebBridge: () => callback.MOBILE_AUTH_WEB_BRIDGE,
+    getPasswordResetRedirect: () => 'https://www.baristajobmatch.com/reset-password',
+  }, ...mocks, react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' }, 'react-native': native, 'expo-router': { router, useLocalSearchParams: () => mocks.params || {}, useFocusEffect: react.useEffect }, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' }, 'expo-image-picker': mocks.picker || {} }).default;
   const render = () => { cursor = 0; refCursor = 0; effectCursor = 0; tree = component(); return tree; };
   const nodes = () => { const result = []; const visit = node => { if (Array.isArray(node)) return node.forEach(visit); if (!node || typeof node !== 'object') return; result.push(node); visit(node.props?.children); }; visit(tree); return result; };
   const text = node => !node ? '' : Array.isArray(node) ? node.map(text).join('') : typeof node === 'object' ? text(node.props?.children) : String(node);
@@ -358,19 +361,55 @@ for (const [city, state] of [['Brooklyn', 'NY'], ['Seattle', 'WA'], ['Washington
       ui.nodes().find(node => node.props.accessibilityLabel === 'State (two-letter code)').props.onChangeText(state);ui.render();
       await ui.button('Create account').props.onPress();
       assert.equal(submitted.length, 1);assert.equal(submitted[0].options.data.location, `${city}, ${state}`);assert.equal(submitted[0].options.data.role, role);
+      assert.equal(submitted[0].options.emailRedirectTo, callback.MOBILE_AUTH_WEB_BRIDGE);
       assert.equal(ui.routes.at(-1).pathname, '/verify-email');
     }
   });
 }
 
+test('signup and resend forward the selected email bridge for Android review and original environments', async () => {
+  for (const emailRedirectTo of ['https://android-testing.baristajobmatch.com/mobile-auth-callback.html', callback.MOBILE_AUTH_WEB_BRIDGE]) {
+    const signupRequests = [], resendRequests = [];
+    const client = { auth: {
+      getSession: async () => ({ data: { session: null }, error: null }),
+      signUp: async input => { signupRequests.push(input); return { data: { user: { id: 'synthetic' }, session: null } }; },
+      resend: async input => { resendRequests.push(input); return { error: null }; },
+    } };
+    const environment = { getMobileAuthWebBridge: () => emailRedirectTo };
+    const signup = screen('app/signup.tsx', { client, '@/features/review-mode/environment': environment });
+    await flush(); signup.render(); fillSignup(signup);
+    await signup.button('Create account').props.onPress();
+    assert.equal(signupRequests.length, 1); assert.equal(signupRequests[0].options.emailRedirectTo, emailRedirectTo);
+    const verify = screen('app/verify-email.tsx', { client, params: { email: 'sample@example.invalid' }, '@/features/review-mode/environment': environment });
+    await verify.button('Resend verification email').props.onPress();
+    assert.equal(resendRequests.length, 1); assert.equal(resendRequests[0].options.emailRedirectTo, emailRedirectTo);
+    assert.equal(resendRequests[0].type, 'signup'); assert.equal(resendRequests[0].email, 'sample@example.invalid');
+  }
+});
+
 test('reset request prevents duplicate sends and does not navigate or alert over a screen opened later', async () => {
   const gate = deferred(); let requests = 0;
-  const client = { auth: { resetPasswordForEmail: async () => { requests++; return gate.promise; } } };
-  const ui = screen('app/forgot-password.tsx', { client });
+  const productionReset = 'https://www.baristajobmatch.com/reset-password';
+  const client = { auth: { resetPasswordForEmail: async (email, options) => {
+    assert.equal(options.redirectTo, productionReset); requests++; return gate.promise;
+  } } };
+  const ui = screen('app/forgot-password.tsx', { client,
+    '@/features/review-mode/environment': { getPasswordResetRedirect: () => productionReset } });
   ui.nodes().find(node => node.type === 'TextInput').props.onChangeText('sample@example.invalid'); ui.render();
   const first = ui.button('Send reset link').props.onPress(); ui.render();
   await ui.button('Sending…').props.onPress(); assert.equal(requests, 1); ui.blur();
   gate.resolve({ error: null }); await first; assert.equal(ui.routes.length, 0); assert.equal(ui.alerts.length, 0);
+});
+
+test('the password-reset screen forwards the selected isolated Android recovery route', async () => {
+  const requests = [];
+  const redirectTo = 'https://android-testing.baristajobmatch.com/reset-password';
+  const client = { auth: { resetPasswordForEmail: async (...args) => { requests.push(args); return { error: null }; } } };
+  const ui = screen('app/forgot-password.tsx', { client,
+    '@/features/review-mode/environment': { getPasswordResetRedirect: () => redirectTo } });
+  ui.nodes().find(node => node.type === 'TextInput').props.onChangeText('sample@example.invalid'); ui.render();
+  await ui.button('Send reset link').props.onPress();
+  assert.equal(requests.length, 1); assert.equal(requests[0][1].redirectTo, redirectTo);
 });
 
 test('media picker result from a cancelled profile edit cannot appear in a reopened draft', async () => {

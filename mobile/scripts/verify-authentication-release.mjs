@@ -83,7 +83,7 @@ excludes(callbackScreen, 'supabase.auth.signOut', 'Authentication callback scree
 excludes(callbackScreen, 'console.log', 'Authentication callback screen');
 excludes(callbackScreen, 'error_description', 'Authentication callback screen');
 
-includes(signupScreen, 'emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE', 'Mobile signup');
+includes(signupScreen, 'emailRedirectTo: getMobileAuthWebBridge()', 'Mobile signup');
 includes(signupScreen, "email.trim().toLowerCase()", 'Mobile signup');
 excludes(signupScreen, "emailRedirectTo:'baristamatch://login'", 'Mobile signup');
 

@@ -52,13 +52,17 @@ export default function ReviewLogin() {
   return <ReviewKeyboardView style={styles.page}>
     <ScrollView ref={scroll} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} onLayout={revealField} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       <Text accessibilityRole="header" style={styles.heading}>App review sign-in</Text>
-      <Text style={styles.copy}>Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.</Text>
+      <Text style={styles.copy}>{Platform.OS === 'android'
+        ? process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE === 'true'
+          ? 'Use the dedicated test account supplied for review. This session uses isolated test data. Temporary reviewer Pro access requires no payment.'
+          : 'Use the dedicated test account supplied for review. This session uses isolated test data. Test purchases require a registered Google Play license tester and a test payment method.'
+        : 'Use the dedicated test account supplied for review. This session uses isolated test data. Purchases are available only when Apple confirms a Sandbox installation.'}</Text>
       <Text style={styles.label}>Test-account email</Text>
       <ConversationTextInput onFocus={() => focus('email')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('email', event.nativeEvent.layout.y)} testID="review-email-input" accessibilityLabel="Test-account email" value={email} onChangeText={setEmail} editable={!busy} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" textContentType="username" style={styles.input} />
       <Text style={styles.label}>Test-account password</Text>
       <ConversationTextInput onFocus={() => focus('password')} onBlur={() => { focused.current = null; }} onLayout={event => fieldLayout('password', event.nativeEvent.layout.y)} testID="review-password-input" accessibilityLabel="Test-account password" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry textContentType="password" returnKeyType="done" onSubmitEditing={signIn} style={styles.input} />
       {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-      <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
+      <Pressable accessibilityRole="button" accessibilityLabel={Platform.OS === 'android' ? 'Sign in to test account' : undefined} accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in to test account</Text>}
       </Pressable>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>

@@ -3,7 +3,7 @@
 import { retryBillingRead } from './retryRead.mjs';
 
 const safeReads = new Set(['native_checkout_pending', 'native_billing_summary',
-  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified']);
+  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified', 'native_checkout_provider', 'android_reviewer_access']);
 
 export function nativeBillingRepository(adminRows) {
   const rpc = (name, body) => {
@@ -13,11 +13,17 @@ export function nativeBillingRepository(adminRows) {
     return safeReads.has(name) ? retryBillingRead(read) : read();
   };
   return {
+    reviewAccess(userId, environment, customEnvironmentId) {
+      return rpc('android_reviewer_access', {p_user_id:userId,p_environment:environment,p_custom_environment_id:customEnvironmentId});
+    },
     claimCheckout(userId, provider, environment, attemptId) {
       return rpc('native_checkout_claim', { p_user_id: userId, p_provider: provider, p_environment: environment, p_attempt_id: attemptId });
     },
     startCheckout(userId, environment, attemptId) {
       return rpc('native_checkout_start', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId });
+    },
+    checkoutProvider(userId, environment, attemptId) {
+      return rpc('native_checkout_provider', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId });
     },
     cancelCheckout(userId, environment, attemptId, beforeLaunch) {
       return rpc('native_checkout_cancel', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_before_launch: beforeLaunch });
@@ -49,7 +55,30 @@ export function nativeBillingRepository(adminRows) {
       if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid billing revision');
       return { userId: row.user_id, revision };
     },
+    async googleQaPredecessor(subscriptionId) {
+      // Existing service-only RPC; never return its private row to the client.
+      const row = await rpc('native_billing_read', { p_provider: 'google', p_environment: 'Sandbox', p_subscription_id: subscriptionId });
+      if (row === null) return null;
+      if (!row || row.provider !== 'google' || row.environment !== 'Sandbox' || row.provider_subscription_id !== subscriptionId) {
+        throw new Error('Invalid Google predecessor lookup');
+      }
+      return Object.freeze({ userId: row.user_id, revision: Number(row.revision), productId: row.product_id,
+        status: row.status, periodEnd: row.current_period_end, verifiedAt: row.verified_at, supersededBy: row.superseded_by });
+    },
     apply(status) {
+      if (status.googleQaPredecessor) {
+        const old = status.googleQaPredecessor;
+        if (status.provider !== 'google' || status.environment !== 'Sandbox') throw new Error('Invalid Google predecessor scope');
+        return rpc('native_billing_apply_google_qa_resubscribe', {
+          p_user_id: status.userId, p_binding: status.binding, p_subscription_id: status.providerSubscriptionId,
+          p_product_id: status.productId, p_base_plan_id: status.basePlanId, p_transaction_id: status.transactionId,
+          p_status: status.status, p_period_end: status.currentPeriodEnd, p_grace_end: status.gracePeriodEnd,
+          p_auto_renews: status.autoRenews, p_expected_revision: status.expectedRevision,
+          p_predecessor_id: old.id, p_predecessor_revision: old.revision, p_predecessor_period_end: old.periodEnd,
+          p_predecessor_provider_expiry: old.providerExpiry,
+          p_predecessor_provider_state: old.providerState,
+        });
+      }
       return rpc('native_billing_apply', {
         p_user_id: status.userId, p_binding: status.binding, p_provider: status.provider, p_environment: status.environment,
         p_subscription_id: status.providerSubscriptionId, p_product_id: status.productId, p_transaction_id: status.transactionId,

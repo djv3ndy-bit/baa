@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url), ts = require('../mobile/node_modules/typescript');
-function loadTs(file, mocks = {}) {
+function loadTs(file, mocks = {}, globals = {}) {
   const module = { exports: {} }, source = fs.readFileSync(new URL(`../mobile/${file}`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: name => { if (Object.hasOwn(mocks, name)) return mocks[name]; throw new Error(`Unmocked module ${name}`); }, console, setTimeout, clearTimeout, URLSearchParams, TypeError, Error }, { filename: file });
+  vm.runInNewContext(code, { module, exports: module.exports, require: name => { if (Object.hasOwn(mocks, name)) return mocks[name]; throw new Error(`Unmocked module ${name}`); }, console, setTimeout, clearTimeout, URLSearchParams, TypeError, Error, ...globals }, { filename: file });
   return module.exports;
 }
 const messaging = loadTs('lib/messaging.ts'), routing = loadTs('lib/notificationRouting.ts');
@@ -117,28 +117,38 @@ test('unread loaders use the live discovery table column and read RPC is scoped 
   assert.deepEqual(plain(calls), [['mark_discovery_conversation_read', { p_match_id: 'B' }], ['mark_conversation_read', { p_application_id: 'A' }]]);
 });
 
+function chatClock() {
+  let now = 0, nextId = 0;
+  const timers = new Map();
+  return {
+    setTimeout(callback, delay) { const id = ++nextId; timers.set(id, { callback, at: now + delay }); return id; },
+    clearTimeout(id) { timers.delete(id); },
+    advance(milliseconds) { now += milliseconds; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); } },
+    get pending() { return timers.size; },
+  };
+}
 function chatHarness(options = {}) {
-  const states = [], refs = [], callbacks = [], effects = [], channels = [], readCalls = [], routes = [];
+  const states = [], refs = [], callbacks = [], effects = [], channels = [], readCalls = [], routes = [], loadCalls = [], appListeners = new Set(), authListeners = new Set();
   let index = 0, effectIndex = 0, focus, focusCleanup, pendingFocus, params = ['A', 'discovery'];
-  const appState = { currentState: 'active', addEventListener: () => ({ remove() {} }) };
+  const appState = { currentState: 'active', addEventListener(event, callback) { appListeners.add(callback); return { remove() { appListeners.delete(callback); } }; } };
   const react = {
     useState(initial) { const slot = index++; if (!(slot in states)) states[slot] = typeof initial === 'function' ? initial() : initial; return [states[slot], value => { states[slot] = typeof value === 'function' ? value(states[slot]) : value; }]; },
     useRef(initial) { const slot = index++; return refs[slot] ||= { current: initial }; },
     useCallback(callback, deps) { const slot = index++; const previous = callbacks[slot]; if (!previous || deps.some((value, i) => value !== previous.deps[i])) callbacks[slot] = { callback, deps }; return callbacks[slot].callback; },
     useEffect(callback) { const slot = effectIndex++; if (!effects[slot]) effects[slot] = callback(); },
   };
-  const client = { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }), getSession: async () => ({ data: { session: { user: { id: 'me' }, access_token: 'test' } } }) },
-    channel() { const channel = { on(event, filter, fn) { this.callback = fn; return this; }, subscribe() { return this; } }; channels.push(channel); return channel; }, removeChannel(channel) { channel.removed = true; },
+  const client = { auth: { onAuthStateChange(callback) { authListeners.add(callback); return { data: { subscription: { unsubscribe() { authListeners.delete(callback); } } } }; }, getSession: async () => ({ data: { session: { user: { id: 'me' }, access_token: 'test' } } }) },
+    channel() { const channel = { on(event, filter, fn) { this.callback = fn; this.filter = filter; return this; }, subscribe(callback) { this.status = callback; return this; } }; channels.push(channel); return channel; }, removeChannel(channel) { channel.removed = true; },
     rpc: async (...args) => { readCalls.push(args); return options.read ? options.read() : { error: null }; },
     from(table) { let id; return { select() { return this; }, eq(column, value) { if (['id', 'match_id', 'application_id'].includes(column)) id = value; return this; }, order() { return this; },
-      maybeSingle: async () => ({ data: options.paused ? { id, barista_id: 'me', job: null } : { id, barista_id: 'me', cafe_id: `cafe-${id}`, cafe: { cafe_name: `Café ${id}` } }, error: null }),
-      range: async from => from ? { data: [], error: null } : options.load ? options.load(id) : { data: [msg(`message-${id}`, id, 'cafe')], error: null },
+      maybeSingle: async () => ({ data: options.paused ? { id, barista_id: 'me', job: null } : { id, barista_id: 'me', cafe_id: `cafe-${id}`, cafe: { cafe_name: `Café ${id}` }, job: { owner_id: `cafe-${id}`, owner: { cafe_name: `Café ${id}` } } }, error: null }),
+      range: async from => { if (from) return { data: [], error: null }; loadCalls.push([table, id]); return options.load ? options.load(id) : { data: [msg(`message-${id}`, id, 'cafe')], error: null }; },
     }; },
   };
-  const module = loadTs('lib/useConversation.ts', { react, 'react-native': { AppState: appState }, 'expo-router': { router: { replace: route => routes.push(route) }, useFocusEffect(callback) { if (callback !== focus) pendingFocus = callback; } }, './supabase': { supabase: client }, './session': { getCurrentContext: async () => ({ user: { id: 'me' }, role: 'barista' }) }, './api': { authenticatedApi: options.api || (async () => ({ message: msg() })) }, './safety': { isMessageAllowed: text => !!text.trim() }, './messaging': { ...messaging, messageDrafts: new messaging.MessageDraftStore() } });
+  const module = loadTs('lib/useConversation.ts', { react, 'react-native': { AppState: appState, Platform: { OS: options.platform || 'ios' } }, 'expo-router': { router: { replace: route => routes.push(route) }, useFocusEffect(callback) { if (callback !== focus) pendingFocus = callback; } }, './supabase': { supabase: client }, './session': { getCurrentContext: async () => ({ user: { id: 'me' }, role: 'barista' }) }, './api': { authenticatedApi: options.api || (async () => ({ message: msg() })) }, './safety': { isMessageAllowed: text => !!text.trim() }, './messaging': { ...messaging, messageDrafts: new messaging.MessageDraftStore() } }, options.clock || {});
   function render() { index = 0; effectIndex = 0; const value = module.useConversation(...params); if (pendingFocus) { focusCleanup?.(); focus = pendingFocus; pendingFocus = null; focusCleanup = focus(); } return value; }
   render();
-  return { render, async settle() { await tick(); return render(); }, navigate(id, kind = 'discovery') { params = [id, kind]; render(); }, blur() { focusCleanup?.(); }, appState, readCalls, channels, routes };
+  return { render, async settle() { await tick(); return render(); }, navigate(id, kind = 'discovery') { params = [id, kind]; render(); }, blur() { focusCleanup?.(); }, changeAppState(state) { appState.currentState = state; for (const callback of appListeners) callback(state); }, authChange(event, session) { for (const callback of authListeners) callback(event, session); }, appState, readCalls, loadCalls, channels, routes };
 }
 test('switching chats ignores the older response and never marks the old conversation read', async () => {
   const pending = deferred();
@@ -174,6 +184,96 @@ test('unread acknowledgement does not hide messages while it is pending and its 
   assert.match(state.error, /Messages loaded/); assert.equal(state.ready, true); h.blur();
 });
 
+test('Android catches the initial snapshot/join gap and a missed update on channel rejoin', async t => {
+  for (const kind of ['application', 'discovery']) {
+    const clock = chatClock(); let body = 'Before join';
+    const h = chatHarness({ platform: 'android', clock, load: async () => ({ data: [msg(body, body)], error: null }) });
+    t.after(h.blur); h.navigate('joined-chat', kind);
+    assert.equal((await h.settle()).messages[0].body, 'Before join');
+    const channel = h.channels.at(-1);
+    assert.equal(channel.filter.table, kind === 'application' ? 'messages' : 'discovery_messages');
+    assert.equal(channel.filter.filter, `${kind === 'application' ? 'application_id' : 'match_id'}=eq.joined-chat`);
+    body = 'Arrived before subscribed'; channel.status('SUBSCRIBED');
+    assert.equal((await h.settle()).messages[0].body, body);
+    channel.status('CHANNEL_ERROR'); channel.status('TIMED_OUT');
+    body = 'Missed during disconnect'; channel.status('SUBSCRIBED');
+    assert.equal((await h.settle()).messages[0].body, body);
+    assert.equal(clock.pending, 1);
+  }
+});
+test('Android active-chat fallback recovers a lost INSERT without a notification or app resume', async t => {
+  const clock = chatClock(); let body = 'D';
+  const h = chatHarness({ platform: 'android', clock, load: async () => ({ data: [msg(body, body)], error: null }) }); t.after(h.blur);
+  assert.equal((await h.settle()).messages[0].body, 'D');
+  body = 'E'; clock.advance(14999); await h.settle(); assert.equal(h.loadCalls.length, 1);
+  clock.advance(1); assert.equal((await h.settle()).messages[0].body, 'E');
+  assert.equal(h.loadCalls.length, 2); assert.equal(clock.pending, 1);
+});
+test('Android coalesces live, rejoin and retry refreshes while a slow request remains in flight', async t => {
+  const clock = chatClock(), pending = deferred(); let calls = 0;
+  const h = chatHarness({ platform: 'android', clock, load: () => ++calls === 1 ? pending.promise : Promise.resolve({ data: [msg('latest', 'Latest')], error: null }) }); t.after(h.blur);
+  await h.settle(); const channel = h.channels[0];
+  channel.status('SUBSCRIBED'); channel.callback(); h.render().retry();
+  clock.advance(60000); await h.settle(); assert.equal(calls, 1); assert.equal(clock.pending, 0);
+  pending.resolve({ data: [msg('initial', 'Initial')], error: null });
+  const state = await h.settle(); assert.equal(calls, 2); assert.equal(state.messages[0].body, 'Latest'); assert.equal(state.refreshing, false); assert.equal(clock.pending, 1);
+});
+test('Android fallback retries a failed load without treating it as an empty successful chat', async t => {
+  const clock = chatClock(); let failed = true;
+  const h = chatHarness({ platform: 'android', clock, load: async () => { if (failed) throw new Error('offline'); return { data: [msg('recovered', 'Recovered')], error: null }; } }); t.after(h.blur);
+  let state = await h.settle(); assert.match(state.error, /offline/); assert.equal(state.ready, true); assert.equal(clock.pending, 1);
+  failed = false; clock.advance(15000); state = await h.settle();
+  assert.equal(state.messages[0].body, 'Recovered'); assert.equal(state.error, '');
+});
+test('Android stops fallback and ignores refresh triggers in background, then catches up immediately on resume', async t => {
+  const clock = chatClock(); let body = 'Before background';
+  const h = chatHarness({ platform: 'android', clock, load: async () => ({ data: [msg(body, body)], error: null }) }); t.after(h.blur);
+  await h.settle(); h.changeAppState('background'); assert.equal(clock.pending, 0);
+  body = 'While background'; h.channels[0].callback(); h.channels[0].status('SUBSCRIBED'); clock.advance(60000); await h.settle();
+  assert.equal(h.loadCalls.length, 1); assert.equal(h.readCalls.length, 1);
+  h.changeAppState('active'); assert.equal((await h.settle()).messages[0].body, body); assert.equal(h.loadCalls.length, 2); assert.equal(clock.pending, 1);
+});
+test('Android backgrounding drops a queued refresh and never acknowledges a late background response', async t => {
+  const clock = chatClock(), pending = deferred(); let calls = 0;
+  const h = chatHarness({ platform: 'android', clock, load: () => ++calls === 1 ? pending.promise : Promise.resolve({ data: [msg()], error: null }) }); t.after(h.blur);
+  await h.settle(); h.channels[0].callback(); h.changeAppState('background');
+  pending.resolve({ data: [msg()], error: null }); await h.settle();
+  assert.equal(calls, 1); assert.equal(h.readCalls.length, 0); assert.equal(clock.pending, 0);
+  h.changeAppState('active'); await h.settle(); assert.equal(calls, 2); assert.equal(h.readCalls.length, 1);
+});
+test('Android blur stops fallback and ignores callbacks after removing the chat channel', async () => {
+  const clock = chatClock(), h = chatHarness({ platform: 'android', clock }); await h.settle(); const channel = h.channels[0];
+  h.blur(); assert.equal(channel.removed, true); assert.equal(clock.pending, 0);
+  channel.callback(); channel.status('SUBSCRIBED'); h.changeAppState('active'); clock.advance(60000); await h.settle();
+  assert.equal(h.loadCalls.length, 1); assert.equal(h.readCalls.length, 1);
+});
+test('Android chat switching discards a pending old response and gives only the new chat a fallback', async t => {
+  const clock = chatClock(), pending = deferred();
+  const h = chatHarness({ platform: 'android', clock, load: id => id === 'A' ? pending.promise : Promise.resolve({ data: [msg('B-message', 'B')], error: null }) }); t.after(h.blur);
+  await h.settle(); const old = h.channels[0]; old.callback(); h.navigate('B'); await h.settle();
+  pending.resolve({ data: [msg('A-message', 'A')], error: null }); old.status('SUBSCRIBED');
+  assert.equal((await h.settle()).messages[0].body, 'B'); assert.equal(old.removed, true); assert.equal(clock.pending, 1);
+  clock.advance(15000); await h.settle(); assert.deepEqual(h.loadCalls.map(call => call[1]), ['A', 'B', 'B']);
+  assert.ok(h.readCalls.every(call => call[1].p_match_id === 'B'));
+});
+test('Android sign-out and account replacement stop recovery and reject pending old-account results', async t => {
+  for (const [event, session] of [['SIGNED_OUT', null], ['SIGNED_IN', { user: { id: 'other' } }]]) {
+    const clock = chatClock(), pending = deferred(); let calls = 0;
+    const h = chatHarness({ platform: 'android', clock, load: () => ++calls === 1 ? Promise.resolve({ data: [msg()], error: null }) : pending.promise }); t.after(h.blur);
+    await h.settle(); clock.advance(15000); await h.settle(); h.channels[0].callback();
+    h.authChange(event, session); assert.equal(clock.pending, 0); pending.resolve({ data: [msg('old', 'Old account')], error: null });
+    const state = await h.settle(); h.channels[0].status('SUBSCRIBED'); h.changeAppState('active'); clock.advance(60000); await h.settle();
+    assert.equal(state.messages.length, 0); assert.equal(state.ready, false); assert.equal(calls, 2); assert.equal(h.readCalls.length, 1); assert.deepEqual(h.routes, ['/login']); assert.equal(clock.pending, 0);
+  }
+});
+test('iOS keeps its existing event/resume refresh behavior without Android status callbacks or fallback', async t => {
+  const clock = chatClock(), h = chatHarness({ platform: 'ios', clock }); t.after(h.blur);
+  await h.settle(); assert.equal(h.channels[0].status, undefined); assert.equal(clock.pending, 0);
+  clock.advance(60000); await h.settle(); assert.equal(h.loadCalls.length, 1);
+  h.channels[0].callback(); await h.settle(); h.changeAppState('active'); await h.settle();
+  assert.equal(h.loadCalls.length, 3); assert.equal(clock.pending, 0);
+});
+
 const id = '11111111-1111-4111-8111-111111111111';
 test('notification routing preserves conversation type and requested job while rejecting external and unsupported routes', () => {
   assert.equal(routing.notificationDestination({ route: `/chat/${id}?kind=discovery` }), `/chat/${id}?kind=discovery`);
@@ -195,7 +295,11 @@ function pushHarness(options = {}) {
     addNotificationResponseReceivedListener(fn) { listeners.response = fn; return { remove() {} }; },
   };
   const client = { auth: { getSession: async () => ({ data: { session }, error: null }), onAuthStateChange(fn) { listeners.auth = fn; return { data: { subscription: { unsubscribe() {} } } }; } }, from() { return { upsert: async row => { calls.push(['upsert', row]); return { error: null }; }, delete() { calls.push('delete'); return this; }, eq() { return this; }, then(resolve) { return Promise.resolve({ error: null }).then(resolve); } }; } };
-  const module = loadTs('lib/pushNotifications.ts', { 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: { setItem: async (key, value) => stored.set(key, value), getItem: async key => stored.get(key) || null, removeItem: async key => stored.delete(key) } }, 'expo-constants': { default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } } }, 'expo-device': { isDevice: true }, 'expo-notifications': notification, 'expo-router': { router: { push: route => routes.push(route) } }, './supabase': { supabase: client }, './notificationRouting': routing });
+  const module = loadTs('lib/pushNotifications.ts', { 'react-native': { Platform: { OS: 'ios' } }, '@react-native-async-storage/async-storage': { default: { setItem: async (key, value) => stored.set(key, value), getItem: async key => stored.get(key) || null, removeItem: async key => stored.delete(key) } }, 'expo-constants': { default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } } }, 'expo-device': { isDevice: true }, 'expo-notifications': notification, 'expo-router': { router: { push: route => routes.push(route) } }, './supabase': { supabase: client }, './notificationRouting': routing,
+    '../features/review-mode/environment': { getAppEnvironment: () => assert.fail('The iOS notification path must not read Android review configuration.') },
+    './androidFcmRegistration': loadTs('lib/androidFcmRegistration.ts'),
+    './androidNotificationCleanup': loadTs('lib/androidNotificationCleanup.ts'),
+  });
   return { module, calls, routes, listeners, stored, permission, setSession(value) { session = value; } };
 }
 test('automatic registration never prompts and explicit enable reports the actual permission result', async () => {

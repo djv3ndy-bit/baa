@@ -90,8 +90,26 @@ export async function verifiedGoogleNotification({ authorization, body, oauthCli
   check(opaque(body?.message?.messageId, 255) && opaque(body?.message?.data, 65_536), 'INVALID_EVENT');
   let event;
   try { event = JSON.parse(Buffer.from(body.message.data, 'base64').toString('utf8')); } catch { throw new PurchaseVerificationError('INVALID_EVENT'); }
-  check(event.packageName === packageName, 'INVALID_EVENT');
-  if (event.testNotification) return { eventId: body.message.messageId, provider: 'google', test: true };
-  check(opaque(event.subscriptionNotification?.purchaseToken, 8192), 'INVALID_EVENT');
-  return { eventId: body.message.messageId, provider: 'google', providerSubscriptionId: event.subscriptionNotification.purchaseToken };
+  check(event && typeof event === 'object' && !Array.isArray(event) && event.packageName === packageName, 'INVALID_EVENT');
+  // Google documents these payloads as mutually exclusive. Do not let a test
+  // or ignored payload hide a subscription update in an ambiguous message.
+  const fields = Object.keys(event).filter(key => key.endsWith('Notification'));
+  check(fields.length === 1, 'INVALID_EVENT');
+  const field = fields[0], notification = event[field];
+  check(notification && typeof notification === 'object' && !Array.isArray(notification), 'INVALID_EVENT');
+  const eventIdentity = { eventId: body.message.messageId, provider: 'google' };
+  if (field === 'testNotification') return { ...eventIdentity, test: true };
+  if (field === 'voidedPurchaseNotification') {
+    check(opaque(notification.purchaseToken, 8192) && !/\s/.test(notification.purchaseToken)
+      && opaque(notification.orderId, 255) && !/\s/.test(notification.orderId)
+      && [1, 2].includes(notification.productType) && [1, 2].includes(notification.refundType)
+      && (notification.productType === 2 || notification.refundType === 1), 'INVALID_EVENT');
+    if (notification.productType === 2) return { ...eventIdentity, ignored: 'google-one-time-voided-purchase' };
+    // A refund of an earlier renewal does not necessarily revoke current
+    // access. Recheck this token with subscriptionsv2 instead of trusting the
+    // voided order/event as an entitlement decision.
+    return { ...eventIdentity, providerSubscriptionId: notification.purchaseToken };
+  }
+  check(field === 'subscriptionNotification' && opaque(notification.purchaseToken, 8192), 'INVALID_EVENT');
+  return { ...eventIdentity, providerSubscriptionId: notification.purchaseToken };
 }

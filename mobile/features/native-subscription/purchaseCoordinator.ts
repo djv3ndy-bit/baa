@@ -1,6 +1,7 @@
 /** Store adapters and the server must supply these values. Client receipt data
- * alone never grants access. This module is not wired into the release yet. */
+ * alone never grants access. */
 export type BillingProvider = 'apple' | 'google' | 'stripe';
+export type ReviewAccess = { active: true; expiresAt: string };
 export type VerifiedSubscription = {
   accountId: string;
   verified: true;
@@ -14,8 +15,41 @@ export type VerifiedSubscription = {
   autoRenews: boolean;
   gracePeriodEnd?: string | null;
   subscriptions?: { provider: BillingProvider; canManage: boolean; access: 'free' | 'pro' }[];
+  reviewAccess?: ReviewAccess;
 };
-export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google' };
+/** Display only a separately verified reviewer grant in its authorized client environment. */
+export function reviewerAccess(subscription: VerifiedSubscription | null, enabled = false): ReviewAccess | null {
+  const grant = subscription?.reviewAccess;
+  return enabled && subscription?.verified === true && subscription.access === 'pro' && subscription.canPurchase === false
+    && grant?.active === true && typeof grant.expiresAt === 'string' && Number.isFinite(Date.parse(grant.expiresAt))
+    && Date.parse(grant.expiresAt) > Date.now() ? grant : null;
+}
+/** A cached Google grant must be refreshed at its verified deadline, not treated as a renewal or a Free downgrade. */
+export function androidGoogleAccessDeadline(subscription: VerifiedSubscription | null, platform?: string): string | null {
+  if (platform !== 'android' || subscription?.provider !== 'google' || subscription.access !== 'pro'
+    || subscription.reviewAccess !== undefined || !['active', 'grace'].includes(subscription.status)) return null;
+  const end = subscription.status === 'grace' ? subscription.gracePeriodEnd : subscription.currentPeriodEnd;
+  return typeof end === 'string' && Number.isFinite(Date.parse(end)) ? end : null;
+}
+export function androidGoogleAccessNeedsConfirmation(subscription: VerifiedSubscription | null, platform?: string): boolean {
+  const end = androidGoogleAccessDeadline(subscription, platform);
+  return end !== null && Date.parse(end) <= Date.now();
+}
+/** Recheck display at expiry, including deadlines beyond the native timer limit. */
+export function reviewerExpiryTimer(expiresAt: string, expired: () => void): () => void {
+  const end = Date.parse(expiresAt);
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const schedule = () => {
+    if (cancelled || !Number.isFinite(end)) return;
+    const remaining = end - Date.now();
+    if (remaining <= 0) { expired(); return; }
+    timer = setTimeout(schedule, Math.min(remaining, 2147483647));
+  };
+  schedule();
+  return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer); };
+}
+export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google'; basePlanId?: string };
 export type StorePurchase = { id: string; productId: string; provider: 'apple' | 'google'; proof: string };
 export type PurchaseResult = { kind: 'cancelled' | 'pending' } | { kind: 'purchased'; purchase: StorePurchase };
 export type PurchaseOutcome =
@@ -58,11 +92,23 @@ export class PurchaseCoordinator {
     return account?.id === id && account.role === 'cafe_owner_manager';
   }
 
-  private async reconcile(accountId: string, purchase: StorePurchase, attemptId?: string): Promise<PurchaseOutcome> {
+  private async reconcile(accountId: string, purchase: StorePurchase, attemptId?: string, refreshCompletedGoogle = false): Promise<PurchaseOutcome> {
     // A newer signed proof for the same transaction may report revocation.
     // Suppress identical event delivery, never a changed provider confirmation.
     const key = `${accountId}:${purchase.provider}:${purchase.id}:${purchase.proof}`;
     if (this.completed.has(key)) {
+      if (refreshCompletedGoogle && purchase.provider === 'google') {
+        // An explicit Restore must check the provider again even when the same
+        // token was finished on this screen. Callback deduplication must not
+        // hide a renewal or revocation while RTDN is delayed. This purchase was
+        // already finished successfully; do not finish it a second time.
+        try {
+          const subscription = checkedStatus(await this.deps.verify(accountId, purchase, attemptId), accountId);
+          if (!await this.sameCafe(accountId)) return { kind: 'account_changed' };
+          if (['pending', 'payment_required'].includes(subscription.status)) return { kind: 'verification_pending' };
+          return { kind: 'verified', subscription };
+        } catch { return { kind: 'verification_pending' }; }
+      }
       const subscription = checkedStatus(await this.deps.status(accountId), accountId);
       return await this.sameCafe(accountId) ? { kind: 'verified', subscription } : { kind: 'account_changed' };
     }
@@ -161,7 +207,7 @@ export class PurchaseCoordinator {
         if (!await this.sameCafe(account.id)) return { kind: 'account_changed' };
         // Backend must reject a receipt belonging to a different BaristaMatch
         // account; restoration is never permission to transfer ownership.
-        const result = await this.reconcile(account.id, purchase);
+        const result = await this.reconcile(account.id, purchase, undefined, true);
         if (result.kind !== 'verified') return result;
       }
       const subscription = checkedStatus(await this.deps.status(account.id), account.id);

@@ -1,0 +1,9 @@
+{
+  "scope": "LOCAL MCP PACKAGING ONLY; NOT HOSTED EXECUTION",
+  "standaloneSourceSha256": "c2101c477ed064daebec4ba2a4ea39a00ab3459c6801c87f97b3e13696439716",
+  "mcpPayloadSha256": "11257763382ba2c4769d0f32567ae249a79ef3fa2a2a21e35eb3b62fc8b94d19",
+  "topLevelStatements": 1,
+  "topLevelTransactionControl": false,
+  "transformation": "Only top-level BEGIN/COMMIT removed; every other original source byte preserved inside uniquely dollar-quoted EXECUTE.",
+  "timeouts": "lock_timeout remains3s; inner statement_timeout20s is not claimed to bound the already running outer DO/Management API operation."
+}

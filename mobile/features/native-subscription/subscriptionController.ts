@@ -1,4 +1,4 @@
-import { PurchaseCoordinator, purchaseIsBlocked, type BillingProvider, type PurchaseDependencies, type PurchaseOutcome, type StoreProduct, type StorePurchase, type VerifiedSubscription } from './purchaseCoordinator';
+import { PurchaseCoordinator, purchaseIsBlocked, reviewerAccess, reviewerExpiryTimer, androidGoogleAccessDeadline, androidGoogleAccessNeedsConfirmation, type BillingProvider, type PurchaseDependencies, type PurchaseOutcome, type StoreProduct, type StorePurchase, type VerifiedSubscription } from './purchaseCoordinator';
 import { checkedSubscription, nativePurchaseDependencies, type BillingTransport, type PurchaseStore } from './nativeBillingClient';
 
 export type SubscriptionStore = PurchaseStore & {
@@ -13,10 +13,13 @@ export type SubscriptionViewState = {
   busy: boolean;
   error: string;
   notice: string;
+  googleAccessNeedsConfirmation?: boolean;
 };
 export const initialSubscriptionState: SubscriptionViewState = { subscription: null, product: null, busy: false, error: '', notice: '' };
 type Dependencies = {
   accountId: string;
+  platform?: string;
+  reviewAccessEnabled?: boolean;
   account: PurchaseDependencies['account'];
   call: BillingTransport;
   store: SubscriptionStore | null;
@@ -32,8 +35,14 @@ export class SubscriptionController {
   private running = false;
   private queued = new Map<string, StorePurchase>();
   private coordinator: PurchaseCoordinator | null;
+  private reviewAccessEnabled: boolean;
+  private cancelReviewExpiry: () => void = () => {};
+  private cancelGoogleExpiry: () => void = () => {};
+  private googleRefreshPending = false;
   constructor(private deps: Dependencies) {
+    this.reviewAccessEnabled = deps.platform === 'android' && deps.reviewAccessEnabled === true;
     this.coordinator = deps.store ? new PurchaseCoordinator(nativePurchaseDependencies({ ...deps, store: deps.store,
+      reviewAccessEnabled: this.reviewAccessEnabled,
       account: async () => {
         const current = await deps.account();
         return !this.disposed && current?.id === deps.accountId ? current : null;
@@ -45,19 +54,77 @@ export class SubscriptionController {
     this.state = { ...this.state, ...patch };
     this.deps.changed(this.state);
   }
+  private reviewNotice(subscription: VerifiedSubscription) {
+    if (!this.reviewAccessEnabled || subscription.reviewAccess === undefined) return null;
+    return reviewerAccess(subscription, true) ? 'Reviewer Pro access is confirmed. No payment is required.'
+      : 'Reviewer access has ended. Refresh your status to check current access.';
+  }
+  private scheduleReviewExpiry(subscription: VerifiedSubscription) {
+    this.cancelReviewExpiry();
+    this.cancelReviewExpiry = () => {};
+    const grant = reviewerAccess(subscription, this.reviewAccessEnabled);
+    if (!grant) return;
+    this.cancelReviewExpiry = reviewerExpiryTimer(grant.expiresAt, () => {
+      void this.expiredReviewAccess(grant.expiresAt);
+    });
+  }
+  private async expiredReviewAccess(expiresAt: string) {
+    const stillExpired = () => !this.disposed && this.state.subscription?.accountId === this.deps.accountId
+      && this.state.subscription.reviewAccess?.expiresAt === expiresAt && Date.parse(expiresAt) <= Date.now();
+    try {
+      if (!await this.accountIsCurrent() || !stillExpired()) return;
+      this.publish({ product: null, notice: 'Reviewer access has ended. Refresh your status to check current access.' });
+      await this.load();
+    } catch {
+      if (stillExpired()) this.publish({ product: null, notice: 'Reviewer access has ended. Refresh your status to check current access.',
+        error: 'We could not confirm current access. Check your connection and try again.' });
+    }
+  }
+  private scheduleGoogleExpiry(subscription: VerifiedSubscription) {
+    this.cancelGoogleExpiry();
+    this.cancelGoogleExpiry = () => {};
+    const end = androidGoogleAccessDeadline(subscription, this.deps.platform);
+    const needsConfirmation = androidGoogleAccessNeedsConfirmation(subscription, this.deps.platform);
+    if (!needsConfirmation) this.googleRefreshPending = false;
+    this.publish({ googleAccessNeedsConfirmation: needsConfirmation, ...(needsConfirmation ? { product: null,
+      ...(this.state.notice.startsWith('Your Pro access is ') ? { notice: '' } : {}) } : {}) });
+    // A newly fetched overdue response remains unconfirmed; do not loop requests
+    // or infer that an automatically renewing subscription has actually renewed.
+    if (!end || needsConfirmation) return;
+    this.cancelGoogleExpiry = reviewerExpiryTimer(end, () => {
+      if (this.disposed || this.state.subscription !== subscription
+        || !androidGoogleAccessNeedsConfirmation(subscription, this.deps.platform)) return;
+      this.publish({ googleAccessNeedsConfirmation: true, product: null,
+        ...(this.state.notice.startsWith('Your Pro access is ') ? { notice: '' } : {}) });
+      if (this.running) this.googleRefreshPending = true;
+      else void this.load();
+    });
+  }
   private async accountIsCurrent() {
     const account = await this.deps.account();
     if (this.disposed) return false;
     if (account?.id === this.deps.accountId && account.role === 'cafe_owner_manager') return true;
-    this.publish({ subscription: null, product: null, error: '', notice: '' });
+    this.cancelReviewExpiry();
+    this.cancelGoogleExpiry();
+    this.googleRefreshPending = false;
+    this.publish({ subscription: null, product: null, error: '', notice: '', googleAccessNeedsConfirmation: false });
     this.deps.accountChanged();
     return false;
   }
   private async status() {
     const value = await this.deps.call('/native-billing?action=status', {}, 'GET', this.deps.accountId);
-    const subscription = checkedSubscription(value, this.deps.accountId);
+    const subscription = checkedSubscription(value, this.deps.accountId, this.reviewAccessEnabled);
     if (!await this.accountIsCurrent()) throw new Error('Account changed');
-    this.publish({ subscription });
+    // Management can finish while foreground loading is still locked. Do not
+    // retain a Google purchase success notice after Android confirms lost access.
+    const clearGoogleConfirmation = this.deps.platform === 'android'
+      && this.state.subscription?.provider === 'google' && this.state.subscription.access === 'pro'
+      && subscription.access !== 'pro' && this.state.notice === 'Your Pro access is confirmed.';
+    const clearReviewConfirmation = this.reviewAccessEnabled && this.state.subscription?.reviewAccess !== undefined
+      && !reviewerAccess(subscription, this.reviewAccessEnabled) && this.state.notice.startsWith('Reviewer ');
+    this.publish({ subscription, ...(clearGoogleConfirmation || clearReviewConfirmation ? { notice: '' } : {}) });
+    this.scheduleReviewExpiry(subscription);
+    this.scheduleGoogleExpiry(subscription);
     return subscription;
   }
   private async run(work: () => Promise<void>) {
@@ -76,6 +143,9 @@ export class SubscriptionController {
       if (!this.disposed && !first.done) {
         this.queued.delete(first.value[0]);
         void this.recover(first.value[1]);
+      } else if (!this.disposed && this.googleRefreshPending) {
+        this.googleRefreshPending = false;
+        void this.load();
       }
     }
   }
@@ -84,7 +154,8 @@ export class SubscriptionController {
       const subscription = await this.status();
       this.publish({ notice: '', product: null });
       if (!this.deps.store) {
-        this.publish({ notice: 'New in-app subscriptions are not available on this device yet. Your existing subscription access is unchanged.' });
+        this.publish({ notice: this.reviewNotice(subscription)
+          || 'New in-app subscriptions are not available on this device yet. Your existing subscription access is unchanged.' });
         return;
       }
       try {
@@ -107,10 +178,13 @@ export class SubscriptionController {
   private async accept(result: PurchaseOutcome, restore = false) {
     if (!await this.accountIsCurrent()) return;
     if (result.kind === 'verified' || result.kind === 'blocked') {
-      this.publish({ subscription: result.subscription, error: '', notice: result.subscription.status === 'pending'
+      this.publish({ subscription: result.subscription, error: '', notice: this.reviewNotice(result.subscription)
+        || (result.subscription.status === 'pending'
         ? 'A purchase is still pending. Use Restore purchases to check it, or contact support if it remains pending.'
         : result.subscription.access === 'pro' ? 'Your Pro access is confirmed.'
-          : restore ? 'No active in-app subscription was confirmed for this BaristaMatch account.' : 'Review your current subscription before purchasing.' });
+          : restore ? 'No active in-app subscription was confirmed for this BaristaMatch account.' : 'Review your current subscription before purchasing.') });
+      this.scheduleReviewExpiry(result.subscription);
+      this.scheduleGoogleExpiry(result.subscription);
     } else if (result.kind === 'account_changed') {
       this.publish({ subscription: null, product: null }); this.deps.accountChanged();
     } else if (result.kind === 'cancelled') {
@@ -122,14 +196,17 @@ export class SubscriptionController {
   private async refreshOutcome(result: PurchaseOutcome) {
     const subscription = await this.status();
     if (subscription.access === 'pro' && ['pending', 'verification_pending', 'failed'].includes(result.kind)) {
-      this.publish({ notice: subscription.provider === 'stripe' && result.kind === 'verification_pending'
+      const reviewNotice = this.reviewNotice(subscription);
+      this.publish({ notice: reviewNotice
+        ? `${reviewNotice} We could not finish checking this store purchase. Use Restore purchases to retry if needed.`
+        : subscription.provider === 'stripe' && result.kind === 'verification_pending'
         ? 'Your website subscription is active. We could not finish restoring this in-app purchase. Use the BaristaMatch account originally used for the purchase. If this is that account, try again or contact support.'
         : 'Your Pro access is active. We could not finish checking this purchase. Complete any store sign-in, then use Restore purchases to retry if needed.' });
     }
   }
   async buy() {
     return this.run(async () => {
-      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error) return;
+      if (!this.coordinator || !this.state.product || !this.state.subscription || this.state.error || this.state.googleAccessNeedsConfirmation) return;
       const resume = this.state.subscription.canResumeAppleCheckout === true && this.state.product.provider === 'apple';
       if (purchaseIsBlocked(this.state.subscription) && !resume) return;
       const result = resume ? await this.coordinator.resume(this.state.product) : await this.coordinator.buy(this.state.product);
@@ -141,9 +218,32 @@ export class SubscriptionController {
   async restore() {
     return this.run(async () => {
       if (!this.coordinator) return;
+      const refreshAndroidPrice = this.deps.platform === 'android' && !this.state.product
+        && !!this.state.subscription && purchaseIsBlocked(this.state.subscription);
       const result = await this.coordinator.restore();
       await this.accept(result, true);
       await this.refreshOutcome(result);
+      const subscription = this.state.subscription;
+      // A verified Restore can remove an old Google billing block. Load the
+      // price under this existing action lock; never start another checkout.
+      if (refreshAndroidPrice && result.kind === 'verified' && this.deps.store
+        && subscription?.provider === 'google' && !purchaseIsBlocked(subscription)
+        && !this.state.googleAccessNeedsConfirmation && await this.accountIsCurrent()) {
+        try {
+          const product = await this.deps.store.product();
+          if (await this.accountIsCurrent() && this.state.subscription
+            && !purchaseIsBlocked(this.state.subscription) && !this.state.googleAccessNeedsConfirmation) this.publish({ product });
+        } catch (cause) {
+          if (await this.accountIsCurrent()) {
+            const reason = (cause as { reason?: string } | null)?.reason;
+            this.publish({ error: reason === 'outside_us'
+              ? 'New subscriptions are available only through the United States store. You can still restore or manage an existing purchase.'
+              : reason === 'terms_review'
+              ? 'The store returned subscription terms that need review. Purchases are unavailable for now. Try again later or contact support. Your existing access is unchanged.'
+              : 'We could not load the current U.S. store price. Check your store account and connection, then try again.' });
+          }
+        }
+      }
     });
   }
   async recover(purchase: StorePurchase) {
@@ -170,6 +270,9 @@ export class SubscriptionController {
   }
   dispose() {
     this.disposed = true;
+    this.cancelReviewExpiry();
+    this.cancelGoogleExpiry();
+    this.googleRefreshPending = false;
     this.queued.clear();
     void this.deps.store?.dispose().catch(() => {});
   }

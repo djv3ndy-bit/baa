@@ -7,10 +7,14 @@ import { CafeAccessCheck } from '../../components/CafeAccessCheck';
 import { useCafeAccess } from '../../lib/useCafeAccess';
 import { getCurrentContext } from '../../lib/session';
 import { authenticatedApi, requireAccountSession } from '../../lib/api';
+import { privacyPolicyUrl, termsOfServiceUrl } from '../../lib/legalLinks';
+import { authenticatedNativeBillingApi } from '../../lib/nativeBillingApi';
 import { SubscriptionPanel } from './SubscriptionPanel';
 import { SubscriptionController, initialSubscriptionState, type SubscriptionStore } from './subscriptionController';
 import type { StorePurchase } from './purchaseCoordinator';
 import { dashboardTheme } from '../approved-dashboard/theme';
+import { getAppEnvironment } from '../review-mode/environment';
+import { androidReviewerAccessEnabled } from './nativeBillingClient';
 
 export type CreateSubscriptionStore = (onUnfinished: (purchase: StorePurchase) => void) => SubscriptionStore | null;
 export default function NativeSubscriptionScreen({ createStore }: { createStore: CreateSubscriptionStore }) {
@@ -20,6 +24,7 @@ export default function NativeSubscriptionScreen({ createStore }: { createStore:
 }
 
 function AccountSubscription({ accountId, createStore }: { accountId: string; createStore: CreateSubscriptionStore }) {
+  const reviewAccessEnabled = Platform.OS === 'android' && androidReviewerAccessEnabled(Platform.OS, getAppEnvironment());
   const [state, setState] = useState(initialSubscriptionState);
   const [hasStore, setHasStore] = useState(false);
   const controller = useRef<SubscriptionController | null>(null);
@@ -30,7 +35,7 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     catch { /* Installed native module not available: status/management still work. */ }
     setHasStore(!!store);
     const current = new SubscriptionController({
-      accountId, store, call: authenticatedApi,
+      accountId, platform: Platform.OS, reviewAccessEnabled, store, call: authenticatedNativeBillingApi,
       account: async () => {
         const context = await getCurrentContext();
         return live && context.user && context.role ? { id: context.user.id, role: context.role } : null;
@@ -59,14 +64,14 @@ function AccountSubscription({ accountId, createStore }: { accountId: string; cr
     void current.load();
     const foreground = AppState.addEventListener('change', value => { if (value === 'active') void current.load(); });
     return () => { live = false; foreground.remove(); current.dispose(); controller.current = null; };
-  }, [accountId, createStore]));
+  }, [accountId, createStore, reviewAccessEnabled]));
   const openLegal = (page: 'terms' | 'privacy') => {
-    void Linking.openURL(`https://www.baristajobmatch.com/${page}.html`).catch(() => {
+    void Linking.openURL(page === 'privacy' ? privacyPolicyUrl() : termsOfServiceUrl()).catch(() => {
       Alert.alert('Could not open this page', 'Check your connection and try again.');
     });
   };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dashboardTheme.background }} edges={Platform.OS === 'android' ? [] : ['top', 'right', 'bottom', 'left']}>
-    <SubscriptionPanel role="cafe_owner_manager" {...state} canRestore={hasStore}
+    <SubscriptionPanel role="cafe_owner_manager" {...state} platform={Platform.OS} canRestore={hasStore} reviewAccessEnabled={reviewAccessEnabled}
       onBack={() => router.canGoBack() ? router.back() : router.replace('/settings')}
       onBuy={() => { void controller.current?.buy(); }} onRestore={() => { void controller.current?.restore(); }}
       onManage={provider => { void controller.current?.manage(provider); }} onRetry={() => { void controller.current?.load(); }}

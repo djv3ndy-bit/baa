@@ -33,17 +33,22 @@ export function createReconciler({ repository, providers, environment, maxAttemp
       // to buy again; the next attempt checks the provider's ack status afresh.
       if (status.needsAcknowledgement) {
         check(typeof adapter.acknowledge === 'function', 'ACKNOWLEDGEMENT_UNAVAILABLE');
-        await adapter.acknowledge(proof);
+        // Only the opt-in Google adapter receives its freshly verified context.
+        // No global purchase-token cache and no change to ordinary ACK calls.
+        if (provider === 'google' && status.googleQaPredecessor) await adapter.acknowledge(proof, status);
+        else await adapter.acknowledge(proof);
       }
       return status;
     }
     throw new PurchaseVerificationError('RECONCILIATION_BUSY');
   }
 
-  async function notification({ provider, eventId, proof, payload, test = false }) {
+  async function notification({ provider, eventId, proof, payload, test = false, ignored = null }) {
     check(Object.hasOwn(providers, provider), 'PROVIDER_UNAVAILABLE');
     check(typeof eventId === 'string' && eventId.length > 0 && eventId.length <= 255, 'INVALID_EVENT');
     check(typeof payload === 'string' && payload.length > 0 && payload.length <= 262_144, 'INVALID_EVENT');
+    check(ignored === null || (provider === 'google' && ignored === 'google-one-time-voided-purchase'
+      && !test && proof == null), 'INVALID_EVENT');
     const claimId = randomUUID();
     const key = { provider, environment, eventId, claimId };
     const claim = await repository.claimEvent({ ...key, payloadHash: createHash('sha256').update(payload).digest('hex') });
@@ -51,10 +56,11 @@ export function createReconciler({ repository, providers, environment, maxAttemp
     check(claim === 'claimed', 'EVENT_BUSY');
     try {
       // Callers must verify the signature/OIDC identity before invoking this
-      // function. A provider test notification never grants subscription access.
-      const status = test ? null : await reconcile({ provider, proof });
+      // function. Provider tests and validated out-of-scope Google one-time
+      // voids still use event deduplication, but never touch subscriptions.
+      const status = test || ignored ? null : await reconcile({ provider, proof });
       check(await repository.finishEvent({ ...key, success: true }), 'EVENT_LEASE_EXPIRED');
-      return { kind: 'processed', status };
+      return { kind: ignored ? 'ignored' : 'processed', status };
     } catch (error) {
       try { await repository.finishEvent({ ...key, success: false }); } catch { /* Lease expiry also permits a provider retry. */ }
       throw error;
