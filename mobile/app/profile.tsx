@@ -22,8 +22,8 @@ import { needsMediaLibraryPermission, normalizeOptionalGender, buildProfileUpdat
 import { getCurrentContext, requireCurrentUser, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import {
-  floridaCityFromLocation,
-} from "@/lib/floridaLocation";
+  cityFromUSLocation, normalizeUSLocation, parseUSLocation,
+} from "@/lib/usLocation";
 
 const PREFERENCES = [
   "Warm customer service",
@@ -121,6 +121,7 @@ export default function Profile() {
     [role, setRole] = useState<AppRole>("barista"),
     [saving, setSaving] = useState(false),
     [locationCity, setLocationCity] = useState(""),
+    [locationState, setLocationState] = useState(""),
     [openHours, setOpenHours] = useState<OpenHours>({}),
     [availability, setAvailability] = useState<string[]>([]),
     [availabilityNotes, setAvailabilityNotes] = useState(""),
@@ -140,8 +141,11 @@ export default function Profile() {
     return () => { active.current = false; generation.current += 1; };
   }, []));
   function restoreDraft(saved: any) {
-    setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: floridaCityFromLocation(saved.preferred_city) });
-    setLocationCity(floridaCityFromLocation(saved.location));
+    const home = parseUSLocation(saved.location, "FL");
+    const preferred = normalizeUSLocation(saved.preferred_city, saved.preferred_state || home?.state);
+    setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: preferred ? cityFromUSLocation(preferred) : String(saved.preferred_city || "") });
+    setLocationCity(cityFromUSLocation(saved.location));
+    setLocationState(parseUSLocation(saved.location, "FL")?.state || "");
     setOpenHours(parseOpeningHours(saved.open_hours));
     const value = parseAvailability(saved.availability);
     setAvailability(value.selected);
@@ -303,7 +307,7 @@ export default function Profile() {
     // Capture every draft field before uploads; no asynchronous step reads a newer draft.
     let payload: Record<string, any>;
     try {
-      payload = buildProfileUpdate(profile, role, { locationCity, availability: [...availability], availabilityNotes, openHours: formatOpeningHours({ ...openHours }) });
+      payload = buildProfileUpdate(profile, role, { locationCity, locationState, availability: [...availability], availabilityNotes, openHours: formatOpeningHours({ ...openHours }) });
     } catch (error: any) {
       return Alert.alert("Check your profile", error.message);
     }
@@ -458,10 +462,11 @@ export default function Profile() {
               placeholder="Miami"
             />
             <Field
-              label="State"
-              value="Florida (FL)"
-              onChange={() => {}}
-              editable={false}
+              label="State (two-letter code)"
+              value={locationState}
+              onChange={(value) => setLocationState(value.toUpperCase().slice(0, 2))}
+              placeholder="FL, NY, CA…"
+              editable={!saving}
             />
             {isBarista ? (
               <View style={s.privateCard}>
@@ -501,10 +506,11 @@ export default function Profile() {
                   placeholder={locationCity || "Miami"}
                 />
                 <Field
-                  label="Preferred work state"
-                  value="Florida (FL)"
-                  onChange={() => {}}
-                  editable={false}
+                  label="Preferred work state (two-letter code)"
+                  value={profile.preferred_state || ""}
+                  onChange={(value) => set("preferred_state", value.toUpperCase().slice(0, 2))}
+                  placeholder={locationState || "FL"}
+                  editable={!saving}
                 />
                 <Field
               editable={!saving}
@@ -512,7 +518,7 @@ export default function Profile() {
                   value={profile.preferred_postal_code || ""}
                   onChange={(v) => set("preferred_postal_code", v)}
                 />
-                <Text style={s.privateHelp}>Discovery uses your saved city and optional exact ZIP code. Distance-based searching is not available yet.</Text>
+                <Text style={s.privateHelp}>Discovery uses your saved city and state, or your optional exact ZIP code in that state. Distance-based searching is not available yet.</Text>
               </>
             ) : null}
             <Field

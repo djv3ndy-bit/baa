@@ -301,10 +301,11 @@ test('profile completion after leaving the screen cannot replace another screen 
   assert.equal(ui.routes.length, 0); assert.equal(ui.alerts.length, 0);
 });
 
-function fillSignup(ui) {
-  ui.nodes().find(node => node.type === 'Pressable' && node.props.children?.props?.children === '☕ Barista').props.onPress(); ui.render();
-  ui.nodes().find(node => node.props.placeholder === 'Your full name').props.onChangeText('Sample Person');
-  ui.nodes().find(node => node.props.accessibilityLabel === 'City').props.onChangeText('Miami');
+function fillSignup(ui, { city = 'Miami', state = 'FL', role = 'barista' } = {}) {
+  ui.nodes().find(node => node.type === 'Pressable' && node.props.children?.props?.children === (role === 'barista' ? '☕ Barista' : '🏪 Café')).props.onPress(); ui.render();
+  ui.nodes().find(node => node.props.placeholder === (role === 'barista' ? 'Your full name' : 'Your café name')).props.onChangeText('Sample Person');
+  ui.nodes().find(node => node.props.accessibilityLabel === 'City').props.onChangeText(city);
+  ui.nodes().find(node => node.props.accessibilityLabel === 'State (two-letter code)').props.onChangeText(state);
   const email = ui.nodes().find(node => node.props.placeholder === 'you@example.com');
   if (email) {
     email.props.onChangeText('sample@example.invalid');
@@ -451,4 +452,33 @@ test('immediate-session signup records the saved role and navigates even while t
   assert.deepEqual(writes, [{ user_id: user.id, event_name: 'signup_completed', metadata: { surface: 'mobile', role: 'barista' } }]);
   gate.reject(new Error('offline')); await flush();
   assert.equal(ui.alerts.length, 0);
+});
+
+
+test('actual signup saves the selected city and state for both roles across all 50 states and DC', async () => {
+  const states = Object.keys(compile('lib/usLocation.ts').US_STATES);
+  for (const role of ['barista', 'cafe_owner_manager']) for (const state of states) {
+    const calls = [];
+    const client = { auth: { getSession: async () => ({ data: { session: null }, error: null }), signUp: async payload => { calls.push(plain(payload)); return { data: { user: { id: 'synthetic-user' }, session: null }, error: null }; } } };
+    const ui = screen('app/signup.tsx', { client }); await flush(); ui.render();
+    const city = state === 'NM' ? 'Santa Fe' : state === 'CA' ? 'Rancho Santa Fe' : 'Example City';
+    fillSignup(ui, { city, state: state.toLowerCase(), role });
+    await ui.button('Create account').props.onPress();
+    assert.equal(calls.length, 1, `${role}/${state}: signup runs`);
+    assert.equal(calls[0].options.data.location, `${city}, ${state}`);
+    assert.equal(calls[0].options.data.role, role);
+    assert.equal(ui.routes.at(-1).pathname, '/verify-email');
+  }
+});
+
+test('actual signup rejects missing, unsupported and conflicting states before auth calls', async () => {
+  for (const [city, state] of [['Seattle', ''], ['Seattle', 'ZZ'], ['San Juan', 'PR'], ['Miami, FL', 'NY']]) {
+    let signups = 0;
+    const client = { auth: { getSession: async () => ({ data: { session: null }, error: null }), signUp: async () => { signups++; } } };
+    const ui = screen('app/signup.tsx', { client }); await flush(); ui.render(); fillSignup(ui, { city, state });
+    await ui.button('Create account').props.onPress(); ui.render();
+    assert.equal(signups, 0); assert.equal(ui.alerts.at(-1)[0], 'City and state required');
+    assert.equal(ui.nodes().find(node => node.props.accessibilityLabel === 'City').props.value, city);
+    assert.equal(ui.nodes().find(node => node.props.accessibilityLabel === 'State (two-letter code)').props.value, state);
+  }
 });

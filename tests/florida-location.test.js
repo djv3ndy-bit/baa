@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  floridaCityFromLocation,
-  normalizeFloridaLocation,
-} from "../mobile/lib/floridaLocation.ts";
+import { readFileSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
+import vm from 'node:vm';
+import * as location from '../mobile/lib/usLocation.ts';
+// The launch workflow intentionally runs these JS tests without mobile dependencies.
+const source = readFileSync(new URL('../mobile/lib/floridaLocation.ts', import.meta.url), 'utf8');
+const code = stripTypeScriptTypes(source.replace(/^import .*$/gm, '').replace(/^export /gm, ''));
+const { floridaCityFromLocation, normalizeFloridaLocation } = vm.runInNewContext(code + '\n;({ floridaCityFromLocation, normalizeFloridaLocation })', { ...location });
 
 test("accepts a city without requiring the user to type the state", () => {
   assert.equal(normalizeFloridaLocation("Miami"), "Miami, FL");

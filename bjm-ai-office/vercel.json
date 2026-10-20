@@ -19,7 +19,8 @@
   },
   "git": {
     "deploymentEnabled": {
-      "fix/activation-analytics-confirmed-signup": false
+      "fix/activation-analytics-confirmed-signup": false,
+      "fix/android-nationwide-release-prep": false
     }
   }
 }

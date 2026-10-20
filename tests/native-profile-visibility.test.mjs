@@ -10,7 +10,7 @@ function compile(file, mocks = {}) {
   const load = name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name === '@/lib/dashboardPrism') return compile('lib/dashboardPrism.ts');
-    if (name === './floridaLocation') return compile('lib/floridaLocation.ts');
+    if (name === './usLocation') return compile('lib/usLocation.ts');
     throw new Error(`Unmocked import ${name}`);
   };
   vm.runInNewContext(code, { exports, require: load, Date, Math, Error, setTimeout, clearTimeout }, { filename: file });
@@ -23,7 +23,7 @@ const cafe = { id: 'user-a', role: 'cafe_owner_manager', cafe_name: 'Sample CafÃ
 const flush = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
-function profileEditor(initial, { serverFields = {}, gate } = {}) {
+function profileEditor(initial, { serverFields = {}, gate, saveError } = {}) {
   let saved = { ...initial }, tree, cursor = 0, refCursor = 0, effectCursor = 0;
   const states = [], refs = [], effects = [], writes = [], alerts = [];
   const jsx = (type, props) => ({ type, props: props || {} });
@@ -36,14 +36,14 @@ function profileEditor(initial, { serverFields = {}, gate } = {}) {
   const client = { from(table) { return {
     select() { return this; }, eq() { return this; }, maybeSingle: async () => ({ data: table === 'profile_demographics' ? { date_of_birth: saved.date_of_birth, gender_identity: saved.gender_identity } : saved, error: null }),
     upsert: async () => ({ error: null }),
-    update(payload) { const snapshot = { ...payload }; return { eq: () => ({ select: () => ({ single: async () => { writes.push(snapshot); if (gate) await gate.promise; saved = { ...saved, ...snapshot, ...serverFields }; return { data: saved, error: null }; } }) }) }; },
+    update(payload) { const snapshot = { ...payload }; return { eq: () => ({ select: () => ({ single: async () => { writes.push(snapshot); if (gate) await gate.promise; const error = saveError?.(); if (error) return { data: null, error }; saved = { ...saved, ...snapshot, ...serverFields }; return { data: saved, error: null }; } }) }) }; },
   }; } };
   const component = compile('app/profile.tsx', {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
     'react-native': new Proxy({ StyleSheet: { create: value => value }, Platform: { OS: 'ios' }, Alert: { alert: (...args) => alerts.push(args) } }, { get: (target, key) => target[key] || key }),
     'expo-router': { router: { replace() {}, push() {} }, useFocusEffect: react.useEffect },
     'expo-image-picker': {}, '@/components/AppBottomNav': { AppBottomNav: 'AppBottomNav' }, '@/lib/supabase': { supabase: client },
-    '@/lib/profilePrivacy': privacy, '@/lib/floridaLocation': compile('lib/floridaLocation.ts'),
+    '@/lib/profilePrivacy': privacy, '@/lib/usLocation': compile('lib/usLocation.ts'),
     '@/lib/session': { getCurrentContext: async () => ({ user: { id: saved.id }, role: saved.role, profile: saved }), requireCurrentUser: async () => ({ id: saved.id }) },
   }).default;
   function render() { cursor = refCursor = effectCursor = 0; tree = component(); }
@@ -117,4 +117,73 @@ test('an opt-in never makes incomplete or suspended profiles discoverable and ge
     assert.equal(payload.is_discoverable, true); assert.equal(payload.visible_to_cafes, true);
     assert.equal('gender_identity' in payload, false);
   }
+});
+
+
+test('actual profile editors save explicit home states for both roles in all 50 states and DC', async () => {
+  for (const initial of [barista, cafe]) for (const state of Object.keys(compile('lib/usLocation.ts').US_STATES)) {
+    const ui = profileEditor(initial); await ui.open();
+    ui.nodes().find(node => node.props.label === 'City').props.onChange('Example City');
+    ui.nodes().find(node => node.props.label === 'State (two-letter code)').props.onChange(state.toLowerCase());
+    if (initial.role === 'barista') {
+      ui.nodes().find(node => node.props.label === 'Preferred work city (optional)').props.onChange('Work City');
+      ui.nodes().find(node => node.props.label === 'Preferred work state (two-letter code)').props.onChange(state.toLowerCase());
+    }
+    ui.render(); await ui.save();
+    assert.equal(ui.writes.length, 1, `${initial.role}/${state}: profile saves`);
+    assert.equal(ui.writes[0].location, `Example City, ${state}`);
+    if (initial.role === 'barista') {
+      assert.equal(ui.writes[0].preferred_city, 'Work City');
+      assert.equal(ui.writes[0].preferred_state, state);
+    }
+  }
+});
+
+test('profile Cancel restores saved home and independent preferred states, including after reopening', async () => {
+  const ui = profileEditor({ ...barista, location: 'Portland, OR', preferred_city: 'Portland', preferred_state: 'ME', preferred_postal_code: '04101' });
+  await ui.open();
+  const field = label => ui.nodes().find(node => node.props.label === label);
+  assert.equal(field('State (two-letter code)').props.value, 'OR');
+  assert.equal(field('Preferred work state (two-letter code)').props.value, 'ME');
+  field('State (two-letter code)').props.onChange('WA');
+  field('Preferred work state (two-letter code)').props.onChange('NY');
+  ui.render(); ui.button('Cancel').props.onPress(); ui.render(); ui.button('Edit profile').props.onPress(); ui.render();
+  assert.equal(field('State (two-letter code)').props.value, 'OR');
+  assert.equal(field('Preferred work state (two-letter code)').props.value, 'ME');
+  assert.equal(field('Preferred ZIP code').props.value, '04101');
+  assert.equal(ui.writes.length, 0);
+});
+
+
+test('reopening and saving a profile preserves structured work cities that contain state names', async () => {
+  for (const [city, state] of [['Port Washington', 'NY'], ['West New York', 'NJ'], ['New York', 'NY'], ['Washington', 'DC'], ['Santa Fe', 'NM'], ['Rancho Santa Fe', 'CA']]) {
+    const ui = profileEditor({ ...barista, location: 'Miami, FL', preferred_city: city, preferred_state: state }); await ui.open();
+    assert.equal(ui.nodes().find(node => node.props.label === 'Preferred work city (optional)').props.value, city);
+    await ui.save();
+    assert.equal(ui.writes.length, 1);
+    assert.equal(ui.writes[0].preferred_city, city); assert.equal(ui.writes[0].preferred_state, state);
+    ui.button('Edit profile').props.onPress(); ui.render();
+    assert.equal(ui.nodes().find(node => node.props.label === 'Preferred work city (optional)').props.value, city);
+  }
+});
+
+
+test('failed native profile saves retain both non-Florida states for a successful retry', async () => {
+  let fail = true;
+  const ui = profileEditor({ ...barista, location: 'Portland, OR', preferred_city: 'Portland', preferred_state: 'ME', preferred_postal_code: '04101' }, { saveError: () => fail ? new Error('offline') : null });
+  await ui.open();
+  const field = label => ui.nodes().find(node => node.props.label === label);
+  field('State (two-letter code)').props.onChange('WA');
+  field('Preferred work city (optional)').props.onChange('Santa Fe');
+  field('Preferred work state (two-letter code)').props.onChange('NM');
+  field('Preferred ZIP code').props.onChange('87501'); ui.render();
+  await ui.save();
+  assert.equal(ui.alerts.at(-1)[0], 'Could not finish saving');
+  assert.equal(field('State (two-letter code)').props.value, 'WA');
+  assert.equal(field('Preferred work state (two-letter code)').props.value, 'NM');
+  assert.equal(field('Preferred work city (optional)').props.value, 'Santa Fe');
+  fail = false; await ui.save();
+  assert.equal(ui.writes.length, 2);
+  assert.deepEqual(ui.writes[1], ui.writes[0]);
+  assert.equal(ui.writes[1].location, 'Portland, WA'); assert.equal(ui.writes[1].preferred_state, 'NM');
 });

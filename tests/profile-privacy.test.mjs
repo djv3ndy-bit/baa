@@ -6,10 +6,10 @@ import vm from 'node:vm';
 const locationWindow = {};
 vm.runInNewContext(readFileSync(new URL('../us-location.js', import.meta.url), 'utf8'), { window: locationWindow });
 
-import { floridaCityFromLocation, normalizeFloridaLocation } from '../mobile/lib/floridaLocation.ts';
+import * as usLocation from '../mobile/lib/usLocation.ts';
 const privacySource = readFileSync(new URL('../mobile/lib/profilePrivacy.ts', import.meta.url), 'utf8');
 const privacyCode = stripTypeScriptTypes(privacySource.replace(/^import .*$/gm, '').replace(/^export /gm, ''));
-const { normalizeOptionalGender, needsMediaLibraryPermission } = vm.runInNewContext(privacyCode + '\n;({ normalizeOptionalGender, needsMediaLibraryPermission })', { floridaCityFromLocation, normalizeFloridaLocation, Date });
+const { normalizeOptionalGender, needsMediaLibraryPermission } = vm.runInNewContext(privacyCode + '\n;({ normalizeOptionalGender, needsMediaLibraryPermission })', { ...usLocation, Date });
 const read = name => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
 const native = read('mobile/app/profile.tsx');
 const web = read('dashboard.html');
