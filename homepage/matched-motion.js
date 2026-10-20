@@ -1,3 +1,5 @@
+import { listenMediaQuery } from './media-query.js';
+
 /** Motion confined to the existing homepage media; no layout or scroll ownership. */
 export async function createHomepageMotion({ media, photo, card, latteContainer, photoLayers = [] }) {
   if (!media?.style || !photo?.style) {
@@ -415,7 +417,7 @@ export async function createHomepageMotion({ media, photo, card, latteContainer,
   window.addEventListener('scroll', readScroll, { passive: true });
   window.addEventListener('resize', resize, { passive: true });
   document.addEventListener('visibilitychange', visibilityChange);
-  reduce.addEventListener('change', onReduce);
+  const stopReducedChanges = listenMediaQuery(reduce, onReduce);
   photo.addEventListener('load', replay);
   latteContainer?.addEventListener('coffee-scene-error', onCupLost);
   const intersection = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(([entry]) => {
@@ -448,7 +450,7 @@ export async function createHomepageMotion({ media, photo, card, latteContainer,
       window.removeEventListener('scroll', readScroll);
       window.removeEventListener('resize', resize);
       document.removeEventListener('visibilitychange', visibilityChange);
-      reduce.removeEventListener('change', onReduce);
+      stopReducedChanges();
       photo.removeEventListener('load', replay);
       latteContainer?.removeEventListener('coffee-scene-error', onCupLost);
       snapshots.forEach(({ element, styles }) => styles.forEach(([property, value, priority]) => {

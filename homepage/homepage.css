@@ -1,5 +1,13 @@
 /* Only index.html loads this file. */
 html { scroll-padding-top: 100px; }
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+/* Offscreen 3D panels must not create sideways page scrolling. */
+main { overflow-x: hidden; overflow-x: clip; }
+.site-header { padding-top: env(safe-area-inset-top, 0px); }
+footer { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
 [id="baristas"], [id="cafes"] { scroll-margin-top: 100px; }
 .role-card:focus-visible, button:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 3px solid var(--orange);
@@ -31,7 +39,8 @@ html { scroll-padding-top: 100px; }
   .mobile-menu { margin-left: 0; }
   .site-header.open .nav-links {
     top: 100%;
-    max-height: calc(100dvh - 110px);
+    max-height: calc(100vh - 110px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 110px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
   }
   .site-header.open .nav-links .header-actions {
@@ -39,6 +48,44 @@ html { scroll-padding-top: 100px; }
     padding-top: 12px;
     border-top: 1px solid var(--line);
   }
+}
+.dialog-body h2 { padding-right: 28px; }
+/* Keep portrait tablets spacious instead of squeezing desktop columns. */
+@media (min-width: 681px) and (max-width: 980px) {
+  .hero-inner { display: flex; flex-direction: column; min-height: 0; }
+  .hero-copy { display: contents; }
+  .hero h1 { order: 1; max-width: 760px; margin: 28px 0 16px; font-size: clamp(44px, 6.4vw, 60px); }
+  .hero h1 span { white-space: normal; }
+  .hero-copy > p { order: 2; max-width: 650px; margin: 0 0 20px; font-size: 25px; }
+  .hero-media { position: relative; inset: auto; order: 3; min-height: 0; height: 420px; margin: 0; }
+  .hero-media::before { background: linear-gradient(180deg, #fffdf9, transparent 22%); }
+  .role-grid { order: 4; width: 100%; max-width: none; margin: 20px 0 0; }
+  .homepage-motion-toggle { order: 5; }
+  .trust { order: 6; margin-top: 10px; }
+  .how-grid > div:first-child { padding-left: 0; }
+  .how-signoff { display: none; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px 24px; }
+  .footer-intro { grid-column: 1 / -1; }
+}
+/* Comfortable finger targets, including tablets with a connected trackpad. */
+@media (any-pointer: coarse), (max-width: 980px) {
+  .mobile-menu { width: 44px; height: 44px; min-width: 44px; flex-shrink: 0; }
+  .mobile-login, .header-actions .button, .resource-button,
+  .homepage-motion-toggle { min-height: 44px; }
+  .nav-links > a, .resource-popover a, .footer-links > a,
+  .choice > a, .dialog-option > a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .footer-links { gap: 4px; }
+  .socials a, .dialog-close { width: 44px; height: 44px; }
+}
+@media (max-width: 360px) {
+  .nav { gap: 6px; }
+  .brand { font-size: 18px; gap: 4px; }
+  .brand img { width: 28px; height: 28px; flex-shrink: 0; }
+  .mobile-login { font-size: 12px; padding-inline: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
