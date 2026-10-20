@@ -218,9 +218,32 @@ export class SubscriptionController {
   async restore() {
     return this.run(async () => {
       if (!this.coordinator) return;
+      const refreshAndroidPrice = this.deps.platform === 'android' && !this.state.product
+        && !!this.state.subscription && purchaseIsBlocked(this.state.subscription);
       const result = await this.coordinator.restore();
       await this.accept(result, true);
       await this.refreshOutcome(result);
+      const subscription = this.state.subscription;
+      // A verified Restore can remove an old Google billing block. Load the
+      // price under this existing action lock; never start another checkout.
+      if (refreshAndroidPrice && result.kind === 'verified' && this.deps.store
+        && subscription?.provider === 'google' && !purchaseIsBlocked(subscription)
+        && !this.state.googleAccessNeedsConfirmation && await this.accountIsCurrent()) {
+        try {
+          const product = await this.deps.store.product();
+          if (await this.accountIsCurrent() && this.state.subscription
+            && !purchaseIsBlocked(this.state.subscription) && !this.state.googleAccessNeedsConfirmation) this.publish({ product });
+        } catch (cause) {
+          if (await this.accountIsCurrent()) {
+            const reason = (cause as { reason?: string } | null)?.reason;
+            this.publish({ error: reason === 'outside_us'
+              ? 'New subscriptions are available only through the United States store. You can still restore or manage an existing purchase.'
+              : reason === 'terms_review'
+              ? 'The store returned subscription terms that need review. Purchases are unavailable for now. Try again later or contact support. Your existing access is unchanged.'
+              : 'We could not load the current U.S. store price. Check your store account and connection, then try again.' });
+          }
+        }
+      }
     });
   }
   async recover(purchase: StorePurchase) {
