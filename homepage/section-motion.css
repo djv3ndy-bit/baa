@@ -1,0 +1,158 @@
+/* Existing colors, text and layout; dimensional movement only. */
+body.section-motion-active .sm-item {
+  transform: var(--sm-transform, perspective(1600px) translateY(28px) rotateX(12deg));
+  opacity: var(--sm-opacity, .76);
+  transform-origin: 50% 50%;
+  backface-visibility: hidden;
+  transition: box-shadow .4s ease;
+}
+body.section-motion-active .sm-item.sm-inview { will-change: transform, opacity; }
+body.section-motion-active .sm-choice.sm-inview { will-change: transform; }
+body.section-motion-active .sm-panel,
+body.section-motion-active .sm-final {
+  box-shadow: 0 7px 0 -3px #eadfd5, 0 22px 38px #3217081c;
+}
+body.section-motion-active .sm-step {
+  box-shadow: 0 5px 0 -2px #eadfd5, 0 16px 25px #3217080e;
+}
+body.section-motion-active .sm-panel > .sm-photo,
+body.section-motion-active .sm-final .sm-photo {
+  transform: var(--sm-photo-transform, scale(1.14));
+  transform-origin: center;
+  transition: none;
+  backface-visibility: hidden;
+}
+body.section-motion-active .sm-panel .sm-copy,
+body.section-motion-active .sm-final .sm-copy {
+  transform: var(--sm-copy-transform, none);
+  transition: none;
+  backface-visibility: hidden;
+}
+body.section-motion-active .sm-final .sm-choice {
+  transform: var(--sm-choice-local-transform, var(--sm-choice-transform, none));
+  transform-origin: 50% 70%;
+  backface-visibility: hidden;
+  transition: box-shadow .4s ease;
+  box-shadow: 0 5px 0 -2px #eadfd5, 0 10px 20px #3217080b;
+}
+body.section-motion-active .sm-step .sm-icon,
+body.section-motion-active .sm-benefit .sm-icon {
+  position: relative;
+  transform: var(--sm-icon-transform, none);
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transition: none;
+  box-shadow: 0 5px 0 -1px #eadfd5, 0 12px 17px #32170819;
+}
+body.section-motion-active .sm-icon svg { transform: translateZ(5px); }
+body.section-motion-active .sm-inview .sm-photo { will-change: transform; }
+
+/* The same warm shadows gain elevation on interaction, without continuous paint work. */
+@media(hover:hover) and (pointer:fine) {
+  body.section-motion-active .sm-panel:hover,
+  body.section-motion-active .sm-final:hover {
+    box-shadow: 0 9px 0 -3px #eadfd5, 0 29px 45px #3217081c;
+  }
+  body.section-motion-active .sm-step:hover {
+    box-shadow: 0 7px 0 -2px #eadfd5, 0 22px 32px #3217080e;
+  }
+  body.section-motion-active .sm-final .sm-choice:hover {
+    box-shadow: 0 7px 0 -2px #eadfd5, 0 18px 27px #3217080b;
+  }
+}
+body.section-motion-active .sm-final .sm-choice:focus-within {
+  box-shadow: 0 7px 0 -2px #eadfd5, 0 18px 27px #3217080b;
+}
+
+/* Native links lift as little physical labels; their click areas and labels are unchanged. */
+body.section-motion-active .sm-control {
+  display: inline-block;
+  transform-origin: 50% 75%;
+  backface-visibility: hidden;
+  transition: transform .38s cubic-bezier(.16,1,.3,1), text-shadow .38s ease, box-shadow .38s ease;
+}
+body.section-motion-active .header-actions .sm-control { display: inline-flex; }
+body.section-motion-active .sm-control:hover,
+body.section-motion-active .sm-control:focus-visible {
+  transform: perspective(650px) translateY(-3px) rotateX(var(--sm-control-pitch, 6deg)) rotateY(var(--sm-control-yaw, -7deg));
+  text-shadow: 0 6px 9px #32170826;
+}
+body.section-motion-active .sm-control:active {
+  transform: perspective(650px) translateY(1px) rotateX(-7deg) rotateY(4deg);
+  transition-duration: .12s;
+}
+body.section-motion-active .footer-links > .sm-control {
+  transform-origin: 0 50%;
+}
+body.section-motion-active .resource-menu.open .resource-popover {
+  transform-origin: 100% 0;
+  animation: sm-resource-unfold .52s cubic-bezier(.16,1,.3,1) both;
+  max-width: min(280px, calc(100vw - 60px));
+}
+body.section-motion-active .resource-menu.open .resource-popover > a:nth-child(2) { animation: sm-resource-link .48s .06s backwards; }
+body.section-motion-active .resource-menu.open .resource-popover > a:nth-child(3) { animation: sm-resource-link .48s .12s backwards; }
+body.section-motion-ready #how,
+body.section-motion-ready #baristas,
+body.section-motion-ready #cafes { scroll-margin-top: 96px; }
+
+@keyframes sm-resource-unfold {
+  from { opacity: .25; transform: perspective(800px) translateY(-8px) rotateX(-23deg) rotateY(7deg) scale(.96); }
+  to { opacity: 1; transform: perspective(800px) translateY(0) rotateX(0) rotateY(0) scale(1); }
+}
+@keyframes sm-resource-link {
+  from { opacity: .4; transform: perspective(600px) translateY(-7px) rotateX(-12deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes sm-menu-unfold {
+  from { opacity: .3; transform: perspective(1100px) translateY(-10px) rotateX(-13deg); }
+  to { opacity: 1; transform: none; }
+}
+@media(max-width:980px) {
+  body.section-motion-active .site-header.open .nav-links {
+    transform-origin: 50% 0;
+    animation: sm-menu-unfold .48s cubic-bezier(.16,1,.3,1) both;
+  }
+  body.section-motion-active .resource-menu.open .resource-popover {
+    transform-origin: 50% 0;
+    max-width: 100%;
+  }
+  body.section-motion-active .nav-links > .sm-control,
+  body.section-motion-active .resource-button { transform-origin: 0 50%; }
+}
+@media(max-width:680px) {
+  body.section-motion-ready #how,
+  body.section-motion-ready #baristas,
+  body.section-motion-ready #cafes { scroll-margin-top: 83px; }
+  body.section-motion-active .sm-panel,
+  body.section-motion-active .sm-final { box-shadow: 0 5px 0 -2px #eadfd5, 0 17px 28px #3217081a; }
+  body.section-motion-active .sm-step { box-shadow: 0 4px 0 -1px #eadfd5, 0 12px 20px #32170810; }
+}
+
+body.section-motion-ready:not(.section-motion-active) .sm-item,
+body.section-motion-ready:not(.section-motion-active) .sm-photo,
+body.section-motion-ready:not(.section-motion-active) .sm-copy,
+body.section-motion-ready:not(.section-motion-active) .sm-choice,
+body.section-motion-ready:not(.section-motion-active) .sm-icon,
+body.section-motion-ready:not(.section-motion-active) .sm-control {
+  transform: none !important;
+  opacity: 1 !important;
+  transition: none !important;
+  will-change: auto !important;
+}
+@media(prefers-reduced-motion:reduce) {
+  .section-motion-ready .sm-item,
+  .section-motion-ready .sm-photo,
+  .section-motion-ready .sm-copy,
+  .section-motion-ready .sm-choice,
+  .section-motion-ready .sm-icon,
+  .section-motion-ready .sm-control {
+    transform: none !important;
+    opacity: 1 !important;
+    transition: none !important;
+    animation: none !important;
+    will-change: auto !important;
+  }
+  .section-motion-ready .resource-popover,
+  .section-motion-ready .resource-popover > a,
+  .section-motion-ready .nav-links { animation: none !important; }
+}
