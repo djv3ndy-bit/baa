@@ -1089,6 +1089,20 @@ body,.shell,.role-cafe_owner_manager .shell{background:#fbf7f1}
 
 /* Keep role actions usable when job cards collapse to one column. */
 .job-item > .applicant-actions { display:flex; flex-wrap:wrap; gap:8px; align-self:center; }
+.job-state::before { flex-shrink:0; }
+@media (max-width:760px) {
+  .job-post-item { display:grid; grid-template-columns:56px minmax(0,1fr); align-items:start; width:100%; }
+  .job-post-item > .itemtext { grid-column:2; grid-row:1; width:100%; overflow-wrap:anywhere; }
+  .job-post-item > .applicant-actions { grid-column:1/-1; grid-row:2; width:100%; }
+  .job-post-item > .applicant-actions button { min-height:44px; white-space:normal; }
+  .interest-item { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; align-items:start; }
+  .interest-item > .itemtext { width:100%; min-width:0; overflow-wrap:anywhere; }
+  .interest-item > .applicant-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; width:100%; }
+  .interest-item > .applicant-actions button { min-width:0; min-height:44px; white-space:normal; overflow-wrap:anywhere; }
+}
+@media (max-width:390px) {
+  .interest-item > .applicant-actions { grid-template-columns:1fr; }
+}
 @media (max-width: 620px) {
   .job-item > .applicant-actions { grid-column:1 / -1; width:100%; }
   .job-item > .applicant-actions button { flex:1 1 140px; min-height:44px; }
