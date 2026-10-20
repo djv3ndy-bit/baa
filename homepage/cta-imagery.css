@@ -1,0 +1,95 @@
+/* Photograph-led choices in the existing final sign-up panel. */
+.cta-photo-panel { min-height: 282px; }
+.cta-photo-panel > .final-image::after {
+  background: linear-gradient(90deg, transparent 78%, #fff);
+}
+.cta-photo-panel > .final-image > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.cta-photo-panel .cta-photo-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(156px, 1fr) auto auto;
+  align-content: stretch;
+  justify-content: stretch;
+  min-width: 0;
+  min-height: 246px;
+  gap: 0;
+  margin: 18px 12px 18px 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+.cta-photo-panel .cta-photo-window {
+  position: relative;
+  min-width: 0;
+  min-height: 156px;
+  margin: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+.cta-photo-panel .cta-photo-window > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+  backface-visibility: hidden;
+}
+.cta-photo-panel .cta-photo-card > strong {
+  display: block;
+  padding: 16px 16px 0;
+  line-height: 1.25;
+}
+.cta-photo-panel .cta-photo-card > a {
+  position: relative;
+  display: block;
+  padding: 10px 16px 17px;
+  line-height: 1.4;
+}
+
+/* At tablet widths the existing copy sits above the pair of photo choices. */
+@media(min-width:681px) and (max-width:980px) {
+  .cta-photo-panel {
+    grid-template-columns: minmax(150px, .85fr) minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+  }
+  .cta-photo-panel > .final-image { grid-column: 1; grid-row: 1 / 3; }
+  .cta-photo-panel > .final-copy { grid-column: 2 / 4; grid-row: 1; padding: 24px 24px 20px; }
+  .cta-photo-panel .cta-photo-card { grid-column: 2; grid-row: 2; margin: 0 12px 20px 0; min-height: 237px; }
+  .cta-photo-panel .cta-photo-card.hiring { grid-column: 3; grid-row: 2; }
+}
+
+/* The same two choices become compact photo-and-copy cards on a phone. */
+@media(max-width:680px) {
+  .cta-photo-panel { grid-template-columns: 1fr; min-height: 0; }
+  .cta-photo-panel > .final-image { grid-column: auto; grid-row: auto; height: 170px; }
+  .cta-photo-panel > .final-image::after {
+    background: linear-gradient(180deg, transparent 82%, #fff);
+  }
+  .cta-photo-panel > .final-copy { grid-column: auto; grid-row: auto; padding: 26px 22px; }
+  .cta-photo-panel .cta-photo-card,
+  .cta-photo-panel .cta-photo-card.hiring {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: minmax(102px, 38%) minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+    min-height: 156px;
+    margin: 0 18px 14px;
+  }
+  .cta-photo-panel .cta-photo-card.hiring { margin-bottom: 22px; }
+  .cta-photo-panel .cta-photo-window {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    min-height: 156px;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+  .cta-photo-panel .cta-photo-card > strong { grid-column: 2; grid-row: 1; align-self: end; padding: 18px 16px 0; }
+  .cta-photo-panel .cta-photo-card > a { grid-column: 2; grid-row: 2; align-self: start; padding: 11px 16px 18px; }
+}
