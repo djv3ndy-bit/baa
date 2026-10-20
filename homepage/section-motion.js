@@ -1,3 +1,5 @@
+import { listenMediaQuery } from './media-query.js';
+
 /* Depth for the existing homepage. Content and native navigation stay in place. */
 export function initSectionMotion({paused = false} = {}) {
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -277,8 +279,8 @@ export function initSectionMotion({paused = false} = {}) {
       requestFrame();
     }
   }
-  listen(reduced, 'change', sync);
-  listen(finePointer, 'change', () => {
+  removers.push(listenMediaQuery(reduced, sync));
+  removers.push(listenMediaQuery(finePointer, () => {
     states.forEach(state => {
       state.targetX = 0;
       state.targetY = 0;
@@ -286,7 +288,7 @@ export function initSectionMotion({paused = false} = {}) {
       state.touchUntil = 0;
     });
     requestFrame();
-  });
+  }));
   addClass(document.body, 'section-motion-ready');
   remember(document.body).classes.add('section-motion-active');
   sync();

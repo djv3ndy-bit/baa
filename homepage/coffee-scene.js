@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three.module.js';
+import { listenMediaQuery } from './media-query.js';
 
 /**
  * A self-contained, transparent product-photography scene.
@@ -425,7 +426,7 @@ export function initCoffeeScene(container) {
   container.addEventListener('pointermove', onPointerMove, { passive: true });
   container.addEventListener('pointerleave', resetPointer, { passive: true });
   document.addEventListener('visibilitychange', onVisibilityChange);
-  reducedMotion.addEventListener('change', onMotionChange);
+  const stopReducedChanges = listenMediaQuery(reducedMotion, onMotionChange);
   canvas.addEventListener('webglcontextlost', onContextLost);
   const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
   resizeObserver?.observe(container);
@@ -463,7 +464,7 @@ export function initCoffeeScene(container) {
       container.removeEventListener('pointerleave', resetPointer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('resize', resize);
-      reducedMotion.removeEventListener('change', onMotionChange);
+      stopReducedChanges();
       canvas.removeEventListener('webglcontextlost', onContextLost);
       resources.forEach((resource) => resource.dispose());
       scene.clear();

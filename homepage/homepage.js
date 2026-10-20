@@ -1,6 +1,7 @@
 import { initHomepageActions } from './actions.js';
 import { initCtaImagery } from './cta-imagery.js';
 import { initSectionMotion } from './section-motion.js';
+import { listenMediaQuery } from './media-query.js';
 
 function initialize() {
   // Navigation and account controls stay independent of photos and WebGL.
@@ -45,7 +46,7 @@ function initialize() {
     sectionMotion?.setPaused(stopped);
   }
   pauseButton.addEventListener('click', () => { paused = !paused; updatePause(); });
-  reduced.addEventListener('change', () => { paused = reduced.matches; updatePause(); });
+  listenMediaQuery(reduced, () => { paused = reduced.matches; updatePause(); });
   updatePause();
   try { sectionMotion = initSectionMotion({ paused }); }
   catch (error) { console.warn('Section motion unavailable; the homepage remains usable.', error); }
