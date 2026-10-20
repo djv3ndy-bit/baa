@@ -27,16 +27,18 @@ const repo=path.resolve(__dirname,'../..');
    currentDemographics={date_of_birth:'1995-02-04'};
    const cafe={id:'cafe',cafe_name:'Local Café',location:'Miami, FL',bio:'Our coffee team.',shop_type:'Café'};
    const barista={id:'barista',display_name:'Alex Morgan',location:'Miami, FL',skills:['Espresso'],bio:'Coffee professional.'};
-   marketJobs=populated?[{id:'job1',owner_id:role==='cafe_owner_manager'?'self':'cafe',title:'Lead Barista',active:true,location:'Miami, FL',pay_min:18,pay_max:22,schedule:'Morning shifts',description:'A welcoming team with room to grow.',owner:cafe}]:[];
+   marketJobs=populated?[{id:'job1',owner_id:role==='cafe_owner_manager'?'self':'cafe',title:'Lead Barista and Specialty Coffee Training Professional',active:true,location:'Fort Lauderdale, Florida 33301',pay_min:18,pay_max:22,schedule:'Morning shifts',description:'A welcoming team with room to grow.',owner:cafe}]:[];
    applications=populated?[{id:'app1',job_id:'job1',barista_id:'barista',status:'matched',job:marketJobs[0],barista,created_at:'2026-09-01T12:00:00Z'}]:[];
-   candidateProfiles=populated?[barista]:[];discoveryMatches=[];discoveryInterests=[];notificationRows=[];profileViews=[];
+   if(populated&&role==='cafe_owner_manager')marketJobs.push({...marketJobs[0],id:'paused-job',title:'Experienced Barista for Weekend and Evening Service',active:false});
+   const sender={...(role==='barista'?cafe:barista),[role==='barista'?'cafe_name':'display_name']:'Specialty Coffee Professional and Neighborhood Community Team',location:'Fort Lauderdale, Florida 33301'};
+   candidateProfiles=populated?[barista]:[];discoveryMatches=[];discoveryInterests=populated?[{sender_id:sender.id,target_id:'self'}]:[];discoveryProfiles=populated?{[sender.id]:sender}:{};notificationRows=[];profileViews=[];
    const app=document.getElementById('app');app.classList.remove('role-cafe_owner_manager','role-barista');app.classList.add('role-'+role);app.hidden=false;document.getElementById('loading').hidden=true;
    document.getElementById('menu').innerHTML=currentView.menu.map(s=>`<button data-section="${s}"><span class="nav-icon">${BaristaMatchQuietFocus.menuIcon(s)}</span><span class="nav-label">${BaristaMatchQuietFocus.menuLabel(s,role)}</span></button>`).join('');
    document.getElementById('menu').onclick=e=>{const b=e.target.closest('[data-section]');if(b)openSection(b.dataset.section,currentView,currentRole)};
    loadAccountSubscription=async()=>{};reconcileBillingReturn=async()=>{};
    window.BaristaMatchCheckout={destroy(){},mount(){document.getElementById('checkout-intro').hidden=false;document.getElementById('checkout-spinner').hidden=true;document.getElementById('checkout-message-title').textContent='Secure payment form';document.getElementById('checkout-message-detail').textContent='Local layout fixture';}};
   },{role,populated});
-  for(const width of [1512,1024,761,760,736,360,320]){
+  for(const width of [1512,1024,761,760,736,414,390,375,360,320]){
    await page.setViewportSize({width,height:900});
    await page.waitForTimeout(300); // Let the responsive drawer transition settle.
    const sections=role==='cafe_owner_manager'?['Overview','Job Posts','Discover','Candidates','Matches','Messages','Café Profile','Account Settings','Subscription','Overview']:['Overview','Discover','Matches','Messages','Profile Views','My Profile','Account Settings','Overview'];
@@ -51,6 +53,15 @@ const repo=path.resolve(__dirname,'../..');
       return {text:el.textContent.trim(),textBounds:bounds(range.getBoundingClientRect()),labelBounds:bounds(el.getBoundingClientRect()),buttonBounds:bounds(el.closest('button').getBoundingClientRect())};
      });
      return {section:currentSection,chromeMounted:originalDashboardChrome.every(el=>el.isConnected),hasPermanentTheme:document.body.classList.contains('prism-dashboard-page')&&document.getElementById('app').classList.contains('prism-dashboard-shell'),expectedTitle:BaristaMatchQuietFocus.menuLabel(currentSection,currentRole),visiblePageTitle:[...document.querySelectorAll('.top h1,#content h1')].filter(el=>el.getClientRects().length).map(el=>el.textContent.trim()),width:innerWidth,height:innerHeight,navLabels,scroll:document.documentElement.scrollWidth,chrome:{side:innerWidth>760?measure('.side'):null,nav:innerWidth>760?measure('.menu'):null,header:measure('.quiet-shell-header'),bottom:measure('.quiet-mobile-nav'),background:getComputedStyle(document.body).backgroundColor},content:measure('#content'),headings:[...document.querySelectorAll('.top h1,#content h1,#content h2,#content h3')].filter(el=>el.getClientRects().length).map(el=>({text:el.textContent,font:getComputedStyle(el).fontFamily})),buttons:[...document.querySelectorAll('#content button')].filter(el=>el.getClientRects().length).map(el=>{const r=el.getBoundingClientRect();return {text:el.textContent.trim(),left:r.x,right:r.right,width:r.width}})};});
+    const cards=await page.locator('#content .job-post-item, #content .interest-item').evaluateAll(elements=>elements.map(el=>{
+     const text=el.querySelector('.itemtext').getBoundingClientRect(),actions=el.querySelector('.applicant-actions')?.getBoundingClientRect();
+     return {text:el.querySelector('.itemtext').textContent,width:text.width,textBottom:text.bottom,actionsTop:actions?.top,overlap:actions?Math.min(text.right,actions.right)>Math.max(text.left,actions.left)+1&&Math.min(text.bottom,actions.bottom)>Math.max(text.top,actions.top)+1:false};
+    }));
+    for(const card of cards){
+     assert.ok(!card.overlap,`Actions overlap details: ${JSON.stringify({role,section,width,card})}`);
+     assert.ok(card.width>=120,`Details squeezed unreadably: ${JSON.stringify({role,section,width,card})}`);
+     if(width<=760&&card.actionsTop!==undefined)assert.ok(card.actionsTop>=card.textBottom-1,`Mobile actions must follow details: ${JSON.stringify({role,section,width,card})}`);
+    }
     assert.ok(m.scroll<=width,JSON.stringify({role,populated,overflow:m}));
     if(!chrome)chrome=m.chrome;else assert.deepEqual(m.chrome,chrome,`shared chrome shifted: ${role}/${section}/${width}`);
     assert.ok(m.chromeMounted&&m.hasPermanentTheme,`Dashboard chrome was replaced or lost its theme on ${section}`);

@@ -404,3 +404,71 @@ test('job city containing an explicit state and ZIP is normalized once and rejec
  const payload=ctx.jobPayloadFromForm(validJobForm({city:'Austin TX 78701',state:'TX',postal_code:'78701'}));
  assert.equal(payload.city,'Austin');assert.equal(payload.state,'TX');assert.equal(payload.postal_code,'78701');assert.equal((payload.location.match(/78701/g)||[]).length,1);
 });
+
+
+test('owner job actions preserve their IDs and visibility states in responsive cards', () => {
+  const ctx = context({ currentRole: 'cafe_owner_manager', marketJobs: [
+    { ...job, id: 'active-job', title: 'Lead barista & coffee trainer', active: true },
+    { ...job, id: 'paused-job', title: '<Paused role>', active: false },
+  ] }, ['jobPostsHtml']);
+  const html = ctx.jobPostsHtml();
+  assert.equal((html.match(/class="item job-item job-post-item"/g) || []).length, 2);
+  assert.match(html, /Lead barista &amp; coffee trainer/);
+  assert.match(html, /&lt;Paused role&gt;/);
+  assert.match(html, /data-edit-job="active-job"/);
+  assert.match(html, /data-toggle-job="active-job" data-next-active="false">Pause post/);
+  assert.match(html, /data-toggle-job="paused-job" data-next-active="true">Resume post/);
+  assert.match(html, /Visible to baristas/);
+  assert.match(html, /Paused and hidden/);
+});
+
+test('home uses nationwide work-area wording and never assigns the seeker location to a job', () => {
+  const ctx = context();
+  vm.runInContext(quietFocus, ctx);
+  const settings = { role: 'barista', profile: { location: 'Seattle, WA' }, marketJobs: [], applications: [], discoveryInterests: [], discoveryMatches: [], notificationRows: [], profileStrength: 100, workAreaLabel: 'Seattle, WA' };
+  const empty = ctx.window.BaristaMatchQuietFocus.render(settings);
+  assert.match(empty, /saved work area/);
+  assert.doesNotMatch(empty, /Florida/);
+  const missing = { ...job, location: '', owner: { cafe_name: 'Test Café' } };
+  const home = ctx.window.BaristaMatchQuietFocus.render({ ...settings, marketJobs: [missing] });
+  assert.match(home, /Location not added/);
+  const cafeLocation = ctx.window.BaristaMatchQuietFocus.render({ ...settings, marketJobs: [{ ...missing, owner: { cafe_name: 'Test Café', location: 'Portland, OR' } }] });
+  assert.match(cafeLocation, /Portland, OR/);
+});
+
+
+test('blocked or unsupported browser alerts explain recovery without requesting permission again', async () => {
+  for (const permission of ['denied', 'granted', 'unsupported']) {
+    let prompts = 0;
+    const hint = {}, button = {};
+    const extra = { document: { getElementById: () => hint } };
+    if (permission !== 'unsupported') extra.Notification = { permission, requestPermission() { prompts++; } };
+    const ctx = context(extra, ['browserNotificationState', 'enableBrowserNotifications', 'accountSettingsHtml']);
+    await ctx.enableBrowserNotifications(button);
+    assert.equal(prompts, 0);
+    assert.equal(button.disabled, true);
+    if (permission === 'denied') {
+      assert.equal(button.textContent, 'Blocked');
+      assert.match(hint.textContent, /site settings/);
+      assert.match(ctx.accountSettingsHtml(), /data-enable-notifications disabled>Blocked/);
+    }
+  }
+});
+
+test('enabling browser alerts handles permission outcome and browser errors', async () => {
+  for (const outcome of ['granted', 'denied', 'default', 'error']) {
+    let prompts = 0, notices = 0;
+    class Notification {
+      static permission = 'default';
+      static async requestPermission() { prompts++; if (outcome === 'error') throw new Error('unavailable'); this.permission = outcome; return outcome; }
+      constructor() { notices++; }
+    }
+    const hint = {}, button = {};
+    const ctx = context({ Notification, document: { getElementById: () => hint } }, ['browserNotificationState', 'enableBrowserNotifications']);
+    await ctx.enableBrowserNotifications(button);
+    assert.equal(prompts, 1);
+    assert.equal(notices, outcome === 'granted' ? 1 : 0);
+    assert.equal(button.disabled, ['granted', 'denied'].includes(outcome));
+    if (outcome === 'error') assert.match(hint.textContent, /could not be enabled/);
+  }
+});
