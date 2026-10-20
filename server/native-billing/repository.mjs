@@ -3,7 +3,7 @@
 import { retryBillingRead } from './retryRead.mjs';
 
 const safeReads = new Set(['native_checkout_pending', 'native_billing_summary',
-  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified']);
+  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified', 'native_checkout_provider']);
 
 export function nativeBillingRepository(adminRows) {
   const rpc = (name, body) => {
@@ -16,8 +16,14 @@ export function nativeBillingRepository(adminRows) {
     claimCheckout(userId, provider, environment, attemptId) {
       return rpc('native_checkout_claim', { p_user_id: userId, p_provider: provider, p_environment: environment, p_attempt_id: attemptId });
     },
+    checkoutProvider(userId, environment, attemptId) {
+      return rpc('native_checkout_provider', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId });
+    },
     startCheckout(userId, environment, attemptId) {
       return rpc('native_checkout_start', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId });
+    },
+    startCheckoutForProvider(userId, environment, attemptId, provider) {
+      return rpc('native_checkout_start_for_provider', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_provider: provider });
     },
     cancelCheckout(userId, environment, attemptId, beforeLaunch) {
       return rpc('native_checkout_cancel', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_before_launch: beforeLaunch });

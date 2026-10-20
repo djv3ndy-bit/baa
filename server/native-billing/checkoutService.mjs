@@ -5,9 +5,18 @@ export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, google, ready, createId=randomUUID }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
+  const requireProvider=provider=>{
+    requireValue(enabled,'NOT_ENABLED');
+    requireValue(provider==='apple' || provider==='google','PRODUCT_UNAVAILABLE');
+    if(provider==='google') {
+      requireValue(google?.enabled === true,'NOT_ENABLED');
+      requireValue(typeof google.productId==='string' && /^[a-z0-9][a-z0-9_.]{0,254}$/.test(google.productId)
+        && typeof google.basePlanId==='string' && /^[a-z0-9][a-z0-9-]{0,62}$/.test(google.basePlanId),'CONFIGURATION');
+    }
+  };
   return {
     async status(account,website) {
       accountCheck(account);
@@ -21,11 +30,20 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     },
     async prepare(account,request) {
       accountCheck(account);
-      requireValue(enabled,'NOT_ENABLED');
-      requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
+      const provider=request?.provider;
+      requireProvider(provider);
+      requireValue(request.productId===(provider==='apple'?productId:google.productId)
+        && request.storefront===(provider==='apple'?'USA':'US'),'PRODUCT_UNAVAILABLE');
       // Fail before opening the store if server verification is not configured.
-      await ready();
-      const attempt=await repository.claimCheckout(account.id,'apple',environment,createId());
+      await ready(provider);
+      const attemptId=createId();
+      if(google?.enabled === true) {
+        // With Google enabled, every start uses the provider-aware RPC. Verify
+        // it exists before reserving either store, including Apple during setup.
+        // Its SQL is deployed atomically with provider-bound start support.
+        requireValue(await repository.checkoutProvider(account.id,environment,attemptId)===null,'CHECKOUT_BLOCKED');
+      }
+      const attempt=await repository.claimCheckout(account.id,provider,environment,attemptId);
       requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
       try {
         // A durable DB reservation already blocks a new website Checkout. Check
@@ -41,7 +59,7 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
-      await ready();
+      await ready('apple');
       requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
       // Reuse the original Apple reservation. Never release it or allocate a
       // second checkout while the first store result is uncertain.
@@ -52,8 +70,21 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     },
     async start(account,attemptId) {
       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
-      await ready();
-      requireValue(await repository.startCheckout(account.id,environment,attemptId),'CHECKOUT_BLOCKED');
+      if(google?.enabled !== true) {
+        // Default-off deployments retain the existing Apple RPC and require no
+        // new schema. The Google migration hardens that legacy RPC to Apple-only
+        // before any Google reservation can exist, including after gate rollback.
+        await ready('apple');
+        requireValue(await repository.startCheckout(account.id,environment,attemptId),'CHECKOUT_BLOCKED');
+        return {started:true};
+      }
+      // Select the gate/runtime from the durable reservation, never a caller's
+      // claimed provider. The atomic start rechecks the same provider in SQL.
+      const provider=await repository.checkoutProvider(account.id,environment,attemptId);
+      requireValue(provider==='apple' || provider==='google','CHECKOUT_BLOCKED');
+      requireProvider(provider);
+      await ready(provider);
+      requireValue(await repository.startCheckoutForProvider(account.id,environment,attemptId,provider),'CHECKOUT_BLOCKED');
       return {started:true};
     },
     async cancel(account,attemptId,reason) {

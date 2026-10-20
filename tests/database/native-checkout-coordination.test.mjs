@@ -20,6 +20,7 @@ before(async()=>{
  await db.exec(file('supabase/migrations/20260909044749_bind_checkout_attempt_ui_mode.sql'));
  await db.exec(file('review/native-billing-ledger.sql'));
  await db.exec(file('review/native-checkout-coordination.sql'));
+ await db.exec(file('server/native-billing/sql/checkout_provider.sql'));
 });
 beforeEach(async()=>{await db.exec(`reset role;truncate private.native_checkout_attempts,private.native_billing_subscriptions;update public.cafe_subscriptions set stripe_customer_id=null,stripe_subscription_id=null,status='free',stripe_checkout_claim_id=null,stripe_checkout_claim_expires_at=null,stripe_checkout_claim_kind=null,stripe_checkout_attempt_id=null,stripe_checkout_channel=null,stripe_checkout_ui_mode=null;update public.profiles set suspended_at=null;`)});
 after(async()=>db?.close());
@@ -87,4 +88,55 @@ test('anonymous, barista, suspended and wrong-environment attempts cannot reserv
  await db.query('update public.profiles set suspended_at=now() where id=$1',[cafe]);await assert.rejects(claim(),/unavailable/);
  await assert.rejects(scalar("select public.native_checkout_claim($1,'apple','Sandbox',$2)",[other,first]),/unavailable/);
  for(const role of ['anon','authenticated']){await db.exec('set role '+role);await assert.rejects(claim(first,other),/permission denied/);await assert.rejects(pending(),/permission denied/);await db.exec('reset role');}
+});
+
+const provider= (user=cafe,environment='Production',attempt=first) => scalar('select public.native_checkout_provider($1,$2,$3)',[user,environment,attempt]);
+const startProvider= (value, user=cafe, environment='Production', attempt=first) => scalar('select public.native_checkout_start_for_provider($1,$2,$3,$4)',[user,environment,attempt,value]);
+test('Google reservation lookup is scoped and legacy Apple start cannot cross-start it',async()=>{
+ await claim(first,cafe,'google');
+ assert.equal(await provider(),'google');assert.equal(await provider(other),null);assert.equal(await provider(cafe,'Production',second),null);
+ assert.equal(await start(),false);assert.equal(await startProvider('apple'),false);
+ assert.equal(await startProvider('google'),true);assert.equal(await startProvider('google'),false);assert.equal(await provider(),null);
+ assert.equal(await web(),null);
+});
+test('provider-bound start preserves Apple compatibility and rejects a spoofed Google provider',async()=>{
+ await claim();assert.equal(await provider(),'apple');assert.equal(await startProvider('google'),false);assert.equal(await start(),true);
+});
+test('Google-enabled service start path can authorize Apple using the migrated provider RPC',async()=>{
+ await claim();const selected=await provider();assert.equal(selected,'apple');assert.equal(await startProvider(selected),true);
+ assert.equal(await startProvider(selected),false);assert.equal(await pending(),true);
+});
+test('provider lookup and start reject wrong environment, account, suspension and expired reservations',async()=>{
+ await claim(first,cafe,'google');
+ await assert.rejects(provider(cafe,'Sandbox'),/environment mismatch/);
+ assert.equal(await startProvider('google',other),false);assert.equal(await startProvider('google',cafe,'Sandbox'),false);
+ await db.query('update public.profiles set suspended_at=now() where id=$1',[cafe]);
+ assert.equal(await provider(),null);assert.equal(await startProvider('google'),false);
+ await db.query('update public.profiles set suspended_at=null where id=$1',[cafe]);
+ await db.exec("update private.native_checkout_attempts set reserved_until=now()-interval '1 minute'");
+ assert.equal(await provider(),null);assert.equal(await startProvider('google'),false);
+});
+test('provider-bound start rechecks newly conflicting website/native billing and rejects unknown providers',async()=>{
+ await claim(first,cafe,'google');
+ for(const value of [null,'stripe','GOOGLE',''])assert.equal(await startProvider(value),false);
+ await db.query("update public.cafe_subscriptions set stripe_subscription_id='sub_conflict',status='active' where user_id=$1",[cafe]);
+ assert.equal(await startProvider('google'),false);
+ await db.query("update public.cafe_subscriptions set stripe_subscription_id=null,status='free' where user_id=$1",[cafe]);
+ await paid();assert.equal(await startProvider('google'),false);
+});
+test('client roles cannot inspect reservation providers or invoke provider-bound starts',async()=>{
+ await claim(first,cafe,'google');
+ for(const role of ['anon','authenticated']){
+  await db.exec('set role '+role);
+  await assert.rejects(provider(),/permission denied/);await assert.rejects(startProvider('google'),/permission denied/);
+  await db.exec('reset role');
+ }
+ await db.exec('set role service_role');assert.equal(await provider(),'google');assert.equal(await startProvider('google'),true);await db.exec('reset role');
+});
+test('Google started reservations retain existing cancellation and pending safety semantics',async()=>{
+ await claim(first,cafe,'google');assert.equal(await startProvider('google'),true);
+ assert.equal(await cancel(first,true),false);assert.equal(await pending(),true);
+ await paid('expired','2001-01-01T00:00:00Z',false);
+ await scalar("select public.native_checkout_settle_verified($1,'Production')",[cafe]);assert.equal(await pending(),true);
+ assert.equal(await cancel(),true);assert.equal(await pending(),false);
 });

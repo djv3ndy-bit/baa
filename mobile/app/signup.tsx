@@ -117,6 +117,12 @@ export default function SignupScreen() {
             ))}
           </View>
 
+          <Text style={styles.helper}>{role === 'barista'
+            ? 'Baristas stay free. Find work, match, and message without a subscription.'
+            : role === 'cafe_owner_manager'
+            ? 'Post your first job free. A second job requires Founder Pro at $9.99/month. No annual plan.'
+            : 'Baristas stay free. Cafés can post their first job free; Founder Pro is $9.99/month.'}</Text>
+
           <Text style={styles.label}>{role === 'barista' ? 'Your name' : 'Café name'}</Text>
           <TextInput editable={!busy} value={name} onChangeText={setName} style={styles.input} placeholder={role === 'barista' ? 'Your full name' : 'Your café name'} />
           <Text style={styles.label}>City</Text>

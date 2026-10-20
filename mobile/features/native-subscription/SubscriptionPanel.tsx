@@ -44,7 +44,7 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
       {busy && !subscription ? <Text accessibilityLiveRegion="polite" style={s.copy}>Checking your subscription…</Text> : null}
       <View style={s.card}><Text style={s.eyebrow}>FREE</Text><Text style={s.price}>$0</Text><Text style={s.copy}>Post your first job free. View applicants, message your matches, and schedule interviews.</Text><Text style={s.included}>Included with your café account</Text></View>
       <View style={s.card}><Text style={s.eyebrow}>CAFÉ PRO</Text>
-        {subscribed ? <Text style={s.current}>Your Pro access is active</Text> : product ? <View style={s.priceRow}><Text style={s.price}>{product.displayPrice}</Text><Text style={s.period}>per month</Text></View> : <Text style={s.copy}>Purchase pricing is not available yet.</Text>}
+        {subscribed ? <Text style={s.current}>Your Pro access is active</Text> : product ? <View style={s.priceRow}><Text style={s.price}>{product.displayPrice}</Text><Text style={s.period}>per month</Text></View> : <Text style={s.copy}>Café Pro purchase pricing is not available on this device yet.</Text>}
         <Text style={s.copy}>For cafés that are growing their team.</Text>
         {subscribed && periodEnd ? <Text style={s.copy}>{subscription?.status === 'grace' ? 'Grace access ends' : subscription?.autoRenews ? 'Current period ends' : 'Access ends'} {periodEnd}.</Text> : null}
         {subscription?.status === 'grace' ? <Text style={s.notice}>Your access remains active while the store retries your payment. Open subscription management to review your payment method.</Text> : null}
@@ -53,12 +53,13 @@ export function SubscriptionPanel(props: SubscriptionPanelProps) {
         {canBuy ? <><Action primary label={busy ? 'Checking purchase…' : `Subscribe for ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>Renews automatically each month unless canceled in your {product!.provider === 'apple' ? 'Apple' : 'Google Play'} subscription settings. The store confirms the price and terms before you purchase.</Text></>
           : canResume ? <><Text style={s.notice}>Apple has not confirmed this checkout. Continue to check existing purchases first. Use the same Apple Account you used when starting it.</Text><Action primary label={busy ? 'Checking purchase…' : `Continue Apple checkout · ${product!.displayPrice}/month`} disabled={busy} onPress={props.onBuy} /><Text style={s.fine}>If no completed purchase is found, Apple may ask you to confirm the monthly subscription again. It renews automatically unless canceled in Apple subscription settings.</Text></>
           : subscription?.status === 'pending' ? <Text style={s.notice}>A purchase is pending. Restore purchases to check for a completed purchase. Contact support if it remains pending.</Text>
-            : !subscription?.canManage ? <Text style={s.notice}>Purchases will be available after your account and store pricing are confirmed.</Text> : null}
+            : !subscription?.canManage ? <Text style={s.notice}>Café Pro checkout is unavailable until your account and store setup are confirmed.</Text> : null}
         {providers.map(provider => <View style={s.management} key={provider}><Text style={s.copy}>Review your {providerName(provider)} subscription and its renewal settings.</Text><Action label={`Manage ${providerName(provider)} subscription`} onPress={() => props.onManage(provider)} disabled={busy} /></View>)}
         <Text style={s.fine}>Existing subscriptions keep their current billing terms. Your subscription follows the same BaristaMatch account on the app and website.</Text>
       </View>
       {props.canRestore !== false ? <Action label={busy ? 'Checking purchases…' : 'Restore purchases'} disabled={busy} onPress={props.onRestore} /> : null}
-      <Text style={s.fine}>Restore purchases made with your current store account. Access is confirmed securely for the BaristaMatch account that originally purchased it.</Text>
+      {props.canRestore !== false ? <Text style={s.fine}>Restore purchases made with your current store account. Access is confirmed securely for the BaristaMatch account that originally purchased it.</Text> : null}
+      <Text style={s.fine}>Baristas stay free. Café Pro is for café hiring tools.</Text>
       {props.onSupport ? <Action label="Contact subscription support" onPress={props.onSupport} /> : null}
       <View style={s.links}><Action label="Terms of use" onPress={props.onTerms} /><Action label="Privacy policy" onPress={props.onPrivacy} /></View>
     </ScrollView>

@@ -24,6 +24,46 @@ test('Google configuration rejects arbitrary credential types and token endpoint
   for(const credentials of [{type:'external_account'},{type:'service_account',client_email:'billing@test.iam.gserviceaccount.com',private_key:'-----BEGIN PRIVATE KEY-----',token_uri:'https://attacker.invalid/token'}])assert.throws(()=>readProviderConfiguration('google',{...env,GOOGLE_PLAY_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)}),{code:'SERVER_CONFIGURATION'});
 });
 
+function googleConfiguration(overrides = {}, credentialOverrides = {}) {
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ format: 'pem', type: 'pkcs8' });
+  return {
+    NATIVE_BILLING_ENVIRONMENT: 'Sandbox', VERCEL_ENV: 'preview',
+    GOOGLE_PLAY_PRODUCT_ID: 'test.monthly', GOOGLE_PLAY_BASE_PLAN_ID: 'monthly',
+    GOOGLE_PLAY_PUSH_AUDIENCE: 'https://test.invalid/api/native-purchases?action=google-events',
+    GOOGLE_PLAY_PUSH_SERVICE_ACCOUNT_EMAIL: 'events@test.iam.gserviceaccount.com',
+    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: JSON.stringify({ type: 'service_account',
+      client_email: 'billing@test.iam.gserviceaccount.com', private_key: rsa, ...credentialOverrides }),
+    ...overrides,
+  };
+}
+test('Google accepts a real RSA service-account key and retains only required credential fields', () => {
+  const config = readProviderConfiguration('google', googleConfiguration({}, { project_id: 'test', ignored: 'discarded' }));
+  assert.equal(config.packageName, 'com.baristajobmatch.app');
+  assert.equal(config.environment, 'Sandbox');
+  assert.deepEqual(Object.keys(config.credentials).sort(), ['client_email', 'private_key', 'type']);
+});
+test('Google rejects truncated, wrong-algorithm and undersized private keys before runtime setup', () => {
+  const weak = generateKeyPairSync('rsa', { modulusLength: 1024 }).privateKey.export({ format: 'pem', type: 'pkcs8' });
+  for (const key of ['-----BEGIN PRIVATE KEY-----\ntruncated', privateKey.export({ format: 'pem', type: 'pkcs8' }), weak]) {
+    assert.throws(() => readProviderConfiguration('google', googleConfiguration({}, { private_key: key })), { code: 'SERVER_CONFIGURATION' });
+  }
+});
+test('Google OIDC audience rejects malformed URLs, userinfo and fragments without exposing the value', () => {
+  for (const audience of ['https://[invalid', 'https://user:password@test.invalid/events', 'https://test.invalid/events#fragment', 'http://test.invalid/events']) {
+    assert.throws(() => readProviderConfiguration('google', googleConfiguration({ GOOGLE_PLAY_PUSH_AUDIENCE: audience })), error => {
+      assert.equal(error.code, 'SERVER_CONFIGURATION');
+      assert.ok(!error.message.includes(audience));
+      return true;
+    });
+  }
+});
+test('Google empty product/base-plan and mixed deployment environments remain fail-closed', () => {
+  for (const overrides of [{ GOOGLE_PLAY_PRODUCT_ID: '' }, { GOOGLE_PLAY_BASE_PLAN_ID: '' },
+    { VERCEL_ENV: 'production' }, { NATIVE_BILLING_ENVIRONMENT: 'Production' }]) {
+    assert.throws(() => readProviderConfiguration('google', googleConfiguration(overrides)), { code: 'SERVER_CONFIGURATION' });
+  }
+});
+
 // Before the manifest patch is approved, run with the isolated reviewed SDK
 // directory. After approval, normal module resolution uses root dependencies.
 const sdkRequire=createRequire(process.env.NATIVE_BILLING_SDK_ROOT ? resolve(process.env.NATIVE_BILLING_SDK_ROOT,'package.json') : new URL('../../package.json',import.meta.url));
