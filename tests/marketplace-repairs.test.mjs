@@ -435,3 +435,40 @@ test('home uses nationwide work-area wording and never assigns the seeker locati
   const cafeLocation = ctx.window.BaristaMatchQuietFocus.render({ ...settings, marketJobs: [{ ...missing, owner: { cafe_name: 'Test Café', location: 'Portland, OR' } }] });
   assert.match(cafeLocation, /Portland, OR/);
 });
+
+
+test('blocked or unsupported browser alerts explain recovery without requesting permission again', async () => {
+  for (const permission of ['denied', 'granted', 'unsupported']) {
+    let prompts = 0;
+    const hint = {}, button = {};
+    const extra = { document: { getElementById: () => hint } };
+    if (permission !== 'unsupported') extra.Notification = { permission, requestPermission() { prompts++; } };
+    const ctx = context(extra, ['browserNotificationState', 'enableBrowserNotifications', 'accountSettingsHtml']);
+    await ctx.enableBrowserNotifications(button);
+    assert.equal(prompts, 0);
+    assert.equal(button.disabled, true);
+    if (permission === 'denied') {
+      assert.equal(button.textContent, 'Blocked');
+      assert.match(hint.textContent, /site settings/);
+      assert.match(ctx.accountSettingsHtml(), /data-enable-notifications disabled>Blocked/);
+    }
+  }
+});
+
+test('enabling browser alerts handles permission outcome and browser errors', async () => {
+  for (const outcome of ['granted', 'denied', 'default', 'error']) {
+    let prompts = 0, notices = 0;
+    class Notification {
+      static permission = 'default';
+      static async requestPermission() { prompts++; if (outcome === 'error') throw new Error('unavailable'); this.permission = outcome; return outcome; }
+      constructor() { notices++; }
+    }
+    const hint = {}, button = {};
+    const ctx = context({ Notification, document: { getElementById: () => hint } }, ['browserNotificationState', 'enableBrowserNotifications']);
+    await ctx.enableBrowserNotifications(button);
+    assert.equal(prompts, 1);
+    assert.equal(notices, outcome === 'granted' ? 1 : 0);
+    assert.equal(button.disabled, ['granted', 'denied'].includes(outcome));
+    if (outcome === 'error') assert.match(hint.textContent, /could not be enabled/);
+  }
+});
