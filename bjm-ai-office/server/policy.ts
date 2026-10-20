@@ -61,11 +61,11 @@ export function permissionDecision(agentId:string,requested:PermissionLevel){
 export function routeAgentFor(event:string){
   const value=String(event||'').toLowerCase();
   if(/security|credential|secret|vulnerab|suspicious login/.test(value)) return 'security';
+  if(/seo|indexing|sitemap|schema markup|search console/.test(value)) return 'seo';
   if(/database|query|index|migration|rls/.test(value)) return 'data';
   if(/crash|api failure|ci failure|performance|outage|bug/.test(value)) return 'engineering';
   if(/refund|subscription|payment|billing/.test(value)) return 'billing';
   if(/support|customer issue|help request/.test(value)) return 'support';
-  if(/seo|indexing|sitemap|schema|search console/.test(value)) return 'seo';
   if(/café prospect|cafe prospect|sales lead/.test(value)) return 'sales';
   if(/barista acquisition|barista signup|barista prospect/.test(value)) return 'barista-acquisition';
   if(/marketplace|zero applicants|supply|demand|liquidity/.test(value)) return 'marketplace';
@@ -144,7 +144,8 @@ export function teamSnapshot(){
   return AGENT_REGISTRY.map(agent=>({
     id:agent.id,
     name:agent.name,
-    status:'ready',
+    status:'registered',
+    execution:'available_on_request',
     permissionCeiling:agent.ceiling,
     responsibility:agent.responsibility,
     mode:agent.id==='manager'?'coordinate_prioritize_escalate':'analyze_draft_recommend'
