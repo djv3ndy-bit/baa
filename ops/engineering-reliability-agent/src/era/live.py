@@ -14,6 +14,7 @@ from era.collectors.supabase import SupabaseCollector
 from era.collectors.vercel import VercelCollector
 from era.models import Environment, EvidenceSource, IncidentEvidence, RecentChange
 from era.providers.github import GitHubApiSource
+from era.providers.http import ProviderReadError, safe_failure_diagnostics
 from era.providers.supabase import SupabaseManagementSource
 from era.providers.vercel import VercelApiSource
 from era.redaction import sanitize_evidence_batch, sanitize_text
@@ -40,12 +41,15 @@ class CollectionFailure:
     provider: str
     operation: str
     error_type: str
+    reason_code: str | None = None
+    http_status: int | None = None
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "provider": self.provider,
             "operation": self.operation,
             "error_type": self.error_type,
+            **safe_failure_diagnostics(self.reason_code, self.http_status),
         }
 
 
@@ -233,7 +237,11 @@ async def run_live_plan(plan: LiveCollectionPlan) -> LiveCollectionResult:
         if isinstance(result, BaseException) and not isinstance(result, Exception):
             raise result
         if isinstance(result, Exception):
-            failure = CollectionFailure(provider, operation, type(result).__name__)
+            diagnostic = (
+                ProviderReadError.diagnostics(result)
+                if isinstance(result, ProviderReadError) else {}
+            )
+            failure = CollectionFailure(provider, operation, type(result).__name__, **diagnostic)
             failures.append(failure)
             evidence.append(
                 IncidentEvidence(
@@ -247,6 +255,7 @@ async def run_live_plan(plan: LiveCollectionPlan) -> LiveCollectionResult:
                         "degraded": True,
                         "operation": operation,
                         "error_type": failure.error_type,
+                        **diagnostic,
                     },
                 )
             )

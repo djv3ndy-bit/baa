@@ -1,0 +1,11 @@
+name: BaristaMatch website and operations security
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - mobile/**
+  - tests/**
+  - review/**
+  - '**/node_modules/**'
+  - '**/dist/**'

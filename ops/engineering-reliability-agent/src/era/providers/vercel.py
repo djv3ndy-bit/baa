@@ -111,7 +111,7 @@ class VercelApiSource:
         )
         deployments = payload.get("deployments")
         if not isinstance(deployments, list):
-            raise ProviderReadError("Vercel returned an invalid deployment list")
+            raise ProviderReadError("Vercel returned an invalid deployment list", reason_code="invalid_response")
         return [item for item in deployments if isinstance(item, Mapping)][:limit]
 
     async def list_failed_deployments(

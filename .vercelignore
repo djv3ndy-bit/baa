@@ -9,3 +9,11 @@
 /docs/seo/
 /scripts/seo-baseline.py
 /tests/seo.test.mjs
+
+# Repository automation, database migrations and synthetic fixtures are not web assets.
+/.github/
+/ops/
+/scripts/
+/tests/
+/docs/
+/supabase/
