@@ -90,14 +90,7 @@ function OriginalLoginScreen() {
     request.current = true;
     setSocialLoading(provider);
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: oauthRedirect,
-          skipBrowserRedirect: true,
-          ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {})
-        }
-      });
+      const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: oauthRedirect, skipBrowserRedirect: true } });
       if (error || !data.url) throw new Error('provider_unavailable');
       const brandedAuthUrl = `${oauthStart}#${encodeURIComponent(data.url)}`;
       const result = await WebBrowser.openAuthSessionAsync(brandedAuthUrl, oauthAppCallback, { preferEphemeralSession: false });
