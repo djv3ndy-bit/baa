@@ -8,7 +8,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 .github/scripts/overview-stat-links.py
       - run: |
           grep -q 'data-go="Job Posts" role="button"' dashboard.html

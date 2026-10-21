@@ -8,7 +8,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: python3 .github/scripts/view-applicant-profile-fix.py
       - run: |
           grep -q "applications.find(app=>app.barista_id===id)?.barista" dashboard.html
