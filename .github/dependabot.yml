@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    groups:
+      website-compatible-updates:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /bjm-ai-office
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+    groups:
+      office-compatible-updates:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '08:00'
+      timezone: America/New_York
+    open-pull-requests-limit: 5
+# Updates propose pull requests for owner review; they never merge or deploy
+# automatically. Native application dependency manifests are outside this scope.

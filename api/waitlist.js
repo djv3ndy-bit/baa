@@ -1,58 +1,46 @@
+import { randomUUID } from 'node:crypto';
+import { adminHeaders, boundedFetch, consumePublicFormBudget, formBody, formEmail, formFailure, formText, PublicFormError, requestSignal, sendFormEmail } from './_public-form-guard.js';
+
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'private, no-store');
   if (req.method !== "POST") {
+    res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
-      return res.status(503).json({ error: "Waitlist signup is temporarily unavailable." });
-    }
-
-    const { role, email, city } = req.body || {};
-
-    const cleanRole = String(role || "").trim().slice(0, 40);
-    const cleanEmail = String(email || "").trim().toLowerCase().slice(0, 320);
-    const cleanCity = String(city || "").trim().slice(0, 120);
-
-    if (!cleanRole || !cleanEmail || !cleanCity) {
-      return res.status(400).json({
-        error: "Please complete all fields."
-      });
-    }
-
-    if (!cleanEmail.includes("@")) {
-      return res.status(400).json({
-        error: "Please enter a valid email address."
-      });
-    }
+    const body = formBody(req, 8192);
+    if (formText(body.website, 200)) return res.status(200).json({ success: true });
+    const cleanRole = formText(body.role, 40, true);
+    const cleanEmail = formEmail(body.email);
+    const cleanCity = formText(body.city, 120, true);
     if (!new Set(["barista", "cafe_owner_manager"]).has(cleanRole)) {
       return res.status(400).json({ error: "Please choose a valid account type." });
     }
 
-    const adminHeaders = { apikey: process.env.SUPABASE_SECRET_KEY };
-    if (!process.env.SUPABASE_SECRET_KEY.startsWith("sb_secret_")) {
-      adminHeaders.Authorization = `Bearer ${process.env.SUPABASE_SECRET_KEY}`;
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) {
+      throw new PublicFormError(503, 'Waitlist signup is temporarily unavailable.');
     }
+    const signal = requestSignal();
+    await consumePublicFormBudget(req, 'waitlist', cleanEmail, signal);
 
     // 1. Check whether this email is already on the waitlist
-    const existingResponse = await fetch(
+    const existingResponse = await boundedFetch(
       `${process.env.SUPABASE_URL}/rest/v1/waitlist_signups?email=eq.${encodeURIComponent(cleanEmail)}&select=id`,
       {
         method: "GET",
-        headers: adminHeaders
-      }
+        headers: adminHeaders()
+      }, signal
     );
 
     if (!existingResponse.ok) {
-      const errorText = await existingResponse.text();
-      console.error("Supabase lookup error:", errorText);
-
-      return res.status(500).json({
+      return res.status(503).json({
         error: "We couldn't save your signup. Please try again."
       });
     }
 
     const existingRows = await existingResponse.json();
+    if (!Array.isArray(existingRows)) throw new Error('Invalid waitlist lookup');
 
     if (existingRows.length > 0) {
       return res.status(200).json({
@@ -63,12 +51,12 @@ export default async function handler(req, res) {
     }
 
     // 2. Save signup to Supabase
-    const databaseResponse = await fetch(
+    const databaseResponse = await boundedFetch(
       `${process.env.SUPABASE_URL}/rest/v1/waitlist_signups`,
       {
         method: "POST",
         headers: {
-          ...adminHeaders,
+          ...adminHeaders(),
           "Content-Type": "application/json",
           Prefer: "return=minimal"
         },
@@ -78,14 +66,14 @@ export default async function handler(req, res) {
           city: cleanCity,
           status: "waitlisted"
         })
-      }
+      }, signal
     );
 
     if (!databaseResponse.ok) {
-      const errorText = await databaseResponse.text();
-      console.error("Supabase insert error:", errorText);
-
-      return res.status(500).json({
+      // A concurrent signup may have inserted this address after our lookup.
+      const failure = databaseResponse.status === 409 ? await databaseResponse.json().catch(() => ({})) : {};
+      if (failure?.code === '23505') return res.status(200).json({ success: true, alreadyJoined: true, message: "You're already on the BaristaMatch waitlist." });
+      return res.status(503).json({
         error: "We couldn't save your signup. Please try again."
       });
     }
@@ -93,9 +81,10 @@ export default async function handler(req, res) {
     const safeRole = escapeHtml(cleanRole);
     const safeEmail = escapeHtml(cleanEmail);
     const safeCity = escapeHtml(cleanCity);
+    const signupEvent = randomUUID();
 
     // 3. Send BaristaMatch internal notification
-    const internalEmail = await sendEmail({
+    const internalPayload = {
       from: "BaristaMatch <updates@updates.baristajobmatch.com>",
       to: ["hello@baristajobmatch.com"],
       reply_to: cleanEmail,
@@ -109,14 +98,10 @@ export default async function handler(req, res) {
           <p><strong>Status:</strong> Waitlisted</p>
         </div>
       `
-    });
-
-    if (!internalEmail.ok) {
-      console.error("Internal notification failed:", internalEmail.data);
-    }
+    };
 
     // 4. Send confirmation email to applicant
-    const confirmationEmail = await sendEmail({
+    const confirmationPayload = {
       from: "BaristaMatch <updates@updates.baristajobmatch.com>",
       to: [cleanEmail],
       reply_to: "hello@baristajobmatch.com",
@@ -181,51 +166,24 @@ export default async function handler(req, res) {
           </div>
         </div>
       `
-    });
-
-    if (!confirmationEmail.ok) {
-      console.error(
-        "Confirmation email failed:",
-        confirmationEmail.data
-      );
-    }
+    };
+    const [internalEmail, confirmationEmail] = await Promise.all([
+      sendFormEmail(internalPayload, `waitlist/internal/${signupEvent}`, signal),
+      sendFormEmail(confirmationPayload, `waitlist/confirmation/${signupEvent}`, signal),
+    ]);
+    if (!internalEmail) console.error('Waitlist internal email was not confirmed.');
+    if (!confirmationEmail) console.error('Waitlist confirmation email was not confirmed.');
 
     return res.status(200).json({
       success: true,
       saved: true,
-      internalEmailSent: internalEmail.ok,
-      confirmationSent: confirmationEmail.ok
+      internalEmailSent: internalEmail,
+      confirmationSent: confirmationEmail
     });
 
   } catch (error) {
-    console.error("Waitlist error:", error);
-
-    return res.status(500).json({
-      error: "Something went wrong. Please try again."
-    });
+    return formFailure(res, error, 'Waitlist signup is temporarily unavailable. Please try again later.');
   }
-}
-
-async function sendEmail(payload) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-
-  let data = {};
-
-  try {
-    data = await response.json();
-  } catch {}
-
-  return {
-    ok: response.ok,
-    data
-  };
 }
 
 function escapeHtml(value) {

@@ -1,0 +1,98 @@
+name: Website security
+
+on:
+  # Keep these triggers unfiltered so this job can be a required main-branch check.
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+  schedule:
+    - cron: '17 12 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-security-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  website-security:
+    name: Website security and reliability
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Official library/postgres:17 OCI index; verify updates through review.
+        image: postgres:17@sha256:a63c1ea3f6a3a5a1621f97d2aba3b30faecfab4224c1b0000cc85ced57bb1939
+        env:
+          POSTGRES_DB: bjm_security_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated-ci-fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bjm_security_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - name: Check out the proposed revision without persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install locked website server dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check website server dependencies for high and critical advisories
+        run: npm audit --omit=dev --audit-level=high
+      - name: Install locked Office dependencies without lifecycle scripts
+        run: npm ci --prefix bjm-ai-office --ignore-scripts --no-audit --no-fund
+      - name: Check Office runtime and build dependencies for high and critical advisories
+        run: npm audit --prefix bjm-ai-office --audit-level=high
+      - name: Verify website authorization, abuse protection, and recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          callback_dir="$(mktemp -d)"
+          trap 'rm -rf "$callback_dir"' EXIT
+          ./bjm-ai-office/node_modules/.bin/tsc mobile/lib/authCallback.ts \
+            --target ES2022 --module commonjs --lib ES2022,DOM \
+            --skipLibCheck --outDir "$callback_dir"
+          callback_module="$(find "$callback_dir" -type f -name authCallback.js -print -quit)"
+          test -n "$callback_module"
+          node launch-check.js
+          AUTH_CALLBACK_MODULE="$callback_module" node --test tests/*.test.js \
+            tests/account-profile-repair.test.mjs \
+            tests/billing-agent.test.mjs \
+            tests/billing-connection.test.mjs \
+            tests/business-agents.test.mjs \
+            tests/deployment-security.test.mjs \
+            tests/job-subscription-gate.test.mjs \
+            tests/login-interactions.test.mjs \
+            tests/message-reliability.test.mjs \
+            tests/oauth-consent.test.mjs \
+            tests/oauth-owner-gate.test.mjs \
+            tests/public-form-security.test.mjs \
+            tests/send-message-idempotency.test.mjs \
+            tests/signup-repair.test.mjs \
+            tests/support-agent.test.mjs
+      - name: Install the locked isolated database test runtime
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.15.9 --activate
+          pnpm --dir tests/database install --frozen-lockfile --ignore-scripts
+      - name: Verify database privileges, RLS, and durable abuse budgets
+        run: node --test tests/database/*.test.mjs
+      - name: Verify real PostgreSQL concurrency on the disposable local database
+        env:
+          BJM_TEST_DATABASE_URL: postgresql://postgres:isolated-ci-fixture-only@127.0.0.1:5432/bjm_security_test
+        run: |
+          psql --version
+          node --test tests/database/public-form-budget-postgres.test.mjs
+# All tests use synthetic identities and local fixtures. This job receives no
+# production, signing, payment, notification, or deployment credentials and
+# does not build or submit a native application.
