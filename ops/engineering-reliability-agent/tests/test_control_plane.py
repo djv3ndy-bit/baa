@@ -42,7 +42,8 @@ class ReliabilityControlPlaneTests(unittest.IsolatedAsyncioTestCase):
                         failed_check(2, "sync", 102),
                         failed_check(3, "verify", 103),
                         failed_check(4, "test", 104),
-                        failed_check(5, "product-unit"),
+                        failed_check(5, "owner-alert-test", 105),
+                        failed_check(6, "product-unit"),
                     ]
                 },
                 {
@@ -54,6 +55,7 @@ class ReliabilityControlPlaneTests(unittest.IsolatedAsyncioTestCase):
                 {"path": ".github/workflows/notion-reliability-sync.yml"},
                 {"path": ".github/workflows/notion-connection-verification.yml"},
                 {"path": ".github/workflows/notion-sync-tests.yml"},
+                {"path": ".github/workflows/engineering-reliability-alert-test.yml"},
             ]
         )
         source = GitHubApiSource("github-read-token", transport=transport)
@@ -62,10 +64,10 @@ class ReliabilityControlPlaneTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [failure["id"] for failure in failures],
-            ["github-check-5"],
+            ["github-check-6"],
         )
         run_requests = [url for url, _ in transport.requests if "/actions/runs/" in url]
-        self.assertEqual(len(run_requests), 4)
+        self.assertEqual(len(run_requests), 5)
 
     async def test_caches_workflow_path_for_multiple_checks_from_one_run(self) -> None:
         transport = QueueTransport(

@@ -19,12 +19,17 @@ class MonitoringCycleResult:
 
     @property
     def exit_code(self) -> int:
+        if self.collection.failures:
+            return 3
         return 2 if self.alert_required else 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "mode": "recurring_monitor",
-            "status": "alert" if self.alert_required else "healthy",
+            "status": (
+                "collection_failed" if self.collection.failures
+                else "alert" if self.alert_required else "healthy"
+            ),
             "model_used": False,
             "production_writes_enabled": False,
             "alert_required": self.alert_required,

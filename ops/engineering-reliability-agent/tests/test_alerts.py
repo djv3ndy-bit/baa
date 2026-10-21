@@ -1,3 +1,5 @@
+import copy
+import hashlib
 import unittest
 from unittest.mock import patch
 
@@ -95,10 +97,71 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(len(sender.messages), 1)
         message = sender.messages[0]
         self.assertEqual(message.recipient, "owner@example.com")
-        self.assertEqual(message.idempotency_key, "era-incident-0123456789abcdef")
+        self.assertRegex(message.idempotency_key, r"^era-incident-0123456789abcdef-[0-9a-f]{64}$")
         self.assertIn("No fix, merge, production deployment", message.html_body)
         self.assertNotIn("owner@example.com", str(result.to_dict()))
         self.assertNotIn("re_test_secret", str(result.to_dict()))
+
+    def test_repeated_runs_send_identical_bytes_and_keys_without_exporting_run_metadata(self) -> None:
+        sender = FakeSender()
+        environment = {
+            "ERA_P0_P1_EMAIL_ALERTS_APPROVED": "true",
+            "ERA_ALERT_EMAIL": "owner@example.com",
+            "ERA_RESEND_API_KEY": "re_test_secret",
+        }
+        first = response_package("P1", eligible=True)
+        first["source"]["run_id"] = "10001"
+        first["source"]["source_sha"] = "a" * 40
+        first["summary"] = "Synthetic test with customer@example.invalid and token=must-not-export"
+        second = copy.deepcopy(first)
+        second["source"]["run_id"] = "10002"
+        second["source"]["source_sha"] = "b" * 40
+        second["evidence_ids"] = ["new-observation-identifier"]
+        for package in (first, second):
+            result = deliver_response_alert(package, environment, sender=sender)
+            self.assertTrue(result.delivered)
+            self.assertNotIn("owner@example.com", str(result.to_dict()))
+            self.assertNotIn("re_test_secret", str(result.to_dict()))
+        self.assertEqual(sender.messages[0], sender.messages[1])
+        message = sender.messages[0]
+        self.assertIn("/actions/workflows/engineering-reliability-monitor.yml", message.html_body)
+        for private_value in ("10001", "10002", "customer@example.invalid", "must-not-export"):
+            self.assertNotIn(private_value, message.html_body)
+            self.assertNotIn(private_value, message.idempotency_key)
+        with patch("era.alerts.http.client.HTTPSConnection") as connection_type:
+            response = connection_type.return_value.getresponse.return_value
+            response.status = 200
+            response.read.return_value = b'{"id":"email_synthetic"}'
+            transport = ResendAlertSender("re_test_secret")
+            for repeated_message in sender.messages:
+                transport.send(repeated_message)
+            requests = connection_type.return_value.request.call_args_list
+        first_request, second_request = (call.kwargs for call in requests)
+        self.assertEqual(first_request["body"], second_request["body"])
+        self.assertEqual(first_request["headers"]["Idempotency-Key"], second_request["headers"]["Idempotency-Key"])
+        self.assertEqual(
+            message.idempotency_key,
+            f"era-incident-0123456789abcdef-{hashlib.sha256(first_request['body']).hexdigest()}",
+        )
+
+    def test_changed_substantive_narrative_or_recipient_gets_a_distinct_idempotency_key(self) -> None:
+        sender = FakeSender()
+        environment = {
+            "ERA_P0_P1_EMAIL_ALERTS_APPROVED": "true",
+            "ERA_ALERT_EMAIL": "owner@example.com",
+            "ERA_RESEND_API_KEY": "re_test_secret",
+        }
+        original = response_package("P1", eligible=True)
+        updated = copy.deepcopy(original)
+        updated["summary"] = "A different substantive sanitized incident update."
+        for package in (original, updated):
+            self.assertTrue(deliver_response_alert(package, environment, sender=sender).delivered)
+        environment["ERA_ALERT_EMAIL"] = "other-owner@example.com"
+        self.assertTrue(deliver_response_alert(updated, environment, sender=sender).delivered)
+        self.assertEqual(len({message.idempotency_key for message in sender.messages}), 3)
+        self.assertNotEqual(sender.messages[0].html_body, sender.messages[1].html_body)
+        self.assertEqual(sender.messages[1].html_body, sender.messages[2].html_body)
+        self.assertTrue(all(len(message.idempotency_key) <= 256 for message in sender.messages))
 
     def test_p2_never_sends_email_even_when_configured(self) -> None:
         sender = FakeSender()

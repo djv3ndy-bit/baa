@@ -8,6 +8,23 @@ REPOSITORY_ROOT = ROOT.parents[1]
 
 
 class PackageSafetyTests(unittest.TestCase):
+    def test_owner_delivery_test_requires_manual_main_confirmation(self) -> None:
+        workflow = (
+            REPOSITORY_ROOT / ".github" / "workflows"
+            / "engineering-reliability-alert-test.yml"
+        ).read_text(encoding="utf-8")
+        triggers = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+        self.assertEqual(re.findall(r"^  ([A-Za-z_]+):", triggers, re.MULTILINE), ["workflow_dispatch"])
+        self.assertIn("type: boolean", triggers)
+        self.assertIn("default: false", triggers)
+        self.assertIn(
+            "if: github.ref == 'refs/heads/main' && inputs.confirm_one_owner_test == true",
+            workflow,
+        )
+        self.assertIn("contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertNotIn("contents: write", workflow)
+
     def test_documented_and_packaged_prompts_match(self) -> None:
         documented = (ROOT / "docs" / "prompt.md").read_text(encoding="utf-8")
         packaged = (ROOT / "src" / "era" / "prompt.md").read_text(encoding="utf-8")

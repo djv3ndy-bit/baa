@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 from era.collectors.base import ReadOnlyCollector
 from era.collectors.github import GitHubCollector
-from era.collectors.health import HealthCollector
+from era.collectors.health import ConfirmedPublicOutageCollector, HealthCollector, PUBLIC_OUTAGE_URLS
 from era.collectors.supabase import SupabaseCollector
 from era.collectors.vercel import VercelCollector
 from era.models import Environment, EvidenceSource, IncidentEvidence, RecentChange
@@ -143,17 +143,15 @@ def build_live_plan(
         )
         if not allowed_hosts:
             raise RuntimeError("ERA_ALLOWED_HEALTH_HOSTS is required for health checks")
-        evidence_collectors.extend(
-            NamedCollector(
-                "health",
-                HealthCollector(
-                    url,
-                    allowed_hosts,
-                    environment=target_environment,
-                ),
-            )
+        health_collectors = tuple(
+            HealthCollector(url, allowed_hosts, environment=target_environment)
             for url in health_urls
         )
+        if (target_environment is Environment.PRODUCTION and len(health_collectors) == 2
+                and {item.url for item in health_collectors} == set(PUBLIC_OUTAGE_URLS)):
+            evidence_collectors.append(NamedCollector("health", ConfirmedPublicOutageCollector(health_collectors)))
+        else:
+            evidence_collectors.extend(NamedCollector("health", item) for item in health_collectors)
 
     if "github" in providers:
         repository = _required(environment, "GITHUB_REPOSITORY")

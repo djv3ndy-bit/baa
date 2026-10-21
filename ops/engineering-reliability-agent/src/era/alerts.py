@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import http.client
 import json
@@ -16,6 +17,7 @@ _RESEND_HOST = "api.resend.com"
 _RESEND_PATH = "/emails"
 _DEFAULT_FROM = "BaristaMatch Reliability <updates@updates.baristajobmatch.com>"
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _MAX_RESPONSE_BYTES = 1_000_000
 
 
@@ -56,6 +58,13 @@ class AlertDeliveryResult:
         return value
 
 
+def _sending_payload(*, recipient: str, sender: str, subject: str, html_body: str) -> bytes:
+    return json.dumps(
+        {"from": sender, "to": [recipient], "subject": subject, "html": html_body},
+        separators=(",", ":"), sort_keys=True,
+    ).encode("utf-8")
+
+
 class ResendAlertSender:
     def __init__(self, api_key: str, *, timeout_seconds: float = 8.0) -> None:
         if not api_key:
@@ -64,15 +73,10 @@ class ResendAlertSender:
         self._timeout_seconds = timeout_seconds
 
     def send(self, message: AlertMessage) -> None:
-        body = json.dumps(
-            {
-                "from": message.sender,
-                "to": [message.recipient],
-                "subject": message.subject,
-                "html": message.html_body,
-            },
-            separators=(",", ":"),
-        ).encode("utf-8")
+        body = _sending_payload(
+            recipient=message.recipient, sender=message.sender,
+            subject=message.subject, html_body=message.html_body,
+        )
         connection = http.client.HTTPSConnection(
             _RESEND_HOST,
             timeout=self._timeout_seconds,
@@ -116,19 +120,21 @@ def _build_message(
     source = response.get("source")
     source = source if isinstance(source, Mapping) else {}
     repository = sanitize_text(str(source.get("repository", "unknown/unknown")), max_length=200)
-    run_id = sanitize_identifier(str(source.get("run_id", "unknown")))
-    run_url = ""
-    if repository != "unknown/unknown" and run_id != "unknown":
-        run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
+    workflow_url = ""
+    if repository != "unknown/unknown" and _REPOSITORY.fullmatch(repository):
+        workflow_url = (
+            f"https://github.com/{repository}/actions/workflows/"
+            "engineering-reliability-monitor.yml"
+        )
     actions = response.get("recommended_actions")
     safe_actions = [
         sanitize_text(str(item), max_length=600)
         for item in (actions if isinstance(actions, list) else [])[:5]
     ]
     action_html = "".join(f"<li>{html.escape(item)}</li>" for item in safe_actions)
-    run_html = (
-        f'<p><a href="{html.escape(run_url)}">Open the sanitized GitHub Actions run</a></p>'
-        if run_url
+    workflow_html = (
+        f'<p><a href="{html.escape(workflow_url)}">Open the sanitized reliability monitor runs</a></p>'
+        if workflow_url
         else ""
     )
     html_body = (
@@ -140,16 +146,20 @@ def _build_message(
         f"<p><strong>Likely cause:</strong> {html.escape(likely_cause)}</p>"
         f"<p><strong>Incident fingerprint:</strong> {html.escape(fingerprint)}</p>"
         f"<h2>Owner-reviewed next steps</h2><ol>{action_html}</ol>"
-        f"{run_html}"
+        f"{workflow_html}"
         "<p>No fix, merge, production deployment, SQL, RLS, Auth, or data action was performed.</p>"
         "</div>"
     )
+    subject = f"[{severity}] BaristaMatch reliability incident {fingerprint}"
+    payload_hash = hashlib.sha256(_sending_payload(
+        recipient=recipient, sender=sender, subject=subject, html_body=html_body,
+    )).hexdigest()
     return AlertMessage(
         recipient=recipient,
         sender=sender,
-        subject=f"[{severity}] BaristaMatch reliability incident {fingerprint}",
+        subject=subject,
         html_body=html_body,
-        idempotency_key=f"era-incident-{fingerprint}",
+        idempotency_key=f"era-incident-{fingerprint}-{payload_hash}",
     )
 
 
