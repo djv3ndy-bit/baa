@@ -64,6 +64,25 @@ test('both social sign-in buttons recover from thrown and returned provider erro
     }
   }
 });
+test('every explicit Google login requests account selection without changing Apple login', async () => {
+  const requests = [];
+  const h = await loginHarness({ signInWithOAuth: async request => { requests.push(JSON.parse(JSON.stringify(request))); return {}; } });
+  await h.click('google');
+  await h.click('google');
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(request.provider, 'google');
+    assert.deepEqual(request.options, {
+      redirectTo: 'https://www.baristajobmatch.com/dashboard.html',
+      queryParams: { prompt: 'select_account' }
+    });
+  }
+  await h.click('apple');
+  assert.deepEqual(requests[2], {
+    provider: 'apple',
+    options: { redirectTo: 'https://www.baristajobmatch.com/dashboard.html' }
+  });
+});
 test('password reset restores its link after errors and rejects malformed email locally', async () => {
   let calls = 0;
   const h = await loginHarness({ resetPasswordForEmail: async () => { calls++; return reject(); } });

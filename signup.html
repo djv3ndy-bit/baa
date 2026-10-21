@@ -148,7 +148,10 @@ async function beginSocialSignup(provider,button){
     const details=signupDetails();
     localStorage.setItem('baristamatch_pending_signup',JSON.stringify({...details,provider,termsAccepted:true,createdAt:Date.now()}));
     signupBusy=true;button.disabled=true;providerStarted=true;
-    const {error}=await client.auth.signInWithOAuth({provider,options:{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete'}});
+    const {error}=await client.auth.signInWithOAuth({provider,options:{
+      redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete',
+      ...(provider==='google'?{queryParams:{prompt:'select_account'}}:{})
+    }});
     if(error)throw error;
   }catch(error){clearPendingSignup();setStatus(providerStarted?'Social signup could not start. Try again or use email signup.':error.message||'Check your account details and try again.',true)}
   finally{signupBusy=false;button.disabled=false}
