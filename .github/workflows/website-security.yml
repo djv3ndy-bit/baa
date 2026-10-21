@@ -45,6 +45,10 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
+      - name: Use Python 3.12 for isolated monitor tests
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
       - name: Install locked website server dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Check website server dependencies for high and critical advisories
@@ -80,6 +84,8 @@ jobs:
             tests/send-message-idempotency.test.mjs \
             tests/signup-repair.test.mjs \
             tests/support-agent.test.mjs
+      - name: Verify monitor diagnostics and redaction without provider access
+        run: PYTHONPATH=ops/engineering-reliability-agent/src python -m unittest discover -s ops/engineering-reliability-agent/tests -v
       - name: Install the locked isolated database test runtime
         run: |
           corepack enable

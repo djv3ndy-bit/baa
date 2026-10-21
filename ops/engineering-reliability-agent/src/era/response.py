@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
 from .models import Severity
+from .providers.http import safe_failure_diagnostics
 from .redaction import sanitize_identifier, sanitize_text, sanitize_value
 
 
@@ -40,7 +41,7 @@ class ResponsePackage:
     evidence_ids: tuple[str, ...]
     affected_routes: tuple[str, ...]
     change_correlations: tuple[dict[str, Any], ...]
-    collection_failures: tuple[dict[str, str], ...]
+    collection_failures: tuple[dict[str, Any], ...]
     recommended_actions: tuple[str, ...]
     alert: dict[str, Any]
     repair: dict[str, Any]
@@ -168,8 +169,8 @@ def _correlations(payloads: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any]
 
 def _collection_failures(
     payloads: Sequence[Mapping[str, Any]],
-) -> tuple[dict[str, str], ...]:
-    output: list[dict[str, str]] = []
+) -> tuple[dict[str, Any], ...]:
+    output: list[dict[str, Any]] = []
     for payload in payloads:
         collection = payload.get("collection")
         if isinstance(collection, Mapping):
@@ -188,6 +189,7 @@ def _collection_failures(
                         "error_type": sanitize_identifier(
                             str(item.get("error_type", "unknown"))
                         ),
+                        **safe_failure_diagnostics(item.get("reason_code"), item.get("http_status")),
                     }
                 )
         status = str(payload.get("status", ""))

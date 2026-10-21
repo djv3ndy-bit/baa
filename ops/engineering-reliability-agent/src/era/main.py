@@ -17,6 +17,7 @@ from .live import LiveCollectionPlan, build_live_plan, run_live_plan
 from .models import IncidentEvidence, RecentChange
 from .monitor import run_monitoring_cycle
 from .providers.vercel import VercelApiSource
+from .providers.http import ProviderReadError
 from .response import build_response_package
 from .verification import wait_for_production_revision
 from .workflows.investigate import investigate
@@ -300,6 +301,7 @@ def main() -> None:
                 {
                     "error": "operation_failed",
                     "error_type": type(error).__name__,
+                    **(ProviderReadError.diagnostics(error) if isinstance(error, ProviderReadError) else {}),
                 },
                 separators=(",", ":"),
             ),

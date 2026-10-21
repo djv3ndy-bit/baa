@@ -118,7 +118,7 @@ class SupabaseManagementSource:
         if not isinstance(payload, Mapping) or not isinstance(
             payload.get("result"), list
         ):
-            raise ProviderReadError("Supabase returned an invalid log response")
+            raise ProviderReadError("Supabase returned an invalid log response", reason_code="invalid_response")
 
         results: list[Mapping[str, Any]] = []
         for index, row in enumerate(_sequence(payload.get("result"))[:limit]):
