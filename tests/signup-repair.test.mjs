@@ -52,6 +52,19 @@ test('terms are required before starting either social provider',async()=>{
 test('OAuth failure clears pending details and enables retry',async()=>{
  const h=await harness({authOverrides:{signInWithOAuth:async()=>{throw new Error('offline')}}});await h.ids['google-signup'].listeners.click();assert.equal(h.storage.size,0);assert.equal(h.ids['google-signup'].disabled,false);assert.ok(h.ids.status.textContent);
 });
+test('every Google signup requests account selection and Apple keeps its existing options',async()=>{
+ const requests=[];
+ const h=await harness({authOverrides:{signInWithOAuth:async request=>{requests.push(JSON.parse(JSON.stringify(request)));return {}}}});
+ await h.ids['google-signup'].listeners.click();
+ await h.ids['google-signup'].listeners.click();
+ assert.equal(requests.length,2);
+ for(const request of requests){
+  assert.equal(request.provider,'google');
+  assert.deepEqual(request.options,{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete',queryParams:{prompt:'select_account'}});
+ }
+ await h.ids['apple-signup'].listeners.click();
+ assert.deepEqual(requests[2],{provider:'apple',options:{redirectTo:'https://www.baristajobmatch.com/signup.html?oauth=complete'}});
+});
 test('profile insert failure keeps the signed-in member on setup with an actionable error',async()=>{
  const h=await harness({session:signupSession,insertError:{code:'42501'}});await h.send();assert.deepEqual(h.redirects,[]);assert.match(h.ids.status.textContent,/setup could not be saved/);assert.equal(h.submit.disabled,false);
 });

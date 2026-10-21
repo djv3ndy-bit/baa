@@ -73,7 +73,11 @@ for (const provider of ['google', 'apple']) {
     setStatus('Opening secure sign-in…');
     try {
       const { error } = await client.auth.signInWithOAuth({
-        provider, options: { redirectTo: `https://www.baristajobmatch.com${returnTo}` }
+        provider,
+        options: {
+          redirectTo: `https://www.baristajobmatch.com${returnTo}`,
+          ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {})
+        }
       });
       if (error) throw error;
     } catch {
