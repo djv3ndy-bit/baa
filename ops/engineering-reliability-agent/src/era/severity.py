@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from .models import Environment, IncidentEvidence, Severity, SeverityDecision
+from .collectors.health import is_confirmed_public_outage
 
 
 _EXPECTED_CONDITIONS = {
@@ -33,6 +34,7 @@ def classify_incident(evidence: Sequence[IncidentEvidence]) -> SeverityDecision:
         return SeverityDecision(Severity.P3, ("No incident evidence was supplied.",))
 
     metadata = [dict(item.metadata) for item in evidence]
+    confirmed_public_outage = any(is_confirmed_public_outage(item) for item in evidence)
     conditions = {
         str(item.get("condition", "")) for item in metadata if item.get("condition")
     }
@@ -42,7 +44,7 @@ def classify_incident(evidence: Sequence[IncidentEvidence]) -> SeverityDecision:
         for item in evidence
     )
 
-    if conditions and not unexpected and not has_error_without_condition:
+    if conditions and not unexpected and not has_error_without_condition and not confirmed_public_outage:
         return SeverityDecision(
             Severity.P3,
             (
@@ -78,6 +80,12 @@ def classify_incident(evidence: Sequence[IncidentEvidence]) -> SeverityDecision:
         return SeverityDecision(
             Severity.P0,
             ("A sustained production outage affects at least 70% of users.",),
+        )
+
+    if confirmed_public_outage:
+        return SeverityDecision(
+            Severity.P1,
+            ("Both public website endpoints failed three paired probes 15 seconds apart.",),
         )
 
     routes = {item.route for item in evidence if item.route}

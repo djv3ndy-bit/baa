@@ -9,14 +9,17 @@ from typing import Any, Protocol
 
 from era.collectors.base import ReadOnlyCollector
 from era.collectors.github import GitHubCollector
-from era.collectors.health import HealthCollector
+from era.collectors.health import ConfirmedPublicOutageCollector, HealthCollector, PUBLIC_OUTAGE_URLS
 from era.collectors.supabase import SupabaseCollector
 from era.collectors.vercel import VercelCollector
+from era.collectors.runtime_summary import RuntimeSummaryCollector
 from era.models import Environment, EvidenceSource, IncidentEvidence, RecentChange
 from era.providers.github import GitHubApiSource
 from era.providers.http import ProviderReadError, safe_failure_diagnostics
 from era.providers.supabase import SupabaseManagementSource
 from era.providers.vercel import VercelApiSource
+from era.providers.runtime_summary import RuntimeSummarySource
+from era.runtime_oidc import acquire_github_runtime_identity
 from era.redaction import sanitize_evidence_batch, sanitize_text
 
 
@@ -34,6 +37,11 @@ class GitHubLiveCollector(Protocol):
 class NamedCollector:
     provider: str
     collector: ReadOnlyCollector = field(repr=False)
+    operation: str = "evidence"
+
+    def __post_init__(self) -> None:
+        if self.operation not in {"evidence", "deployments", "runtime_history"}:
+            raise ValueError("Unsupported read-only collection operation")
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,17 +151,15 @@ def build_live_plan(
         )
         if not allowed_hosts:
             raise RuntimeError("ERA_ALLOWED_HEALTH_HOSTS is required for health checks")
-        evidence_collectors.extend(
-            NamedCollector(
-                "health",
-                HealthCollector(
-                    url,
-                    allowed_hosts,
-                    environment=target_environment,
-                ),
-            )
+        health_collectors = tuple(
+            HealthCollector(url, allowed_hosts, environment=target_environment)
             for url in health_urls
         )
+        if (target_environment is Environment.PRODUCTION and len(health_collectors) == 2
+                and {item.url for item in health_collectors} == set(PUBLIC_OUTAGE_URLS)):
+            evidence_collectors.append(NamedCollector("health", ConfirmedPublicOutageCollector(health_collectors)))
+        else:
+            evidence_collectors.extend(NamedCollector("health", item) for item in health_collectors)
 
     if "github" in providers:
         repository = _required(environment, "GITHUB_REPOSITORY")
@@ -170,18 +176,28 @@ def build_live_plan(
             _required(environment, "VERCEL_READ_TOKEN"),
             team_id=_required(environment, "VERCEL_TEAM_ID"),
         )
-        evidence_collectors.append(
-            NamedCollector(
-                "vercel",
-                VercelCollector(
-                    vercel_source,
-                    _required(environment, "VERCEL_PROJECT_ID"),
-                    environment=target_environment,
-                    since=lookback,
-                    limit=limit,
-                ),
+        project_id = _required(environment, "VERCEL_PROJECT_ID")
+        # Runtime-history coverage must not discard independently collected
+        # deployment evidence or silently turn an unsupported source into healthy.
+        for operation in ("deployments", "runtime_history"):
+            collector = (
+                RuntimeSummaryCollector(
+                    RuntimeSummarySource(identity=lambda: acquire_github_runtime_identity(environment)),
+                    project_id, environment=target_environment, since=lookback,
+                )
+                if operation == "runtime_history" and environment.get("ERA_RUNTIME_SUMMARY_ENABLED", "").strip().lower() == "true"
+                else VercelCollector(
+                    vercel_source, project_id, environment=target_environment,
+                    since=lookback, limit=limit, operation=operation,
+                )
             )
-        )
+            evidence_collectors.append(
+                NamedCollector(
+                    "vercel",
+                    collector,
+                    operation=operation,
+                )
+            )
 
     if "supabase" in providers:
         if target_environment is not Environment.PRODUCTION:
@@ -214,7 +230,7 @@ def build_live_plan(
 
 async def run_live_plan(plan: LiveCollectionPlan) -> LiveCollectionResult:
     task_specs: list[tuple[str, str, Any]] = [
-        (item.provider, "evidence", item.collector.collect())
+        (item.provider, item.operation, item.collector.collect())
         for item in plan.evidence_collectors
     ]
     if plan.github_collector:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import http.client
 import json
@@ -16,11 +17,13 @@ _RESEND_HOST = "api.resend.com"
 _RESEND_PATH = "/emails"
 _DEFAULT_FROM = "BaristaMatch Reliability <updates@updates.baristajobmatch.com>"
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_PROVIDER_MESSAGE_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 _MAX_RESPONSE_BYTES = 1_000_000
 
 
 class AlertSender(Protocol):
-    def send(self, message: "AlertMessage") -> None: ...
+    def send(self, message: "AlertMessage") -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,10 +43,13 @@ class AlertDeliveryResult:
     severity: str
     fingerprint: str
     error_type: str | None = None
+    provider_accepted: bool = False
+    mailbox_delivery_verified: bool = False
+    provider_message_id: str | None = None
 
     @property
     def exit_code(self) -> int:
-        if self.status in {"not_required", "delivered"}:
+        if self.status in {"not_required", "provider_accepted", "delivered"}:
             return 0
         if self.status in {"approval_missing", "configuration_failed"}:
             return 3
@@ -51,9 +57,25 @@ class AlertDeliveryResult:
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
+        value["provider_message_id"] = _provider_message_id(self.provider_message_id)
         value["exit_code"] = self.exit_code
         value["production_writes_enabled"] = False
         return value
+
+
+def _provider_message_id(value: object) -> str | None:
+    # The send API returns an opaque UUID, also used as webhook data.email_id.
+    # Do not export arbitrary response fields, SMTP Message-IDs or error text.
+    if type(value) is str and _PROVIDER_MESSAGE_ID.fullmatch(value):
+        return value.lower()
+    return None
+
+
+def _sending_payload(*, recipient: str, sender: str, subject: str, html_body: str) -> bytes:
+    return json.dumps(
+        {"from": sender, "to": [recipient], "subject": subject, "html": html_body},
+        separators=(",", ":"), sort_keys=True,
+    ).encode("utf-8")
 
 
 class ResendAlertSender:
@@ -63,16 +85,11 @@ class ResendAlertSender:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
 
-    def send(self, message: AlertMessage) -> None:
-        body = json.dumps(
-            {
-                "from": message.sender,
-                "to": [message.recipient],
-                "subject": message.subject,
-                "html": message.html_body,
-            },
-            separators=(",", ":"),
-        ).encode("utf-8")
+    def send(self, message: AlertMessage) -> str | None:
+        body = _sending_payload(
+            recipient=message.recipient, sender=message.sender,
+            subject=message.subject, html_body=message.html_body,
+        )
         connection = http.client.HTTPSConnection(
             _RESEND_HOST,
             timeout=self._timeout_seconds,
@@ -90,9 +107,19 @@ class ResendAlertSender:
                 },
             )
             response = connection.getresponse()
-            response.read(_MAX_RESPONSE_BYTES + 1)
             if not 200 <= response.status < 300:
                 raise RuntimeError(f"ResendStatus{response.status}")
+            # A successful API response establishes acceptance only. Optional
+            # correlation metadata must never turn it into a delivery claim or
+            # a new send attempt when the response body cannot be inspected.
+            try:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+                if len(raw) > _MAX_RESPONSE_BYTES:
+                    return None
+                payload = json.loads(raw)
+            except (ValueError, RecursionError, OSError, http.client.HTTPException):
+                return None
+            return _provider_message_id(payload.get("id") if isinstance(payload, dict) else None)
         finally:
             connection.close()
 
@@ -116,19 +143,21 @@ def _build_message(
     source = response.get("source")
     source = source if isinstance(source, Mapping) else {}
     repository = sanitize_text(str(source.get("repository", "unknown/unknown")), max_length=200)
-    run_id = sanitize_identifier(str(source.get("run_id", "unknown")))
-    run_url = ""
-    if repository != "unknown/unknown" and run_id != "unknown":
-        run_url = f"https://github.com/{repository}/actions/runs/{run_id}"
+    workflow_url = ""
+    if repository != "unknown/unknown" and _REPOSITORY.fullmatch(repository):
+        workflow_url = (
+            f"https://github.com/{repository}/actions/workflows/"
+            "engineering-reliability-monitor.yml"
+        )
     actions = response.get("recommended_actions")
     safe_actions = [
         sanitize_text(str(item), max_length=600)
         for item in (actions if isinstance(actions, list) else [])[:5]
     ]
     action_html = "".join(f"<li>{html.escape(item)}</li>" for item in safe_actions)
-    run_html = (
-        f'<p><a href="{html.escape(run_url)}">Open the sanitized GitHub Actions run</a></p>'
-        if run_url
+    workflow_html = (
+        f'<p><a href="{html.escape(workflow_url)}">Open the sanitized reliability monitor runs</a></p>'
+        if workflow_url
         else ""
     )
     html_body = (
@@ -140,16 +169,20 @@ def _build_message(
         f"<p><strong>Likely cause:</strong> {html.escape(likely_cause)}</p>"
         f"<p><strong>Incident fingerprint:</strong> {html.escape(fingerprint)}</p>"
         f"<h2>Owner-reviewed next steps</h2><ol>{action_html}</ol>"
-        f"{run_html}"
+        f"{workflow_html}"
         "<p>No fix, merge, production deployment, SQL, RLS, Auth, or data action was performed.</p>"
         "</div>"
     )
+    subject = f"[{severity}] BaristaMatch reliability incident {fingerprint}"
+    payload_hash = hashlib.sha256(_sending_payload(
+        recipient=recipient, sender=sender, subject=subject, html_body=html_body,
+    )).hexdigest()
     return AlertMessage(
         recipient=recipient,
         sender=sender,
-        subject=f"[{severity}] BaristaMatch reliability incident {fingerprint}",
+        subject=subject,
         html_body=html_body,
-        idempotency_key=f"era-incident-{fingerprint}",
+        idempotency_key=f"era-incident-{fingerprint}-{payload_hash}",
     )
 
 
@@ -192,7 +225,7 @@ def deliver_response_alert(
     )
     active_sender = sender or ResendAlertSender(api_key)
     try:
-        active_sender.send(message)
+        provider_message_id = _provider_message_id(active_sender.send(message))
     except Exception as error:
         return AlertDeliveryResult(
             "delivery_failed",
@@ -202,4 +235,7 @@ def deliver_response_alert(
             fingerprint,
             error_type=type(error).__name__,
         )
-    return AlertDeliveryResult("delivered", True, True, severity, fingerprint)
+    return AlertDeliveryResult(
+        "provider_accepted", True, False, severity, fingerprint,
+        provider_accepted=True, provider_message_id=provider_message_id,
+    )

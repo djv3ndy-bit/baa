@@ -22,9 +22,13 @@ deployment, or merge permission.
 
 ## Vercel
 
-Preferred credential: the connected Vercel read application. A dedicated, expiring access token for the smallest applicable team is an acceptable runtime fallback when the connected application cannot be used by the service.
+Use the owner-approved private integration limited to the selected `baa` project with only `read:deployment` and `read:integration-configuration`. A successful connected MCP read uses separate authentication and does not prove access for the GitHub monitor credential. Do not substitute a deployment-capable personal token or broaden scopes to repair a monitoring gap.
 
-The configured project ID is an application-level allowlist. The client only lists that project's deployments, reads bounded deployment events, and confirms whether an exact reviewed Git commit is `READY` in production. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
+The configured project ID is an application-level allowlist in addition to the integration's provider-enforced project selection. The client only lists that project's deployments and confirms whether an exact reviewed Git commit is `READY` in production. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
+
+Deployment checks and required historical runtime coverage run independently. The configured source has no verified, authorized historical runtime endpoint. It reports operation `runtime_history` with the fixed diagnostic `runtime_history_not_supported_by_configured_source` without making a runtime or build-event request. Successful deployment reads therefore do not produce an all-clear: `monitor` returns `collection_failed` and exit code `3`, while preserving any deployment failure evidence collected successfully. This is an unavailable monitoring capability, not proof of a website outage or permission denial.
+
+The [deployment-events endpoint](https://vercel.com/docs/rest-api/deployments/get-deployment-events) returns build logs. It must not be interpreted as historical runtime telemetry. The documented [runtime stream](https://vercel.com/docs/rest-api/logs/get-logs-for-a-deployment) does not document historical window parameters, and the [integration scope table](https://vercel.com/docs/integrations/create-integration/vercel-api-integrations#deployments) does not establish historical runtime authorization for the two configured scopes. A future runtime adapter requires a documented source, independently verified least-privilege authorization, bounded history and redacted records before this gap can be marked recovered. No new endpoint, scope, token, drain, receiver or paid service is configured by this correction.
 
 ## Supabase
 
@@ -40,7 +44,7 @@ The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and fil
 
 Resend is disabled by default and is not a monitoring provider. The owner must separately approve P0/P1 email alerts and store a dedicated sending-only key in the `ERA_RESEND_API_KEY` GitHub Actions secret. The single destination is stored in `ERA_ALERT_EMAIL`; neither value is available to public or provider-collection steps.
 
-The alert transport supports exactly one operation: `POST https://api.resend.com/emails`. It cannot list contacts, domains, API keys, audiences, broadcasts, webhooks, or historical messages. It rejects missing approval or configuration before opening a connection, does not follow redirects, and does not include the recipient, credential, or response body in its result.
+The alert transport supports exactly one operation: `POST https://api.resend.com/emails`. It cannot list contacts, domains, API keys, audiences, broadcasts, webhooks, or historical messages. A successful send proves provider acceptance only, not mailbox receipt. It rejects missing approval or configuration before opening a connection, does not follow redirects, and does not include the recipient, credential, or response body in its result.
 
 ## Network and data controls
 
@@ -77,3 +81,7 @@ PYTHONPATH=src .venv/bin/python -m era.main collect-live \
 ```
 
 The command returns only sanitized evidence and recent-change metadata. It sets `model_used` and `production_writes_enabled` to `false` in its output. Missing credentials, unsafe health URLs, unsupported environments, redirects, oversized responses, and lookbacks beyond 24 hours stop the collection.
+
+## Proposed signed runtime count reader (not activated)
+
+The separate [receiver](../../runtime-log-receiver/README.md) uses a production-only `baa` log drain, an isolated service-only operations schema, and short-lived GitHub OIDC tied to the immutable repository and exact main monitoring workflow. It does not broaden the existing Vercel integration's two read scopes. Only normalized event digests, times and category counts are retained; raw logs and backend credentials are never returned to GitHub. Metered drain creation, database/heartbeat objects, Edge deployment and reader/notice activation require the owner's separate concrete approval.

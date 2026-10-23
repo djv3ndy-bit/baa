@@ -17,6 +17,7 @@ _FAILED_CONCLUSIONS = frozenset(
 _CONTROL_PLANE_WORKFLOW_PATHS = frozenset(
     {
         ".github/workflows/engineering-reliability-monitor.yml",
+        ".github/workflows/engineering-reliability-alert-test.yml",
         ".github/workflows/notion-reliability-sync.yml",
         ".github/workflows/notion-connection-verification.yml",
         ".github/workflows/notion-sync-tests.yml",

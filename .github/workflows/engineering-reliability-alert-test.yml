@@ -1,0 +1,99 @@
+name: Owner alert delivery test
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_one_owner_test:
+        description: 'Send one labelled test only to hello@baristajobmatch.com'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  owner-alert-test:
+    if: github.ref == 'refs/heads/main' && inputs.confirm_one_owner_test == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check out the reviewed monitor
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Verify the existing owner destination and send one labelled test
+        env:
+          ERA_P0_P1_EMAIL_ALERTS_APPROVED: ${{ vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED }}
+          ERA_ALERT_EMAIL: ${{ secrets.ERA_ALERT_EMAIL }}
+          ERA_RESEND_API_KEY: ${{ secrets.ERA_RESEND_API_KEY }}
+        run: |
+          mkdir -p monitoring-artifacts
+          PYTHONPATH=ops/engineering-reliability-agent/src python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from era.alerts import AlertMessage, ResendAlertSender
+
+          result = {
+              "mode": "owner_approved_delivery_test",
+              "labelled_test": True,
+              "attempted": False,
+              "provider_accepted": False,
+              "mailbox_delivery_verified": False,
+              "recipient_matches_approved_owner": False,
+              "customer_data_used": False,
+              "application_or_database_writes": False,
+          }
+          exit_code = 3
+          recipient = os.environ.get("ERA_ALERT_EMAIL", "").strip()
+          key = os.environ.get("ERA_RESEND_API_KEY", "").strip()
+          approved = os.environ.get("ERA_P0_P1_EMAIL_ALERTS_APPROVED", "").lower() == "true"
+          result["recipient_matches_approved_owner"] = recipient == "hello@baristajobmatch.com"
+          if not approved or not result["recipient_matches_approved_owner"] or not key:
+              result["status"] = "configuration_failed"
+          else:
+              message = AlertMessage(
+                  recipient=recipient,
+                  sender="BaristaMatch Reliability <updates@updates.baristajobmatch.com>",
+                  subject="[TEST] BaristaMatch monitoring alert delivery check - run " + os.environ["GITHUB_RUN_ID"],
+                  html_body=(
+                      "<h1>TEST: BaristaMatch monitoring alert delivery check</h1>"
+                      "<p>This is the single owner-approved delivery test. "
+                      "No outage, security incident, or customer request was created.</p>"
+                      "<p>Cloud verification run: " + os.environ["GITHUB_RUN_ID"] + "</p>"
+                      "<p>No incident response or reply is needed. "
+                      "The iOS app and App Review were not changed.</p>"
+                  ),
+                  idempotency_key="era-owner-delivery-test-" + os.environ["GITHUB_RUN_ID"],
+              )
+              result["attempted"] = True
+              try:
+                  ResendAlertSender(key).send(message)
+              except Exception as error:
+                  result.update(status="delivery_failed", error_type=type(error).__name__)
+                  exit_code = 4
+              else:
+                  result.update(status="provider_accepted", provider_accepted=True)
+                  exit_code = 0
+          Path("monitoring-artifacts/owner-alert-test.json").write_text(
+              json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(result, sort_keys=True))
+          raise SystemExit(exit_code)
+          PY
+      - name: Preserve the sanitized delivery test result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: owner-alert-test-${{ github.run_id }}
+          path: monitoring-artifacts/owner-alert-test.json
+          if-no-files-found: error
+          retention-days: 14
+# Manual only: never runs on a push, schedule, or pull request. The default
+# confirmation is false, the recipient must match the approved owner, and
+# HTTP acceptance is recorded separately from actual mailbox delivery.

@@ -19,6 +19,11 @@ concurrency:
 
 jobs:
   monitor:
+    permissions:
+      actions: read
+      contents: read
+      checks: read
+      id-token: write # Fixed audience, immutable repository/main/workflow count-reader only.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -129,6 +134,7 @@ jobs:
           VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ vars.ERA_SUPABASE_PROJECT_REF }}
           SUPABASE_READ_ONLY_TOKEN: ${{ secrets.ERA_SUPABASE_READ_ONLY_TOKEN }}
+          ERA_RUNTIME_SUMMARY_ENABLED: ${{ vars.ERA_RUNTIME_SUMMARY_ENABLED }}
         run: |
           set -uo pipefail
           mkdir -p monitoring-artifacts
@@ -157,7 +163,7 @@ jobs:
               --supabase-service storage \
               --supabase-service realtime \
               --supabase-service edge-function \
-              --lookback 1h \
+              --lookback 2h \
               --limit 10 > "$output_path"
             monitor_exit=$?
             set -e
@@ -231,10 +237,24 @@ jobs:
           print("## Owner email alert")
           print(f"- Status: {result.get('status', 'unknown')}")
           print(f"- Attempted: {str(result.get('attempted', False)).lower()}")
-          print(f"- Delivered: {str(result.get('delivered', False)).lower()}")
+          print(f"- Provider accepted: {str(result.get('provider_accepted', False)).lower()}")
+          print(f"- Mailbox delivery verified: {str(result.get('mailbox_delivery_verified', False)).lower()}")
           print("- Recipient and credentials: never written to logs or artifacts")
           PY
           exit "$alert_exit"
+
+      - name: Send the separately approved hourly runtime technical notice
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && vars.ERA_PRIVATE_MONITORING_ENABLED == 'true' && vars.ERA_RUNTIME_EMAIL_ALERTS_APPROVED == 'true' }}
+        shell: bash
+        env:
+          ERA_RUNTIME_EMAIL_ALERTS_APPROVED: ${{ vars.ERA_RUNTIME_EMAIL_ALERTS_APPROVED }}
+          ERA_ALERT_EMAIL: ${{ secrets.ERA_ALERT_EMAIL }}
+          ERA_RESEND_API_KEY: ${{ secrets.ERA_RESEND_API_KEY }}
+        run: |
+          PYTHONPATH=ops/engineering-reliability-agent/src \
+            python -m era.runtime_alerts \
+            --input monitoring-artifacts/private-provider-result.json \
+            > monitoring-artifacts/runtime-notice.json
 
       - name: Preserve sanitized incident artifact
         if: always()

@@ -91,6 +91,10 @@ jobs:
           corepack enable
           corepack prepare pnpm@9.15.9 --activate
           pnpm --dir tests/database install --frozen-lockfile --ignore-scripts
+      - name: Verify signed runtime receiver and cloud identity without network access
+        run: node --test ops/runtime-log-receiver/test_*.mjs
+      - name: Verify isolated runtime storage, authorization, deduplication and coverage
+        run: node --test ops/runtime-log-receiver/review/schema.test.mjs
       - name: Verify database privileges, RLS, and durable abuse budgets
         run: node --test tests/database/*.test.mjs
       - name: Verify real PostgreSQL concurrency on the disposable local database

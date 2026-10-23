@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from era.live import LiveCollectionPlan, NamedCollector
 from era.models import Environment, EvidenceSource, IncidentEvidence
 from era.monitor import run_monitoring_cycle
+from era.providers.http import ProviderReadError
+from era.response import build_response_package
 
 
 class StaticCollector:
@@ -46,6 +48,7 @@ class MonitoringCycleTests(unittest.IsolatedAsyncioTestCase):
         payload = result.to_dict()
 
         self.assertEqual(result.exit_code, 0)
+        self.assertEqual(payload["status"], "healthy")
         self.assertFalse(payload["model_used"])
         self.assertFalse(payload["production_writes_enabled"])
         self.assertFalse(payload["alert_required"])
@@ -63,6 +66,7 @@ class MonitoringCycleTests(unittest.IsolatedAsyncioTestCase):
         result = await run_monitoring_cycle(plan)
 
         self.assertEqual(result.exit_code, 2)
+        self.assertEqual(result.to_dict()["status"], "alert")
         self.assertTrue(result.alert_required)
         self.assertEqual(result.investigation.decision.severity.value, "P2")
 
@@ -76,13 +80,63 @@ class MonitoringCycleTests(unittest.IsolatedAsyncioTestCase):
         result = await run_monitoring_cycle(plan)
         payload = result.to_dict()
 
-        self.assertEqual(result.exit_code, 2)
+        self.assertEqual(result.exit_code, 3)
+        self.assertEqual(payload["status"], "collection_failed")
         self.assertTrue(result.alert_required)
         self.assertNotIn("must-not-leak", str(payload))
         self.assertEqual(
             payload["collection"]["collection_failures"][0]["error_type"],
             "TimeoutError",
         )
+
+    async def test_provider_access_denials_fail_the_monitor_without_fabricating_an_outage(self) -> None:
+        class DeniedCollector:
+            def __init__(self, status):
+                self.status = status
+
+            async def collect(self):
+                raise ProviderReadError(
+                    "synthetic private error text", reason_code="http_error", http_status=self.status
+                )
+
+        for status in (401, 403):
+            with self.subTest(status=status):
+                plan = LiveCollectionPlan(
+                    provider_names=("vercel",), environment=Environment.PRODUCTION,
+                    evidence_collectors=(NamedCollector("vercel", DeniedCollector(status)),),
+                )
+                result = await run_monitoring_cycle(plan)
+                payload = result.to_dict()
+                self.assertEqual(result.exit_code, 3)
+                self.assertEqual(payload["exit_code"], 3)
+                self.assertEqual(payload["status"], "collection_failed")
+                self.assertEqual(payload["collection"]["collection_failures"][0]["http_status"], status)
+                self.assertNotIn("synthetic private error text", str(payload))
+                self.assertEqual(result.investigation.decision.severity.value, "P2")
+                self.assertFalse(build_response_package([payload]).to_dict()["alert"]["eligible"])
+
+    async def test_collection_failure_does_not_suppress_a_separately_observed_p1_incident(self) -> None:
+        outage = IncidentEvidence(
+            id="synthetic-production-outage", source=EvidenceSource.HEALTH,
+            occurred_at=datetime.now(UTC), summary="Synthetic observed outage",
+            environment=Environment.PRODUCTION, route="/login", status_code=503,
+            metadata={"impact_percent": 40},
+        )
+        plan = LiveCollectionPlan(
+            provider_names=("health", "supabase"), environment=Environment.PRODUCTION,
+            evidence_collectors=(
+                NamedCollector("health", StaticCollector([outage])),
+                NamedCollector("supabase", FailingCollector()),
+            ),
+        )
+        result = await run_monitoring_cycle(plan)
+        payload = result.to_dict()
+        self.assertEqual(result.exit_code, 3)
+        self.assertEqual(payload["status"], "collection_failed")
+        self.assertEqual(result.investigation.decision.severity.value, "P1")
+        package = build_response_package([payload]).to_dict()
+        self.assertEqual(package["severity"], "P1")
+        self.assertTrue(package["alert"]["eligible"])
 
 
 if __name__ == "__main__":

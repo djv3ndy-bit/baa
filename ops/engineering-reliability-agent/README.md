@@ -89,7 +89,7 @@ PYTHONPATH=src .venv/bin/python -m era.main monitor \
   --limit 10
 ```
 
-The command exits with status `2` for a P0/P1/P2 alert and `0` for P3. Provider collection failures become sanitized P2 degradation evidence, so a broken monitoring integration cannot silently report a healthy cycle. See [Recurring monitoring](docs/recurring-monitoring.md) for the inactive review-gated schedule and credential activation boundary.
+The command exits with status `2` for a collected P0/P1/P2 finding, `0` for P3, and `3` when provider collection fails. Access failures remain sanitized P2 monitoring gaps, but the workflow stays red rather than reporting a successful review. Repeated failure of both existing production public probes can establish P1 without inventing user-impact percentages. See [Recurring monitoring](docs/recurring-monitoring.md) for the schedule, confirmation rule, alert policy and credential boundaries.
 
 Build a deterministic response package from one or more monitoring results:
 
@@ -119,10 +119,10 @@ PYTHONPATH=src .venv/bin/python -m era.main analyze --input evals/sample-inciden
 
 ## Integrations
 
-Collectors depend on narrow read-only provider interfaces. GET-only provider clients are implemented under `src/era/providers`, but production credentials and runtime wiring remain disabled until a later, separately reviewed phase.
+Collectors depend on narrow read-only provider interfaces. GET-only provider clients are implemented under `src/era/providers`; private production reads require the separately configured scoped credentials and explicit activation described in the recurring-monitoring guide.
 
 - GitHub: metadata, commits, changed paths, Actions status, and pull-request reads. No administration, workflows, secrets, deployments, merges, or `main` writes.
-- Vercel: project-scoped deployment, build-log, and bounded runtime-error reads. No deployment token or promotion capability.
+- Vercel: project-scoped deployment reads, plus an optional separately reviewed signed runtime-count receiver. Until the receiver, cloud heartbeat and explicit runtime flag are activated, required runtime history fails closed independently of successful deployment reads. Build events are never used as runtime telemetry. The count reader uses short-lived GitHub identity and has no deployment or promotion capability.
 - Supabase: project-scoped log and advisor reads only. No service key, SQL, migrations, branch merge/reset, Auth administration, RLS, or database write tools.
 - Health: HTTPS `GET` requests only, exact host allowlist, no credentials, query strings, or redirects.
 
