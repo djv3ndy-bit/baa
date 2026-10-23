@@ -104,7 +104,7 @@ jobs:
           python3 mobile/scripts/verify-android-manifest.py "$manifest" > /tmp/bjm-android-evidence/report.json
           cp "$manifest" /tmp/bjm-android-evidence/AndroidManifest.xml
           cat /tmp/bjm-android-evidence/report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android-release-manifest
           path: /tmp/bjm-android-evidence/
