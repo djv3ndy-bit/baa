@@ -18,11 +18,12 @@ _RESEND_PATH = "/emails"
 _DEFAULT_FROM = "BaristaMatch Reliability <updates@updates.baristajobmatch.com>"
 _EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_PROVIDER_MESSAGE_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 _MAX_RESPONSE_BYTES = 1_000_000
 
 
 class AlertSender(Protocol):
-    def send(self, message: "AlertMessage") -> None: ...
+    def send(self, message: "AlertMessage") -> str | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,10 +43,13 @@ class AlertDeliveryResult:
     severity: str
     fingerprint: str
     error_type: str | None = None
+    provider_accepted: bool = False
+    mailbox_delivery_verified: bool = False
+    provider_message_id: str | None = None
 
     @property
     def exit_code(self) -> int:
-        if self.status in {"not_required", "delivered"}:
+        if self.status in {"not_required", "provider_accepted", "delivered"}:
             return 0
         if self.status in {"approval_missing", "configuration_failed"}:
             return 3
@@ -53,9 +57,18 @@ class AlertDeliveryResult:
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
+        value["provider_message_id"] = _provider_message_id(self.provider_message_id)
         value["exit_code"] = self.exit_code
         value["production_writes_enabled"] = False
         return value
+
+
+def _provider_message_id(value: object) -> str | None:
+    # The send API returns an opaque UUID, also used as webhook data.email_id.
+    # Do not export arbitrary response fields, SMTP Message-IDs or error text.
+    if type(value) is str and _PROVIDER_MESSAGE_ID.fullmatch(value):
+        return value.lower()
+    return None
 
 
 def _sending_payload(*, recipient: str, sender: str, subject: str, html_body: str) -> bytes:
@@ -72,7 +85,7 @@ class ResendAlertSender:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
 
-    def send(self, message: AlertMessage) -> None:
+    def send(self, message: AlertMessage) -> str | None:
         body = _sending_payload(
             recipient=message.recipient, sender=message.sender,
             subject=message.subject, html_body=message.html_body,
@@ -94,9 +107,19 @@ class ResendAlertSender:
                 },
             )
             response = connection.getresponse()
-            response.read(_MAX_RESPONSE_BYTES + 1)
             if not 200 <= response.status < 300:
                 raise RuntimeError(f"ResendStatus{response.status}")
+            # A successful API response establishes acceptance only. Optional
+            # correlation metadata must never turn it into a delivery claim or
+            # a new send attempt when the response body cannot be inspected.
+            try:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+                if len(raw) > _MAX_RESPONSE_BYTES:
+                    return None
+                payload = json.loads(raw)
+            except (ValueError, RecursionError, OSError, http.client.HTTPException):
+                return None
+            return _provider_message_id(payload.get("id") if isinstance(payload, dict) else None)
         finally:
             connection.close()
 
@@ -202,7 +225,7 @@ def deliver_response_alert(
     )
     active_sender = sender or ResendAlertSender(api_key)
     try:
-        active_sender.send(message)
+        provider_message_id = _provider_message_id(active_sender.send(message))
     except Exception as error:
         return AlertDeliveryResult(
             "delivery_failed",
@@ -212,4 +235,7 @@ def deliver_response_alert(
             fingerprint,
             error_type=type(error).__name__,
         )
-    return AlertDeliveryResult("delivered", True, True, severity, fingerprint)
+    return AlertDeliveryResult(
+        "provider_accepted", True, False, severity, fingerprint,
+        provider_accepted=True, provider_message_id=provider_message_id,
+    )

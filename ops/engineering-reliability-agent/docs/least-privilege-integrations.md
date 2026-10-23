@@ -44,7 +44,7 @@ The client uses the new ClickHouse-backed `analytics/endpoints/logs` API and fil
 
 Resend is disabled by default and is not a monitoring provider. The owner must separately approve P0/P1 email alerts and store a dedicated sending-only key in the `ERA_RESEND_API_KEY` GitHub Actions secret. The single destination is stored in `ERA_ALERT_EMAIL`; neither value is available to public or provider-collection steps.
 
-The alert transport supports exactly one operation: `POST https://api.resend.com/emails`. It cannot list contacts, domains, API keys, audiences, broadcasts, webhooks, or historical messages. It rejects missing approval or configuration before opening a connection, does not follow redirects, and does not include the recipient, credential, or response body in its result.
+The alert transport supports exactly one operation: `POST https://api.resend.com/emails`. It cannot list contacts, domains, API keys, audiences, broadcasts, webhooks, or historical messages. A successful send proves provider acceptance only, not mailbox receipt. It rejects missing approval or configuration before opening a connection, does not follow redirects, and does not include the recipient, credential, or response body in its result.
 
 ## Network and data controls
 
@@ -81,3 +81,7 @@ PYTHONPATH=src .venv/bin/python -m era.main collect-live \
 ```
 
 The command returns only sanitized evidence and recent-change metadata. It sets `model_used` and `production_writes_enabled` to `false` in its output. Missing credentials, unsafe health URLs, unsupported environments, redirects, oversized responses, and lookbacks beyond 24 hours stop the collection.
+
+## Proposed signed runtime count reader (not activated)
+
+The separate [receiver](../../runtime-log-receiver/README.md) uses a production-only `baa` log drain, an isolated service-only operations schema, and short-lived GitHub OIDC tied to the immutable repository and exact main monitoring workflow. It does not broaden the existing Vercel integration's two read scopes. Only normalized event digests, times and category counts are retained; raw logs and backend credentials are never returned to GitHub. Metered drain creation, database/heartbeat objects, Edge deployment and reader/notice activation require the owner's separate concrete approval.

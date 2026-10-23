@@ -60,11 +60,12 @@ jobs:
               message = AlertMessage(
                   recipient=recipient,
                   sender="BaristaMatch Reliability <updates@updates.baristajobmatch.com>",
-                  subject="[TEST] BaristaMatch monitoring alert delivery check",
+                  subject="[TEST] BaristaMatch monitoring alert delivery check - run " + os.environ["GITHUB_RUN_ID"],
                   html_body=(
                       "<h1>TEST: BaristaMatch monitoring alert delivery check</h1>"
                       "<p>This is the single owner-approved delivery test. "
                       "No outage, security incident, or customer request was created.</p>"
+                      "<p>Cloud verification run: " + os.environ["GITHUB_RUN_ID"] + "</p>"
                       "<p>No incident response or reply is needed. "
                       "The iOS app and App Review were not changed.</p>"
                   ),

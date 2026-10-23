@@ -122,7 +122,7 @@ PYTHONPATH=src .venv/bin/python -m era.main analyze --input evals/sample-inciden
 Collectors depend on narrow read-only provider interfaces. GET-only provider clients are implemented under `src/era/providers`; private production reads require the separately configured scoped credentials and explicit activation described in the recurring-monitoring guide.
 
 - GitHub: metadata, commits, changed paths, Actions status, and pull-request reads. No administration, workflows, secrets, deployments, merges, or `main` writes.
-- Vercel: project-scoped deployment reads. Required historical runtime coverage is explicitly unavailable from the configured source and keeps monitoring failed closed, independently of successful deployment reads. Build events are not used as runtime telemetry. No deployment token or promotion capability.
+- Vercel: project-scoped deployment reads, plus an optional separately reviewed signed runtime-count receiver. Until the receiver, cloud heartbeat and explicit runtime flag are activated, required runtime history fails closed independently of successful deployment reads. Build events are never used as runtime telemetry. The count reader uses short-lived GitHub identity and has no deployment or promotion capability.
 - Supabase: project-scoped log and advisor reads only. No service key, SQL, migrations, branch merge/reset, Auth administration, RLS, or database write tools.
 - Health: HTTPS `GET` requests only, exact host allowlist, no credentials, query strings, or redirects.
 

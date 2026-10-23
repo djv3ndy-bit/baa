@@ -1,0 +1,9 @@
+# This is an isolated deployment manifest, not the application's Supabase config.
+project_id = "lmwqrxoitraofaftpwhe"
+
+[functions.era-runtime]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/era-runtime/index.ts"
+# GET verifies the exact GitHub workflow's short-lived OIDC signature/claims.
+# POST requires its private ingest token and Vercel raw-body HMAC. No anonymous path.

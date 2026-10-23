@@ -13,6 +13,9 @@ _FAILURE_REASONS = frozenset({
     "provider_read_failed", "http_error", "timeout", "transport_error",
     "invalid_request", "invalid_json", "invalid_response", "response_too_large",
     "runtime_history_not_supported_by_configured_source",
+    "runtime_summary_invalid_response", "runtime_summary_configuration_failed",
+    "runtime_summary_warming_up", "runtime_summary_stale", "runtime_summary_partial",
+    "runtime_identity_unavailable",
 })
 
 

@@ -12,11 +12,14 @@ from era.collectors.github import GitHubCollector
 from era.collectors.health import ConfirmedPublicOutageCollector, HealthCollector, PUBLIC_OUTAGE_URLS
 from era.collectors.supabase import SupabaseCollector
 from era.collectors.vercel import VercelCollector
+from era.collectors.runtime_summary import RuntimeSummaryCollector
 from era.models import Environment, EvidenceSource, IncidentEvidence, RecentChange
 from era.providers.github import GitHubApiSource
 from era.providers.http import ProviderReadError, safe_failure_diagnostics
 from era.providers.supabase import SupabaseManagementSource
 from era.providers.vercel import VercelApiSource
+from era.providers.runtime_summary import RuntimeSummarySource
+from era.runtime_oidc import acquire_github_runtime_identity
 from era.redaction import sanitize_evidence_batch, sanitize_text
 
 
@@ -177,17 +180,21 @@ def build_live_plan(
         # Runtime-history coverage must not discard independently collected
         # deployment evidence or silently turn an unsupported source into healthy.
         for operation in ("deployments", "runtime_history"):
+            collector = (
+                RuntimeSummaryCollector(
+                    RuntimeSummarySource(identity=lambda: acquire_github_runtime_identity(environment)),
+                    project_id, environment=target_environment, since=lookback,
+                )
+                if operation == "runtime_history" and environment.get("ERA_RUNTIME_SUMMARY_ENABLED", "").strip().lower() == "true"
+                else VercelCollector(
+                    vercel_source, project_id, environment=target_environment,
+                    since=lookback, limit=limit, operation=operation,
+                )
+            )
             evidence_collectors.append(
                 NamedCollector(
                     "vercel",
-                    VercelCollector(
-                        vercel_source,
-                        project_id,
-                        environment=target_environment,
-                        since=lookback,
-                        limit=limit,
-                        operation=operation,
-                    ),
+                    collector,
                     operation=operation,
                 )
             )
