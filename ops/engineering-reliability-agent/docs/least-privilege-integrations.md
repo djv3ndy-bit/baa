@@ -22,9 +22,13 @@ deployment, or merge permission.
 
 ## Vercel
 
-Preferred credential: the connected Vercel read application. A dedicated, expiring access token for the smallest applicable team is an acceptable runtime fallback when the connected application cannot be used by the service.
+Use the owner-approved private integration limited to the selected `baa` project with only `read:deployment` and `read:integration-configuration`. A successful connected MCP read uses separate authentication and does not prove access for the GitHub monitor credential. Do not substitute a deployment-capable personal token or broaden scopes to repair a monitoring gap.
 
-The configured project ID is an application-level allowlist. The client only lists that project's deployments, reads bounded deployment events, and confirms whether an exact reviewed Git commit is `READY` in production. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
+The configured project ID is an application-level allowlist in addition to the integration's provider-enforced project selection. The client only lists that project's deployments and confirms whether an exact reviewed Git commit is `READY` in production. It does not expose operations for creating, canceling, promoting, rolling back, or deleting deployments, or for reading or changing environment variables.
+
+Deployment checks and required historical runtime coverage run independently. The configured source has no verified, authorized historical runtime endpoint. It reports operation `runtime_history` with the fixed diagnostic `runtime_history_not_supported_by_configured_source` without making a runtime or build-event request. Successful deployment reads therefore do not produce an all-clear: `monitor` returns `collection_failed` and exit code `3`, while preserving any deployment failure evidence collected successfully. This is an unavailable monitoring capability, not proof of a website outage or permission denial.
+
+The [deployment-events endpoint](https://vercel.com/docs/rest-api/deployments/get-deployment-events) returns build logs. It must not be interpreted as historical runtime telemetry. The documented [runtime stream](https://vercel.com/docs/rest-api/logs/get-logs-for-a-deployment) does not document historical window parameters, and the [integration scope table](https://vercel.com/docs/integrations/create-integration/vercel-api-integrations#deployments) does not establish historical runtime authorization for the two configured scopes. A future runtime adapter requires a documented source, independently verified least-privilege authorization, bounded history and redacted records before this gap can be marked recovered. No new endpoint, scope, token, drain, receiver or paid service is configured by this correction.
 
 ## Supabase
 

@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from era.providers.github import GitHubApiSource
+from era.providers.http import ProviderReadError
 from era.providers.supabase import SupabaseManagementSource
 from era.providers.vercel import VercelApiSource
 
@@ -279,55 +280,19 @@ class VercelApiSourceTests(unittest.IsolatedAsyncioTestCase):
             [item["deployment_id"] for item in failures], ["dpl_recent123"]
         )
 
-    async def test_runtime_errors_are_grouped_without_raw_log_text(self) -> None:
-        transport = QueueTransport(
-            [
-                {
-                    "deployments": [
-                        {
-                            "uid": "dpl_ready123",
-                            "state": "READY",
-                            "meta": {"githubCommitSha": "abcdef1234567890"},
-                        }
-                    ]
-                },
-                [
-                    {
-                        "created": 1_788_177_600_000,
-                        "payload": {
-                            "text": "authorization=do-not-return-this",
-                            "proxy": {
-                                "path": "/api/send-message?token=private",
-                                "statusCode": 500,
-                            },
-                        },
-                    },
-                    {
-                        "created": 1_788_177_601_000,
-                        "payload": {
-                            "text": "another raw line",
-                            "proxy": {
-                                "path": "/api/send-message",
-                                "statusCode": 500,
-                            },
-                        },
-                    },
-                ],
-            ]
-        )
+    async def test_runtime_history_is_explicitly_unavailable_without_provider_reads(self) -> None:
+        transport = QueueTransport([])
         source = VercelApiSource("vercel-read-token", transport=transport)
 
-        errors = await source.list_runtime_errors(
-            "prj_example", environment="production", since="1h", limit=10
-        )
+        with self.assertRaises(ProviderReadError) as raised:
+            await source.list_runtime_errors(
+                "prj_example", environment="production", since="1h", limit=10
+            )
 
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(errors[0]["route"], "/api/send-message")
-        self.assertEqual(errors[0]["count"], 2)
-        self.assertNotIn("authorization", str(errors))
-        events_query = parse_qs(urlsplit(transport.requests[1][0]).query)
-        self.assertEqual(events_query["statusCode"], ["5xx"])
-        self.assertEqual(events_query["follow"], ["0"])
+        self.assertEqual(raised.exception.diagnostics(), {
+            "reason_code": "runtime_history_not_supported_by_configured_source",
+        })
+        self.assertEqual(transport.requests, [])
 
 
 class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):

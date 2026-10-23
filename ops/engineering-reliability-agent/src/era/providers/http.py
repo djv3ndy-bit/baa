@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 _FAILURE_REASONS = frozenset({
     "provider_read_failed", "http_error", "timeout", "transport_error",
     "invalid_request", "invalid_json", "invalid_response", "response_too_large",
+    "runtime_history_not_supported_by_configured_source",
 })
 
 

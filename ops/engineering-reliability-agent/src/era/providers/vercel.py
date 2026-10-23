@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
 from .http import JsonGetTransport, ProviderReadError, UrlLibJsonTransport
 
@@ -16,12 +16,6 @@ _COMMIT_SHA = re.compile(r"[0-9a-fA-F]{7,64}")
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
-
-
-def _sequence(value: Any) -> Sequence[Any]:
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return value
-    return ()
 
 
 def _timestamp(value: Any) -> str:
@@ -44,16 +38,8 @@ def _timestamp_milliseconds(value: Any) -> int | None:
     return int(raw)
 
 
-def _status_code(value: Any) -> int | None:
-    try:
-        status = int(value)
-    except (TypeError, ValueError):
-        return None
-    return status if 100 <= status <= 599 else None
-
-
 class VercelApiSource:
-    """GET-only access to deployments and bounded deployment events."""
+    """GET-only deployment access; historical runtime coverage is unavailable."""
 
     def __init__(
         self,
@@ -199,76 +185,11 @@ class VercelApiSource:
         limit: int,
     ) -> list[Mapping[str, Any]]:
         self._validate(project_id, environment, limit)
-        since_ms = self._since_milliseconds(since)
-        deployments = await self._deployments(
-            project_id, environment=environment, limit=min(limit, 10)
+        self._since_milliseconds(since)
+        # Deployment events are build logs, not historical runtime evidence.
+        # No authorized historical source is configured for this integration.
+        # Fail explicitly without reading build events or broadening credentials.
+        raise ProviderReadError(
+            "Historical runtime monitoring is unavailable from the configured source",
+            reason_code="runtime_history_not_supported_by_configured_source",
         )
-        grouped: dict[tuple[str, str], dict[str, Any]] = {}
-        for deployment in deployments:
-            state = str(
-                deployment.get("state") or deployment.get("readyState") or ""
-            ).upper()
-            deployment_id = str(deployment.get("uid") or deployment.get("id") or "")
-            if state != "READY" or not _IDENTIFIER.fullmatch(deployment_id):
-                continue
-            events = await self._get(
-                f"/v3/deployments/{quote(deployment_id)}/events",
-                {
-                    "direction": "backward",
-                    "follow": 0,
-                    "limit": limit,
-                    "since": since_ms,
-                    "statusCode": "5xx",
-                },
-            )
-            if not isinstance(events, list):
-                continue
-            metadata = _mapping(deployment.get("meta"))
-            for event in events:
-                if not isinstance(event, Mapping):
-                    continue
-                payload = _mapping(event.get("payload"))
-                proxy = _mapping(payload.get("proxy"))
-                info = _mapping(payload.get("info"))
-                status = _status_code(
-                    payload.get("statusCode") or proxy.get("statusCode")
-                )
-                if status is None or status < 500:
-                    continue
-                route = str(proxy.get("path") or info.get("path") or "/")
-                route = route.split("?", 1)[0][:300]
-                key = (deployment_id, route)
-                occurred_at = _timestamp(
-                    event.get("created")
-                    or payload.get("created")
-                    or proxy.get("timestamp")
-                )
-                record = grouped.setdefault(
-                    key,
-                    {
-                        "occurred_at": occurred_at,
-                        "route": route,
-                        "status_code": status,
-                        "deployment_id": deployment_id,
-                        "commit_sha": metadata.get("githubCommitSha"),
-                        "count": 0,
-                    },
-                )
-                record["count"] = int(record["count"]) + 1
-                if occurred_at > str(record["occurred_at"]):
-                    record["occurred_at"] = occurred_at
-                if len(grouped) >= limit:
-                    break
-            if len(grouped) >= limit:
-                break
-
-        errors: list[Mapping[str, Any]] = []
-        for index, record in enumerate(grouped.values()):
-            errors.append(
-                {
-                    "id": f"vercel-runtime-{index}",
-                    "summary": "Vercel runtime returned a server error",
-                    **record,
-                }
-            )
-        return errors

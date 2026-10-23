@@ -34,6 +34,11 @@ class GitHubLiveCollector(Protocol):
 class NamedCollector:
     provider: str
     collector: ReadOnlyCollector = field(repr=False)
+    operation: str = "evidence"
+
+    def __post_init__(self) -> None:
+        if self.operation not in {"evidence", "deployments", "runtime_history"}:
+            raise ValueError("Unsupported read-only collection operation")
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,18 +173,24 @@ def build_live_plan(
             _required(environment, "VERCEL_READ_TOKEN"),
             team_id=_required(environment, "VERCEL_TEAM_ID"),
         )
-        evidence_collectors.append(
-            NamedCollector(
-                "vercel",
-                VercelCollector(
-                    vercel_source,
-                    _required(environment, "VERCEL_PROJECT_ID"),
-                    environment=target_environment,
-                    since=lookback,
-                    limit=limit,
-                ),
+        project_id = _required(environment, "VERCEL_PROJECT_ID")
+        # Runtime-history coverage must not discard independently collected
+        # deployment evidence or silently turn an unsupported source into healthy.
+        for operation in ("deployments", "runtime_history"):
+            evidence_collectors.append(
+                NamedCollector(
+                    "vercel",
+                    VercelCollector(
+                        vercel_source,
+                        project_id,
+                        environment=target_environment,
+                        since=lookback,
+                        limit=limit,
+                        operation=operation,
+                    ),
+                    operation=operation,
+                )
             )
-        )
 
     if "supabase" in providers:
         if target_environment is not Environment.PRODUCTION:
@@ -212,7 +223,7 @@ def build_live_plan(
 
 async def run_live_plan(plan: LiveCollectionPlan) -> LiveCollectionResult:
     task_specs: list[tuple[str, str, Any]] = [
-        (item.provider, "evidence", item.collector.collect())
+        (item.provider, item.operation, item.collector.collect())
         for item in plan.evidence_collectors
     ]
     if plan.github_collector:

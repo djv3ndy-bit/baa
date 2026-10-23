@@ -26,28 +26,36 @@ class VercelCollector:
         environment: Environment = Environment.PRODUCTION,
         since: str = "1h",
         limit: int = 50,
+        operation: str = "evidence",
     ) -> None:
         if limit < 1 or limit > 100:
             raise ValueError("Vercel collector limit must be between 1 and 100")
+        if operation not in {"evidence", "deployments", "runtime_history"}:
+            raise ValueError("Unsupported Vercel collection operation")
         self._source = source
         self._project_id = project_id
         self._environment = environment
         self._since = since
         self._limit = limit
+        self._operation = operation
 
     async def collect(self) -> list[IncidentEvidence]:
-        deployments = await self._source.list_failed_deployments(
-            self._project_id,
-            environment=self._environment.value,
-            since=self._since,
-            limit=self._limit,
-        )
-        errors = await self._source.list_runtime_errors(
-            self._project_id,
-            environment=self._environment.value,
-            since=self._since,
-            limit=self._limit,
-        )
+        deployments = []
+        errors = []
+        if self._operation != "runtime_history":
+            deployments = await self._source.list_failed_deployments(
+                self._project_id,
+                environment=self._environment.value,
+                since=self._since,
+                limit=self._limit,
+            )
+        if self._operation != "deployments":
+            errors = await self._source.list_runtime_errors(
+                self._project_id,
+                environment=self._environment.value,
+                since=self._since,
+                limit=self._limit,
+            )
         evidence: list[IncidentEvidence] = []
         for index, item in enumerate(deployments):
             evidence.append(

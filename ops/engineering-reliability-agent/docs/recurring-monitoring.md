@@ -49,6 +49,8 @@ GitHub Actions secrets:
 - `ERA_VERCEL_READ_TOKEN`: an installation credential for a private integration with only Deployment Read (plus the required Integration Configuration Read), restricted to the website project `baa`. Vercel personal tokens, including project-scoped ones, carry write authority and are not read-only. Deployment events are build events; successful collection does not prove full runtime-log coverage.
 - `ERA_SUPABASE_READ_ONLY_TOKEN`: a dedicated scoped personal access token limited to the production project and only **Logs: Read**. Save an expiry and arrange renewal before it expires. Never use a legacy account-wide token, short-lived OAuth token without refresh, publishable key, secret key, service-role key, database password, or database connection string.
 
+Vercel deployment reads and historical runtime coverage are separate required operations. The configured adapter has no verified historical runtime source, so `runtime_history` reports `runtime_history_not_supported_by_configured_source` without reading deployment events. The monitor preserves successfully collected deployment evidence but returns `collection_failed` and exit code `3` even after credential renewal makes deployment reads work. This coverage gap is not evidence of a customer outage and does not trigger a P0/P1 email. Recovery requires a separately verified authorized runtime source; see [Least-privilege integrations](least-privilege-integrations.md#vercel).
+
 The agent must not create, read back, print, or rotate these secrets. The owner saves them directly in GitHub's Actions settings. Enabling private coverage without all required values produces a sanitized configuration alert and performs no provider request.
 
 ## Manual owner delivery test
