@@ -1,277 +1,277 @@
-name: Engineering reliability monitor
+# LOCAL REVIEW ARTIFACT ONLY. Proposed replacement at the existing workflow path
+# on only codex/runtime-alert-proof-20261023. Never merge this replacement into main.
+name: Runtime monitoring and owner alert proof
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: '17 * * * *'
+    inputs:
+      confirm_read_only_probe:
+        description: 'Read one bounded page of baa production error logs; expose only counts'
+        required: true
+        type: boolean
+        default: false
+      confirm_one_owner_test:
+        description: 'Send one labelled cloud test only to the approved owner mailbox'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
-  actions: read
   contents: read
-  checks: read
 
 concurrency:
-  group: engineering-reliability-monitor
+  group: runtime-monitoring-owner-alert-proof
   cancel-in-progress: false
 
 jobs:
-  monitor:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  cloud-proof:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/runtime-alert-proof-20261023' &&
+      inputs.confirm_read_only_probe == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
     steps:
-      - name: Check out the reviewed revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Use Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: Wait for the exact approved production revision
-        if: github.event_name == 'push'
-        id: deployment_revision
+      - name: Read one page of historical runtime errors without repository checkout
+        id: runtime_probe
+        continue-on-error: true
         shell: bash
         env:
-          VERCEL_PROJECT_ID: ${{ vars.ERA_VERCEL_PROJECT_ID }}
-          VERCEL_TEAM_ID: ${{ vars.ERA_VERCEL_TEAM_ID }}
-          VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
-        run: |
-          set -uo pipefail
-          mkdir -p monitoring-artifacts
-          output_path='monitoring-artifacts/deployment-verification.json'
-          configuration_failed=0
-          for variable_name in VERCEL_PROJECT_ID VERCEL_TEAM_ID VERCEL_READ_TOKEN; do
-            if [[ -z "${!variable_name:-}" ]]; then
-              configuration_failed=1
-            fi
-          done
-
-          if [[ "$configuration_failed" -eq 1 ]]; then
-            printf '%s\n' '{"alert_required":true,"error_type":"MissingReadOnlyVercelConfiguration","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"configuration_failed"}' > "$output_path"
-            verification_exit=3
-          else
-            set +e
-            PYTHONPATH=ops/engineering-reliability-agent/src \
-              python -m era.main wait-deployment \
-              --commit "$GITHUB_SHA" \
-              --attempts 60 \
-              --delay 10 > "$output_path"
-            verification_exit=$?
-            set -e
-          fi
-
-          if [[ ! -s "$output_path" ]]; then
-            printf '%s\n' '{"alert_required":true,"error_type":"MissingDeploymentVerificationResult","exit_code":3,"mode":"post_merge_verification","model_used":false,"operation":"exact_production_revision","production_writes_enabled":false,"provider":"vercel","severity":"P2","status":"collection_failed"}' > "$output_path"
-            verification_exit=3
-          fi
-          echo "exit_code=$verification_exit" >> "$GITHUB_OUTPUT"
-
-      - name: Collect public read-only evidence
-        id: public_monitor
-        shell: bash
-        env:
-          ERA_ALLOWED_HEALTH_HOSTS: www.baristajobmatch.com
-          GITHUB_REPOSITORY: djv3ndy-bit/baa
-          GITHUB_READ_TOKEN: ${{ github.token }}
-        run: |
-          set -uo pipefail
-          mkdir -p monitoring-artifacts
-          output_path='monitoring-artifacts/public-result.json'
-          set +e
-          PYTHONPATH=ops/engineering-reliability-agent/src \
-            python -m era.main monitor \
-            --environment production \
-            --provider health \
-            --health-url https://www.baristajobmatch.com/ \
-            --health-url https://www.baristajobmatch.com/api/public-config \
-            --provider github \
-            --lookback 1h \
-            --limit 10 > "$output_path"
-          monitor_exit=$?
-          set -e
-
-          if [[ ! -s "$output_path" ]]; then
-            printf '%s\n' '{"alert_required":true,"error_type":"MissingMonitorResult","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"collection_failed"}' > "$output_path"
-            monitor_exit=3
-          fi
-
-          echo "exit_code=$monitor_exit" >> "$GITHUB_OUTPUT"
-          OUTPUT_PATH="$output_path" python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          import os
-
-          with open(os.environ["OUTPUT_PATH"], encoding="utf-8") as handle:
-              result = json.load(handle)
-          severity = result.get("investigation", {}).get("decision", {}).get("severity", "unavailable")
-          failures = len(result.get("collection", {}).get("collection_failures", []))
-          print("## Engineering reliability monitor: public checks")
-          print(f"- Status: {result.get('status', 'unknown')}")
-          print(f"- Severity: {severity}")
-          print(f"- Collection failures: {failures}")
-          print("- Model used: false")
-          print("- Production writes enabled: false")
-          PY
-
-      - name: Collect private-provider read-only evidence
-        id: private_monitor
-        if: vars.ERA_PRIVATE_MONITORING_ENABLED == 'true'
-        shell: bash
-        env:
-          GITHUB_REPOSITORY: djv3ndy-bit/baa
-          GITHUB_READ_TOKEN: ${{ github.token }}
-          VERCEL_PROJECT_ID: ${{ vars.ERA_VERCEL_PROJECT_ID }}
-          VERCEL_TEAM_ID: ${{ vars.ERA_VERCEL_TEAM_ID }}
-          VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ vars.ERA_SUPABASE_PROJECT_REF }}
-          SUPABASE_READ_ONLY_TOKEN: ${{ secrets.ERA_SUPABASE_READ_ONLY_TOKEN }}
-        run: |
-          set -uo pipefail
-          mkdir -p monitoring-artifacts
-          output_path='monitoring-artifacts/private-provider-result.json'
-          configuration_failed=0
-          for variable_name in VERCEL_PROJECT_ID VERCEL_TEAM_ID VERCEL_READ_TOKEN SUPABASE_PROJECT_REF SUPABASE_READ_ONLY_TOKEN; do
-            if [[ -z "${!variable_name:-}" ]]; then
-              configuration_failed=1
-            fi
-          done
-
-          if [[ "$configuration_failed" -eq 1 ]]; then
-            printf '%s\n' '{"alert_required":true,"error_type":"MissingReadOnlyConfiguration","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"configuration_failed"}' > "$output_path"
-            monitor_exit=3
-          else
-            set +e
-            PYTHONPATH=ops/engineering-reliability-agent/src \
-              python -m era.main monitor \
-              --environment production \
-              --provider github \
-              --provider vercel \
-              --provider supabase \
-              --supabase-service api \
-              --supabase-service postgres \
-              --supabase-service auth \
-              --supabase-service storage \
-              --supabase-service realtime \
-              --supabase-service edge-function \
-              --lookback 1h \
-              --limit 10 > "$output_path"
-            monitor_exit=$?
-            set -e
-          fi
-
-          if [[ ! -s "$output_path" ]]; then
-            printf '%s\n' '{"alert_required":true,"error_type":"MissingMonitorResult","exit_code":3,"mode":"recurring_monitor","model_used":false,"production_writes_enabled":false,"status":"collection_failed"}' > "$output_path"
-            monitor_exit=3
-          fi
-
-          echo "exit_code=$monitor_exit" >> "$GITHUB_OUTPUT"
-          OUTPUT_PATH="$output_path" python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          import os
-
-          with open(os.environ["OUTPUT_PATH"], encoding="utf-8") as handle:
-              result = json.load(handle)
-          severity = result.get("investigation", {}).get("decision", {}).get("severity", "unavailable")
-          failures = len(result.get("collection", {}).get("collection_failures", []))
-          print("## Engineering reliability monitor: private providers")
-          print(f"- Status: {result.get('status', 'unknown')}")
-          print(f"- Severity: {severity}")
-          print(f"- Collection failures: {failures}")
-          print("- Model used: false")
-          print("- Production writes enabled: false")
-          PY
-
-      - name: Prepare the sanitized incident response package
-        if: always()
-        shell: bash
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_SHA: ${{ github.sha }}
+          ERA_VERCEL_READ_TOKEN: ${{ secrets.ERA_VERCEL_READ_TOKEN }}
         run: |
           set -euo pipefail
-          response_inputs=(--input monitoring-artifacts/public-result.json)
-          if [[ -s monitoring-artifacts/private-provider-result.json ]]; then
-            response_inputs+=(--input monitoring-artifacts/private-provider-result.json)
-          fi
-          if [[ -s monitoring-artifacts/deployment-verification.json ]]; then
-            response_inputs+=(--input monitoring-artifacts/deployment-verification.json)
-          fi
-          PYTHONPATH=ops/engineering-reliability-agent/src \
-            python -m era.main prepare-response "${response_inputs[@]}" \
-            > monitoring-artifacts/response-package.json
+          python3 -I - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import ssl
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
 
-      - name: Send the owner-approved P0/P1 email alert
-        if: always() && vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED == 'true'
-        id: owner_alert
+          MAX_BYTES = 1_000_000
+          TEAM = "team_W7sLByby0CKVDax9uhMshO5I"
+          PROJECT = "prj_VuAxQpdhDJPeTPdanA5HjtOrylA5"
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          def probe():
+              result = {"success": False, "access_verified": False,
+                        "status": "configuration_failed", "http_status": None,
+                        "row_count": None, "error_log_count": None, "has_more_rows": None}
+              token = os.environ.get("ERA_VERCEL_READ_TOKEN", "")
+              if not 8 <= len(token) <= 4096 or any(not 33 <= ord(c) <= 126 for c in token):
+                  return result
+              try:
+                  end_ms = int(time.time() * 1000)
+                  query = urllib.parse.urlencode({
+                      "projectId": PROJECT, "ownerId": TEAM, "teamId": TEAM,
+                      "page": 0, "startDate": end_ms - 15 * 60 * 1000,
+                      "endDate": end_ms, "environment": "production", "level": "error,fatal",
+                  })
+                  url = "https://vercel.com/api/logs/request-logs?" + query
+                  context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                  context.check_hostname = True
+                  context.verify_mode = ssl.CERT_REQUIRED
+                  context.load_default_certs()
+                  context.keylog_filename = None
+                  opener = urllib.request.build_opener(
+                      urllib.request.ProxyHandler({}), NoRedirect(),
+                      urllib.request.HTTPSHandler(context=context),
+                  )
+                  request = urllib.request.Request(url, method="GET", headers={
+                      "Accept": "application/json", "Authorization": "Bearer " + token,
+                      "User-Agent": "BaristaMatch-runtime-access-proof/1.0",
+                  })
+                  with opener.open(request, timeout=8) as response:
+                      if type(response.status) is not int or response.status != 200:
+                          result["status"] = "invalid_response"
+                          return result
+                      result["http_status"] = 200
+                      body = response.read(MAX_BYTES + 1)
+                  if len(body) > MAX_BYTES:
+                      result["status"] = "response_too_large"
+                      return result
+                  payload = json.loads(body.decode("utf-8"))
+                  rows = payload.get("rows") if isinstance(payload, dict) else None
+                  more = payload.get("hasMoreRows") if isinstance(payload, dict) else None
+                  if (not isinstance(rows, list) or type(more) is not bool
+                          or any(not isinstance(row, dict) for row in rows)):
+                      result["status"] = "invalid_response"
+                      return result
+                  errors = 0
+                  for row in rows:
+                      logs = row.get("logs", [])
+                      if (not isinstance(logs, list)
+                              or any(not isinstance(log, dict) for log in logs)):
+                          result["status"] = "invalid_response"
+                          return result
+                      errors += sum(log.get("level") in ("error", "fatal") for log in logs)
+                  result.update(access_verified=True, row_count=len(rows),
+                                error_log_count=errors, has_more_rows=more,
+                                success=not more,
+                                status="coverage_incomplete" if more else "runtime_log_read_verified")
+              except urllib.error.HTTPError as error:
+                  code = error.code
+                  error.close()
+                  result["status"] = "access_denied" if code in (401, 403) else "http_error"
+                  if type(code) is int and 300 <= code <= 599:
+                      result["http_status"] = code
+              except (UnicodeDecodeError, json.JSONDecodeError):
+                  result["status"] = "invalid_response"
+              except TimeoutError:
+                  result["status"] = "timeout"
+              except urllib.error.URLError as error:
+                  result["status"] = "timeout" if isinstance(error.reason, TimeoutError) else "transport_error"
+              except OSError:
+                  result["status"] = "transport_error"
+              except Exception:
+                  result["status"] = "internal_error"
+              return result
+
+          result = probe()
+          output = json.dumps(result, sort_keys=True) + "\n"
+          Path("monitoring-artifacts").mkdir(exist_ok=True)
+          Path("monitoring-artifacts/runtime-log-access.json").write_text(output, encoding="utf-8")
+          print(output, end="")
+          raise SystemExit(0 if result["success"] else 3)
+          PY
+
+      - name: Send one explicitly selected owner test independently of runtime access
+        id: owner_test
+        if: ${{ !cancelled() && inputs.confirm_one_owner_test == true }}
+        continue-on-error: true
         shell: bash
         env:
           ERA_P0_P1_EMAIL_ALERTS_APPROVED: ${{ vars.ERA_P0_P1_EMAIL_ALERTS_APPROVED }}
           ERA_ALERT_EMAIL: ${{ secrets.ERA_ALERT_EMAIL }}
           ERA_RESEND_API_KEY: ${{ secrets.ERA_RESEND_API_KEY }}
         run: |
-          set +e
-          PYTHONPATH=ops/engineering-reliability-agent/src \
-            python -m era.main notify \
-            --input monitoring-artifacts/response-package.json \
-            > monitoring-artifacts/alert-delivery.json
-          alert_exit=$?
-          set -e
-
-          ALERT_PATH=monitoring-artifacts/alert-delivery.json python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          python3 -I - <<'PY'
+          import http.client
           import json
           import os
+          from pathlib import Path
+          import re
+          import ssl
 
-          with open(os.environ["ALERT_PATH"], encoding="utf-8") as handle:
-              result = json.load(handle)
-          print("## Owner email alert")
-          print(f"- Status: {result.get('status', 'unknown')}")
-          print(f"- Attempted: {str(result.get('attempted', False)).lower()}")
-          print(f"- Delivered: {str(result.get('delivered', False)).lower()}")
-          print("- Recipient and credentials: never written to logs or artifacts")
+          def send_test():
+              result = {"labelled_test": True, "attempted": False,
+                        "provider_accepted": False, "mailbox_delivery_verified": False,
+                        "recipient_matches_approved_owner": False,
+                        "status": "configuration_failed", "http_status": None}
+              recipient = os.environ.get("ERA_ALERT_EMAIL", "").strip()
+              key = os.environ.get("ERA_RESEND_API_KEY", "")
+              approved = os.environ.get("ERA_P0_P1_EMAIL_ALERTS_APPROVED", "").strip().lower() == "true"
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              result["recipient_matches_approved_owner"] = recipient == "hello@baristajobmatch.com"
+              if (not approved or not result["recipient_matches_approved_owner"]
+                      or not 8 <= len(key) <= 4096
+                      or any(not 33 <= ord(c) <= 126 for c in key)
+                      or re.fullmatch(r"[0-9]{1,30}", run_id) is None):
+                  return result
+              connection = None
+              try:
+                  subject = "[TEST] BaristaMatch cloud monitoring alert " + run_id
+                  html_body = (
+                      "<h1>TEST: BaristaMatch cloud monitoring alert</h1>"
+                      "<p>Cloud run " + run_id + ". This is the single owner-authorized delivery test.</p>"
+                      "<p>This cloud-run test does not depend on your Mac being online. "
+                      "No outage or customer request was created. No reply or incident action is needed.</p>"
+                      "<p>The iOS app and current App Review were not changed.</p>"
+                  )
+                  body = json.dumps({
+                      "from": "BaristaMatch Reliability <updates@updates.baristajobmatch.com>",
+                      "to": [recipient], "subject": subject, "html": html_body,
+                  }, separators=(",", ":"), sort_keys=True).encode("utf-8")
+                  context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                  context.check_hostname = True
+                  context.verify_mode = ssl.CERT_REQUIRED
+                  context.load_default_certs()
+                  context.keylog_filename = None
+                  # HTTPSConnection has no environment-proxy or redirect-following behavior.
+                  connection = http.client.HTTPSConnection("api.resend.com", timeout=8, context=context)
+                  result["attempted"] = True
+                  connection.request("POST", "/emails", body=body, headers={
+                      "Authorization": "Bearer " + key, "Content-Type": "application/json",
+                      "Idempotency-Key": "bjm-runtime-owner-alert-test-" + run_id,
+                  })
+                  response = connection.getresponse()
+                  code = response.status
+                  if type(code) is not int or not 200 <= code <= 599:
+                      result["status"] = "invalid_response"
+                      return result
+                  result["http_status"] = code
+                  if 200 <= code < 300:
+                      # Acceptance is not an inbox receipt. Never read or log the response body.
+                      result.update(provider_accepted=True, status="provider_accepted")
+                  else:
+                      result["status"] = "delivery_failed"
+              except TimeoutError:
+                  result["status"] = "delivery_timeout"
+              except Exception:
+                  result["status"] = "delivery_failed"
+              finally:
+                  if connection is not None:
+                      connection.close()
+              return result
+
+          result = send_test()
+          output = json.dumps(result, sort_keys=True) + "\n"
+          Path("monitoring-artifacts").mkdir(exist_ok=True)
+          Path("monitoring-artifacts/owner-alert-test.json").write_text(output, encoding="utf-8")
+          print(output, end="")
+          raise SystemExit(0 if result["provider_accepted"] else 3)
           PY
-          exit "$alert_exit"
 
-      - name: Preserve sanitized incident artifact
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: engineering-reliability-result-${{ github.run_id }}
-          path: monitoring-artifacts/*.json
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Classify reliability result
+      - name: Classify the independent proof results without declaring an all-clear
         if: always()
         shell: bash
+        env:
+          OWNER_TEST_REQUESTED: ${{ inputs.confirm_one_owner_test }}
         run: |
-          # Exit code 2 means the monitor collected evidence successfully and found
-          # something for owner review. That is a review state, not an Actions failure.
-          # Exit code 3+ means the monitor/configuration itself failed and should stay red.
-          failed=0
-          classify() {
-            local label="$1"
-            local code="$2"
-            if [[ -z "$code" || "$code" == "0" ]]; then
-              return
-            fi
-            if [[ "$code" == "2" ]]; then
-              echo "::notice title=Reliability review requested::$label found a review-only condition. The workflow remains successful."
-              return
-            fi
-            echo "::error title=Reliability monitor failure::$label returned exit code $code."
-            failed=1
-          }
+          set -euo pipefail
+          python3 -I - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-          if [[ '${{ github.event_name }}' == 'push' ]]; then
-            classify "Deployment verification" '${{ steps.deployment_revision.outputs.exit_code }}'
-          fi
-          classify "Public monitor" '${{ steps.public_monitor.outputs.exit_code }}'
-          if [[ '${{ vars.ERA_PRIVATE_MONITORING_ENABLED }}' == 'true' ]]; then
-            classify "Private-provider monitor" '${{ steps.private_monitor.outputs.exit_code }}'
-          fi
-          exit "$failed"
+          def read_result(name):
+              try:
+                  value = json.loads(Path("monitoring-artifacts", name).read_text(encoding="utf-8"))
+                  return value if isinstance(value, dict) else {}
+              except Exception:
+                  return {}
+
+          runtime = read_result("runtime-log-access.json")
+          owner = read_result("owner-alert-test.json")
+          requested = os.environ.get("OWNER_TEST_REQUESTED", "").lower() == "true"
+          result = {
+              "runtime_probe_passed": runtime.get("success") is True,
+              "owner_test_requested": requested,
+              "owner_test_provider_accepted": requested and owner.get("provider_accepted") is True,
+              "mailbox_delivery_verified": False,
+          }
+          output = json.dumps(result, sort_keys=True) + "\n"
+          Path("monitoring-artifacts").mkdir(exist_ok=True)
+          Path("monitoring-artifacts/cloud-proof-summary.json").write_text(output, encoding="utf-8")
+          print(output, end="")
+          passed = result["runtime_probe_passed"] and (not requested or result["owner_test_provider_accepted"])
+          raise SystemExit(0 if passed else 3)
+          PY
+
+      - name: Preserve only the three fixed-schema proof results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1, pinned on current main
+        with:
+          name: runtime-owner-alert-proof-${{ github.run_id }}
+          path: |
+            monitoring-artifacts/runtime-log-access.json
+            monitoring-artifacts/owner-alert-test.json
+            monitoring-artifacts/cloud-proof-summary.json
+          if-no-files-found: error
+          retention-days: 1
