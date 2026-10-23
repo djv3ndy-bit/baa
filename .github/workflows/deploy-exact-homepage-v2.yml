@@ -9,7 +9,7 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Decode homepage
         run: cat .github/homepage_exact_payload/part-* | base64 -d > index.html
       - name: Validate blueprint structure
