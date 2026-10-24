@@ -47,6 +47,26 @@ class JsonGetTransport(Protocol):
     async def get_json(self, url: str, *, headers: Mapping[str, str]) -> Any: ...
 
 
+@dataclass(frozen=True, slots=True)
+class RetryOnceJsonTransport:
+    """Retry one transient GET failure; preserve an exhausted failure as unknown."""
+
+    transport: JsonGetTransport
+
+    async def get_json(self, url: str, *, headers: Mapping[str, str]) -> Any:
+        try:
+            return await self.transport.get_json(url, headers=headers)
+        except ProviderReadError as error:
+            transient = error.reason_code == "timeout" or (
+                error.reason_code == "http_error"
+                and error.http_status in {502, 503, 504}
+            )
+            if not transient:
+                raise
+        await asyncio.sleep(1)
+        return await self.transport.get_json(url, headers=headers)
+
+
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001, ANN201
         return None

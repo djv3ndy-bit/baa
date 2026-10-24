@@ -69,6 +69,22 @@ The October 23 labelled cloud test reached the connected owner Inbox in [run 399
 
 ## Activation boundary
 
+### Transient Supabase reads and independent scheduling
+
+The default Supabase analytics reader makes at most two GET attempts for a timeout
+or HTTP 502/503/504, separated by one second. Each attempt retains the existing
+eight-second socket timeout and response-size limit. This is not an overall
+wall-clock deadline. Authentication errors, rate limits, invalid responses and
+other errors are not retried. An exhausted retry remains a collection failure;
+it never becomes an empty result or a healthy report. Other providers are unchanged.
+
+The disabled, review-only [backup schedule draft](backup-schedule/README.md) uses
+Supabase Cron to request the existing monitor through GitHub's manual-dispatch API.
+It requires separately approved write authority and is not enabled by this PR or
+by the ChatGPT alert task. Native scheduled runs and backup dispatches must be
+reported separately: a successful dispatch is not a completed check, and a backup
+run does not establish recovery of GitHub's native schedule.
+
 Merging `.github/workflows/engineering-reliability-monitor.yml` activates the hourly schedule and therefore requires explicit owner review. Private-provider monitoring requires a second, separate owner action: saving the scoped credentials and enabling the repository variable. Neither approval permits production deployment, SQL, RLS/Auth changes, data deletion, secret disclosure, or direct writes to `main`.
 
 P0/P1 email activation is a third, separate owner action because it sends an external communication. Saving the dedicated Resend key and owner destination does not authorize any application, database, GitHub, Vercel, or Supabase write.
