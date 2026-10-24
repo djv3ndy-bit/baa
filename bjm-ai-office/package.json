@@ -14,7 +14,7 @@
     "@modelcontextprotocol/sdk": "^1.17.0",
     "@modelcontextprotocol/ext-apps": "^1.0.0",
     "express": "^5.1.0",
-    "zod": "^3.25.0",
+    "zod": "^4.6.7",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
