@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote, urlencode
 
-from .http import JsonGetTransport, ProviderReadError, UrlLibJsonTransport
+from .http import JsonGetTransport, ProviderReadError, RetryOnceJsonTransport, UrlLibJsonTransport
 
 
 _PROJECT_REF = re.compile(r"[a-z0-9-]{6,40}")
@@ -56,8 +56,8 @@ class SupabaseManagementSource:
             raise ValueError("Supabase log lookback must be between 1 and 1440 minutes")
         self._token = token
         self._lookback = timedelta(minutes=lookback_minutes)
-        self._transport = transport or UrlLibJsonTransport(
-            frozenset({"api.supabase.com"})
+        self._transport = transport or RetryOnceJsonTransport(
+            UrlLibJsonTransport(frozenset({"api.supabase.com"}))
         )
 
     def _headers(self) -> dict[str, str]:
