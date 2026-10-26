@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAppEnvironment } from './environment';
@@ -14,6 +14,8 @@ export function ReviewModeBanner() {
 export function ReviewModeEntry() {
   const insets = useSafeAreaInsets();
   if (getAppEnvironment().review) return null;
+  // Keep the reviewer route available without advertising it on public Android login.
+  if (Platform.OS === 'android' && process.env.EXPO_PUBLIC_ANDROID_PUBLIC_RELEASE === 'true') return null;
   return <Pressable accessibilityRole="button" onPress={() => router.push('/review-mode')} style={[styles.entry, { top: insets.top + 4 }]}><Text style={styles.entryText}>App review</Text></Pressable>;
 }
 const styles = StyleSheet.create({
