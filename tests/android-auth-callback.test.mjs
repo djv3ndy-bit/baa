@@ -16,7 +16,7 @@ function compile(relative, mocks = {}, cache = new Map()) {
   const exports = {};
   cache.set(relative, exports);
   const source = ts.transpileModule(readFileSync(mobileFile(relative), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(source, { exports, URLSearchParams, setTimeout: mocks.setTimeout || setTimeout, clearTimeout: mocks.clearTimeout || clearTimeout, require(name) {
+  vm.runInNewContext(source, { exports, URL, URLSearchParams, setTimeout: mocks.setTimeout || setTimeout, clearTimeout: mocks.clearTimeout || clearTimeout, require(name) {
     if (name in mocks) return mocks[name];
     if (name.startsWith('.')) return compile(`${path.posix.join(path.posix.dirname(relative), name)}.ts`, mocks, cache);
     if (name.startsWith('@/')) return compile(`${name.slice(2)}.ts`, mocks, cache);
@@ -225,10 +225,11 @@ test('unmount cancels timeout, pending exchange, account loading and late identi
   }
 });
 
-function screen({ params: initialParams = {}, ready: initialReady = true, initialURL = Promise.resolve(null), account = Promise.resolve({ user: { id: 'user-a' }, role: 'barista' }) } = {}) {
-  let params = initialParams, ready = initialReady, tree, stateCursor, refCursor, callbackCursor, effectCursor;
+function screen({ callback: initialCallback = null, ready: initialReady = true, initialURL = Promise.resolve(null), account = Promise.resolve({ user: { id: 'user-a' }, role: 'barista' }) } = {}) {
+  let params = {}, ready = initialReady, tree, stateCursor, refCursor, callbackCursor, effectCursor, mounted = true;
   const states = [], refs = [], callbacks = [], effects = [], queued = [], routes = [], exchanges = [], timers = new Map();
-  let listener, listeners = 0, removed = 0, assertions = 0;
+  let assertions = 0;
+  const cache = new Map();
   const react = {
     useState(value) { const i = stateCursor++; if (!(i in states)) states[i] = value; return [states[i], next => { states[i] = typeof next === 'function' ? next(states[i]) : next; }]; },
     useRef(value) { const i = refCursor++; return refs[i] ||= { current: value }; },
@@ -236,24 +237,39 @@ function screen({ params: initialParams = {}, ready: initialReady = true, initia
     useEffect(fn, deps) { const i = effectCursor++, old = effects[i]; if (!old || deps.some((value, j) => !Object.is(value, old.deps[j]))) queued.push(() => { old?.cleanup?.(); effects[i] = { deps, cleanup: fn() }; }); },
   };
   const jsx = (type, props) => ({ type, props });
-  const component = compile('app/auth/callback.android.tsx', {
+  const mocks = {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { ActivityIndicator: 'ActivityIndicator', Linking: { addEventListener(_name, fn) { listeners++; listener = fn; return { remove() { removed++; if (listener === fn) listener = null; } }; }, getInitialURL: () => initialURL }, Pressable: 'Pressable', SafeAreaView: 'SafeAreaView', StyleSheet: { create: value => value }, Text: 'Text', View: 'View' },
+    'react-native': { Platform: { OS: 'android' }, ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', SafeAreaView: 'SafeAreaView', StyleSheet: { create: value => value }, Text: 'Text', View: 'View' },
     'expo-router': { router: { replace(value) { routes.push(value); } }, useLocalSearchParams: () => params, useRootNavigationState: () => ready ? { key: 'synthetic-root' } : undefined, useFocusEffect(fn) { react.useEffect(fn, [fn]); } },
     '@/lib/session': { completeMobileAuth: async value => { exchanges.push(value); return { id: 'user-a' }; }, getCurrentContext: () => account, requireCurrentUser: async id => { assertions++; assert.equal(id, 'user-a'); } },
     setTimeout(fn, milliseconds) { timers.set(fn, milliseconds); return fn; }, clearTimeout(fn) { timers.delete(fn); },
-  }).default;
+  };
+  // Exercise the same native-intent handoff and one-time route reference as Router 6.
+  // Raw bearer fragments are no longer consumed directly by the callback screen.
+  const { redirectSystemPath } = compile('app/+native-intent.tsx', mocks, cache);
+  const component = compile('app/auth/callback.android.tsx', mocks, cache).default;
+  function deliver(value, initial = false) {
+    const route = value === null ? '/auth/callback' : redirectSystemPath({ path: value, initial });
+    params = Object.fromEntries(new URL(route, 'https://router.example.invalid').searchParams);
+    if (mounted) render();
+  }
   function render() { stateCursor = 0; refCursor = 0; callbackCursor = 0; effectCursor = 0; tree = component(); while (queued.length) queued.shift()(); return tree; }
-  render();
-  return { routes, exchanges, states, render, get assertions() { return assertions; }, get listeners() { return listeners; }, get removed() { return removed; }, setParams(value) { params = value; render(); }, setReady(value) { ready = value; render(); }, warm(value) { listener?.({ url: value }); }, fireTimers(milliseconds = 8000) { for (const [fn, delay] of [...timers]) if (delay <= milliseconds) { timers.delete(fn); fn(); } }, unmount() { for (const effect of effects) effect.cleanup?.(); } };
+  deliver(initialCallback);
+  void initialURL.then(value => { if (mounted) deliver(value, true); });
+  return { routes, exchanges, states, render, get assertions() { return assertions; },
+    setParams(value) { params = value; render(); }, setReady(value) { ready = value; render(); },
+    warm(value) { deliver(value); },
+    fireTimers(milliseconds = 8000) { for (const [fn, delay] of [...timers]) if (delay <= milliseconds) { timers.delete(fn); fn(); } },
+    unmount() { mounted = false; for (const effect of effects) effect.cleanup?.(); },
+  };
 }
 
 test('actual Android screen preserves pending callback across valid-to-empty params and waits for root readiness', async () => {
   const account = deferred();
-  const ui = screen({ params: { '#': 'access_token=synthetic-a&refresh_token=synthetic-r' }, ready: false, account: account.promise });
+  const ui = screen({ callback: url('a'), ready: false, account: account.promise });
   await flush(); ui.setParams({}); account.resolve({ user: { id: 'user-a' }, role: 'barista' }); await flush();
-  ui.fireTimers(); assert.equal(ui.states[0].phase, 'waiting_navigation'); assert.deepEqual(ui.routes, []); assert.equal(ui.listeners, 1); assert.equal(ui.removed, 0);
-  ui.setReady(true); await flush(); assert.deepEqual(ui.routes, ['/home']); assert.equal(ui.assertions, 1); ui.unmount(); assert.equal(ui.removed, 1);
+  ui.fireTimers(); assert.equal(ui.states[0].phase, 'waiting_navigation'); assert.deepEqual(ui.routes, []);
+  ui.setReady(true); await flush(); assert.deepEqual(ui.routes, ['/home']); assert.equal(ui.assertions, 1); ui.unmount();
 });
 
 test('actual Android screen accepts warm URL before a late empty initial URL without resetting the attempt', async () => {
@@ -263,14 +279,14 @@ test('actual Android screen accepts warm URL before a late empty initial URL wit
 });
 
 test('actual Android screen never replaces a current provider rejection with a stale valid initial URL', async () => {
-  const ui = screen({ params: { error: 'access_denied' }, initialURL: Promise.resolve(url('stale')) });
+  const ui = screen({ callback: 'baristamatch://auth/callback#error=access_denied', initialURL: Promise.resolve(url('stale')) });
   await flush(); assert.equal(ui.states[0].reason, 'provider_error'); assert.deepEqual(ui.exchanges, []); assert.deepEqual(ui.routes, []);
   ui.unmount();
 });
 
 test('actual Android screen blocks stale initial-user navigation when fresh current params arrive later', async () => {
   const account = deferred(); const ui = screen({ initialURL: Promise.resolve(url('stale')), account: account.promise });
-  await flush(); ui.setParams({ '#': 'access_token=synthetic-fresh&refresh_token=synthetic-fresh-refresh' });
+  await flush(); ui.warm(url('fresh'));
   account.resolve({ user: { id: 'user-a' }, role: 'barista' }); await flush();
   assert.equal(ui.states[0].reason, 'callback_changed'); assert.equal(ui.exchanges.length, 1); assert.deepEqual(ui.routes, []); ui.unmount();
 });
@@ -281,7 +297,7 @@ test('actual Android screen ignores late initial URL resolution after unmount', 
 });
 
 test('actual Android screen gives safe timeout recovery instead of spinning forever on a slow account request', async () => {
-  const account = deferred(); const ui = screen({ params: { '#': 'access_token=synthetic-a&refresh_token=synthetic-r' }, account: account.promise });
+  const account = deferred(); const ui = screen({ callback: url('a'), account: account.promise });
   await flush(); ui.fireTimers(60000); ui.render();
   assert.equal(ui.states[0].reason, 'timeout'); assert.equal(androidAuthCallbackReference(ui.states[0]), 'A09');
   assert.match(androidAuthCallbackMessage(ui.states[0]), /connection/);
