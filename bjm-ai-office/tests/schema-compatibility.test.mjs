@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-test('patched Zod preserves MCP schema limits and rejects invalid approval input offline', () => {
+test('updated dependencies preserve MCP schema limits and reject invalid approval input offline', () => {
   const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import { Client } from '@modelcontextprotocol/sdk/client/index.js';
