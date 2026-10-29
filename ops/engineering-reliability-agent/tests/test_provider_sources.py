@@ -328,12 +328,31 @@ class SupabaseManagementSourceTests(unittest.IsolatedAsyncioTestCase):
         parsed = urlsplit(transport.requests[0][0])
         query = parse_qs(parsed.query)
         select_clause = query["sql"][0].split("from logs", 1)[0]
-        self.assertNotIn("event_message", select_clause)
+        self.assertNotRegex(
+            select_clause,
+            r"(?m)^\s*event_message(?:\s+as\s+\w+)?\s*,?$",
+        )
         self.assertIn("source = 'edge_logs'", query["sql"][0])
         self.assertNotIn("source in", query["sql"][0].lower())
         self.assertIn("severity_text", query["sql"][0])
+        self.assertIn("JSONExtractInt(event_message, 'status')", query["sql"][0])
+        self.assertIn("JSONExtractString(event_message, 'path')", query["sql"][0])
+        self.assertIn("JSONExtractString(event_message, 'level')", query["sql"][0])
+        self.assertNotIn("positionCaseInsensitive", query["sql"][0])
         self.assertIn("iso_timestamp_start", query)
         self.assertIn("iso_timestamp_end", query)
+
+    def test_auth_query_excludes_expected_refresh_warnings_and_null_errors(self) -> None:
+        query = SupabaseManagementSource._query("auth", 25)
+
+        self.assertIn("source = 'auth_logs'", query)
+        self.assertIn(">= 500", query)
+        self.assertIn("lower(severity_text) in ('error', 'fatal')", query)
+        self.assertIn(
+            "lower(JSONExtractString(event_message, 'level')) in ('error', 'fatal')",
+            query,
+        )
+        self.assertNotIn("positionCaseInsensitive", query)
 
     async def test_rejects_unknown_log_services(self) -> None:
         source = SupabaseManagementSource(
