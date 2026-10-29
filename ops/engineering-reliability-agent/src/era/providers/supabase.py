@@ -74,20 +74,37 @@ class SupabaseManagementSource:
             raise ValueError("Supabase log service is not allowlisted")
         if not 1 <= limit <= 100:
             raise ValueError("Supabase result limit must be between 1 and 100")
+        # Supabase auth messages are structured JSON. Matching the word
+        # ``error`` marks successful records such as ``"error": null`` as
+        # incidents and also promotes expected 4xx refresh-token rejections.
+        # Prefer explicit status and severity fields from both the unified log
+        # attributes and the JSON payload.
+        status_expression = (
+            "greatest("
+            "toInt32OrZero(log_attributes['response.status_code']), "
+            "toInt32OrZero(JSONExtractString(event_message, 'status')), "
+            "JSONExtractInt(event_message, 'status')"
+            ")"
+        )
+        route_expression = (
+            "coalesce("
+            "nullIf(log_attributes['request.path'], ''), "
+            "nullIf(JSONExtractString(event_message, 'path'), '')"
+            ")"
+        )
         return "\n".join(
             (
                 "select",
                 "  timestamp as occurred_at,",
-                "  log_attributes['response.status_code'] as status_code,",
-                "  log_attributes['request.path'] as route,",
+                f"  {status_expression} as status_code,",
+                f"  {route_expression} as route,",
                 "  count() as count",
                 "from logs",
                 f"where source = '{source}'",
                 "  and (",
-                "    toInt32OrZero(log_attributes['response.status_code']) >= 500",
+                f"    {status_expression} >= 500",
                 "    or lower(severity_text) in ('error', 'fatal')",
-                "    or positionCaseInsensitive(event_message, 'error') > 0",
-                "    or positionCaseInsensitive(event_message, 'fatal') > 0",
+                "    or lower(JSONExtractString(event_message, 'level')) in ('error', 'fatal')",
                 "  )",
                 "group by occurred_at, status_code, route",
                 "order by occurred_at desc",
