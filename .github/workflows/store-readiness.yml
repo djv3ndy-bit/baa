@@ -91,8 +91,17 @@ jobs:
       - name: Generate Android project without signing or store submission
         working-directory: mobile
         run: npx expo prebuild --platform android --no-install
+      - name: Verify pinned Hermes source preparation
+        run: python3 -m unittest discover -s tests/ci -p 'test_prepare_hermes_source.py'
+      - name: Prepare pinned Hermes source for native manifest compilation
+        run: >-
+          python3 scripts/ci/prepare-hermes-source.py
+          --react-native-root mobile/node_modules/react-native
+          --output "$RUNNER_TEMP/bjm-hermes-source"
       - name: Merge actual Android release permissions and SDK declarations
         working-directory: mobile/android
+        env:
+          REACT_NATIVE_OVERRIDE_HERMES_DIR: ${{ runner.temp }}/bjm-hermes-source
         run: ./gradlew :app:processReleaseMainManifest --no-daemon --console=plain
       - name: Validate merged manifest and save non-secret evidence
         shell: bash
