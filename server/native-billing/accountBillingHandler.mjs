@@ -28,7 +28,7 @@ export const nativeManagementUrls = Object.freeze({
  * nativeStatus field is verified server data, never a fabricated Stripe record. */
 export function accountBillingView(website, combined) {
   const nativeRows = combined.subscriptions.filter(row => row.provider !== 'stripe');
-  if (!nativeRows.length && !combined.checkoutPending) return website;
+  if (!nativeRows.length && !combined.checkoutPending && !combined.accessPaused) return website;
   const primary = combined.subscriptions[0];
   const nativeOwnsAccess = primary && primary.provider !== 'stripe';
   const needsAttention = ['pending', 'payment_required'].includes(combined.status);
@@ -36,11 +36,11 @@ export function accountBillingView(website, combined) {
   return {
     ...website,
     plan: combined.access,
-    status: nativeOwnsAccess || combined.checkoutPending
+    status: combined.accessPaused ? (nativeOwnsAccess ? primary.status : website.status) : nativeOwnsAccess || combined.checkoutPending
       ? combined.access === 'pro' ? 'active' : needsAttention ? 'incomplete' : 'canceled'
       : website.status,
     connectedToBilling: website.connectedToBilling || nativeRows.length > 0,
-    canManageBilling: website.canManageBilling || blocksPurchase,
+    canManageBilling: website.canManageBilling || blocksPurchase || (combined.accessPaused===true && combined.canManage),
     // Older clients must not claim the next charge is the end of an expired
     // billing period while verified grace access is still in effect.
     currentPeriodEnd: nativeOwnsAccess

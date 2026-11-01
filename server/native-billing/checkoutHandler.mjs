@@ -1,3 +1,4 @@
+import { requestStoreGuard } from './billingContext.mjs';
 const account=user=>({id:user.id,role:user.profile.role,suspendedAt:user.profile.suspended_at});
 export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
   return async(req,res)=>{
@@ -16,12 +17,14 @@ export function checkoutHandler({authenticateCafe,serviceFor,websiteStatus}) {
       if(Buffer.isBuffer(body))body=body.toString('utf8');
       if(typeof body==='string'){if(Buffer.byteLength(body)>4096)return res.status(413).json({error:'Purchase request is too large.'});try{body=JSON.parse(body);}catch{return res.status(400).json({error:'Purchase request is invalid.'});}}
       if(!body || typeof body!=='object' || Array.isArray(body) || Buffer.byteLength(JSON.stringify(body))>4096)return res.status(400).json({error:'Purchase request is invalid.'});
-      const result=action==='prepare'?await service.prepare(account(user),body)
-        :action==='resume'?await service.resume(account(user),body,await websiteStatus(req))
-        :action==='start'?await service.start(account(user),body.attemptId)
+      const protocol=requestStoreGuard(req);
+      const result=action==='prepare'?await service.prepare(account(user),body,protocol)
+        :action==='resume'?await service.resume(account(user),body,()=>websiteStatus(req),protocol)
+        :action==='start'?await service.start(account(user),body.attemptId,protocol)
         :await service.cancel(account(user),body.attemptId,body.reason);
       return res.status(200).json(result);
     }catch(error){
+      if(error?.code==='STORE_GUARD_REQUIRED')return res.status(409).json({error:'Update the app before starting a test purchase.'});
       const message={CHECKOUT_BLOCKED:'Another purchase or billing update is in progress. Check your subscription status before trying again.',WEBSITE_BILLING_EXISTS:'Your website subscription or checkout needs attention. Finish or cancel that checkout before purchasing here.',PRODUCT_UNAVAILABLE:'New subscriptions are available only in the United States.',NOT_ENABLED:'In-app purchasing is not available yet.',INVALID_CANCELLATION:'This purchase could not be marked as canceled. Check its status before trying again.'}[error?.code];
       return res.status(message?409:503).json({error:message || 'Subscription services are temporarily unavailable. Please try again. If checkout already opened, check its status before purchasing again.'});
     }

@@ -1,64 +1,88 @@
 import { randomUUID } from 'node:crypto';
 import { combinedAccountStatus } from './accountStatus.mjs';
+import { APPLE_STORE_GUARD, checkedBillingContext, requireStoreGuard, storeContextView } from './billingContext.mjs';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, enabled, productId, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, contextFor, enabled, productId, ready, createId=randomUUID }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
+  const resolve = async(account, provider=null) => checkedBillingContext(contextFor
+    ? await contextFor(account.id,provider) : {environment,appleSandboxTester:false});
+  const view = context => contextFor ? storeContextView(context) : {};
+  const protocolArgs = (context,protocol) => context.appleSandboxTester ? [protocol] : [];
   return {
     async status(account,website) {
       accountCheck(account);
-      await repository.settleVerifiedCheckout(account.id,environment);
-      const [native,checkoutPending]=await Promise.all([repository.summary(account.id,environment),repository.checkoutPending(account.id,environment)]);
-      const status=combinedAccountStatus({account,website,native,environment,checkoutPending});
+      const context=await resolve(account);
+      // Already-verified recorded cleanup remains possible after map revocation.
+      for(const recorded of contextFor ? ['Production','Sandbox'] : [environment]) await repository.settleVerifiedCheckout(account.id,recorded);
+      const [native,checkoutPending]=await Promise.all([repository.summary(account.id,context.environment),repository.checkoutPending(account.id,context.environment)]);
+      const status=combinedAccountStatus({account,website,native,environment:context.environment,checkoutPending});
       const recovery = enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
-        && !website.billingPaused && repository.recoverAppleCheckout
-        ? await repository.recoverAppleCheckout(account.id,environment) : null;
-      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery};
+        && !website.billingPaused && !status.accessPaused && repository.recoverAppleCheckout
+        ? await repository.recoverAppleCheckout(account.id,context.environment,...protocolArgs(context,APPLE_STORE_GUARD)) : null;
+      const latest=await resolve(account);
+      requireValue(latest.environment===context.environment && latest.appleSandboxTester===context.appleSandboxTester,'CHECKOUT_BLOCKED');
+      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery,...view(context)};
     },
-    async prepare(account,request) {
+    async prepare(account,request,protocol=null) {
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
+      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
       // Fail before opening the store if server verification is not configured.
-      await ready();
-      const attempt=await repository.claimCheckout(account.id,'apple',environment,createId());
+      await ready(context);
+      const attempt=await repository.claimCheckout(account.id,'apple',context.environment,createId(),...protocolArgs(context,protocol));
       requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
       try {
         // A durable DB reservation already blocks a new website Checkout. Check
         // Stripe itself for older sessions/subscriptions, including legacy plans.
         requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
-        return attempt;
+        const latest=await resolve(account,'apple');
+        requireValue(latest.environment===context.environment && latest.appleSandboxTester===context.appleSandboxTester,'CHECKOUT_BLOCKED');
+        return {...attempt,...view(context)};
       } catch(error) {
-        try { await repository.cancelCheckout(account.id,environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
+        try { await repository.cancelCheckout(account.id,context.environment,attempt.attemptId,true); } catch { /* Unused reservation expires safely. */ }
         throw error;
       }
     },
-    async resume(account,request,website) {
+    async resume(account,request,websiteInput,protocol=null) {
       accountCheck(account);
       requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
-      await ready();
+      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
+      await ready(context);
+      const website=typeof websiteInput==='function' ? await websiteInput() : websiteInput;
       requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
       // Reuse the original Apple reservation. Never release it or allocate a
       // second checkout while the first store result is uncertain.
-      const attempt=await repository.recoverAppleCheckout(account.id,environment);
+      const attempt=await repository.recoverAppleCheckout(account.id,context.environment,...protocolArgs(context,protocol));
       requireValue(attempt && uuid.test(attempt.attemptId) && uuid.test(attempt.accountBinding),'CHECKOUT_BLOCKED');
       requireValue(await inspectWebsiteBilling(account.id),'WEBSITE_BILLING_EXISTS');
-      return attempt;
+      const latest=await resolve(account,'apple');
+      requireValue(latest.environment===context.environment && latest.appleSandboxTester===context.appleSandboxTester,'CHECKOUT_BLOCKED');
+      return {...attempt,...view(context)};
     },
-    async start(account,attemptId) {
+    async start(account,attemptId,protocol=null) {
       accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
-      await ready();
-      requireValue(await repository.startCheckout(account.id,environment,attemptId),'CHECKOUT_BLOCKED');
-      return {started:true};
+      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
+      if(repository.attemptContext) {
+        const attempt=await repository.attemptContext(account.id,attemptId);
+        requireValue(attempt && attempt.environment===context.environment && attempt.provider==='apple'
+          && (!context.appleSandboxTester || attempt.guardProtocol===APPLE_STORE_GUARD),'CHECKOUT_BLOCKED');
+      }
+      await ready(context);
+      requireValue(await repository.startCheckout(account.id,context.environment,attemptId,...protocolArgs(context,protocol)),'CHECKOUT_BLOCKED');
+      return {started:true,...view(context)};
     },
     async cancel(account,attemptId,reason) {
-      accountCheck(account);requireValue(uuid.test(attemptId) && reason==='user-cancelled','INVALID_CANCELLATION');
-      requireValue(await repository.cancelCheckout(account.id,environment,attemptId,false),'CHECKOUT_BLOCKED');
+      accountCheck(account);requireValue(uuid.test(attemptId) && ['user-cancelled','store-guard-failed'].includes(reason),'INVALID_CANCELLATION');
+      const attempt=repository.attemptContext ? await repository.attemptContext(account.id,attemptId) : {environment};
+      requireValue(attempt && ['Production','Sandbox'].includes(attempt.environment),'CHECKOUT_BLOCKED');
+      requireValue(await repository.cancelCheckout(account.id,attempt.environment,attemptId,reason==='store-guard-failed'),'CHECKOUT_BLOCKED');
       return {cancelled:true};
     },
   };

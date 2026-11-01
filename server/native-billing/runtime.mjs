@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { appleProvider, googleProvider, verifiedGoogleNotification } from './providers.mjs';
 import { PurchaseVerificationError } from './verifiedStatus.mjs';
+import { checkedBillingContext } from './billingContext.mjs';
 
 // These identities are the existing app.json bundle/package and eas.json app.
 const bundleId = 'com.baristajobmatch.app';
@@ -59,16 +60,49 @@ export function readProviderConfiguration(provider, env = process.env) {
     credentials: { type: 'service_account', client_email: credentials.client_email, private_key: credentials.private_key } };
 }
 
+/** The context comes only from the service-role account resolver. */
+export function readContextConfiguration(provider, context, env=process.env) {
+  const trusted=checkedBillingContext(context), config=readProviderConfiguration(provider,env);
+  check(!trusted.appleSandboxTester || provider==='apple');
+  check(trusted.environment===config.environment || (provider==='apple' && trusted.appleSandboxTester
+    && trusted.environment==='Sandbox' && config.environment==='Production' && env.VERCEL_ENV==='production'));
+  return {...config,environment:trusted.environment};
+}
+
+/** Verification-only candidate. Signature/owner/DB checks still gate writes;
+ * the environment argument is a server constant, never an HTTP/JWS claim. */
+export function readAppleEventConfiguration(environment,env=process.env) {
+  const config=readProviderConfiguration('apple',env);
+  check(['Production','Sandbox'].includes(environment));
+  check(environment===config.environment || (environment==='Sandbox' && config.environment==='Production' && env.VERCEL_ENV==='production'));
+  return {...config,environment};
+}
+
+export function providerRuntimeCache(createRuntime=createProviderRuntime) {
+  const values=new Map();
+  return config => {
+    const key=`${config.provider}:${config.environment}`;
+    if(!values.has(key))values.set(key,Promise.resolve().then(()=>createRuntime(config)).catch(error=>{values.delete(key);throw error;}));
+    return values.get(key);
+  };
+}
+
 export async function createProviderRuntime(config, {
   loadApple = () => import('@apple/app-store-server-library'),
   loadGoogle = () => import('google-auth-library'),
 } = {}) {
   if (config.provider === 'apple') {
-    const { AppStoreServerAPIClient, SignedDataVerifier, Environment } = await loadApple();
+    const { AppStoreServerAPIClient, SignedDataVerifier, Environment, VerificationException, VerificationStatus } = await loadApple();
     const environment = config.environment === 'Production' ? Environment.PRODUCTION : Environment.SANDBOX;
     const verifier = new SignedDataVerifier(appleRootCertificates(), true, environment, config.bundleId, config.appAppleId);
     const client = new AppStoreServerAPIClient(config.privateKey, config.keyId, config.issuerId, config.bundleId, environment);
-    return { environment: config.environment, provider: appleProvider({ ...config, client, verifier }) };
+    return { environment: config.environment, provider: appleProvider({ ...config, client, verifier }),
+      isEnvironmentMismatch: error => Boolean(VerificationException && error instanceof VerificationException
+        && error.status===VerificationStatus.INVALID_ENVIRONMENT),
+      // The SDK checks Production appAppleId before environment; that optional
+      // Sandbox field may be absent. The second verifier still checks everything.
+      mayVerifySandbox: error => Boolean(VerificationException && error instanceof VerificationException
+        && [VerificationStatus.INVALID_ENVIRONMENT,VerificationStatus.INVALID_APP_IDENTIFIER].includes(error.status)) };
   }
   check(config.provider === 'google');
   const { GoogleAuth, OAuth2Client } = await loadGoogle();
