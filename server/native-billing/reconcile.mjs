@@ -6,7 +6,7 @@ const check = (condition, code) => { if (!condition) throw new PurchaseVerificat
 /** The repository is service-role-only. Every retry fetches provider state
  * AFTER reading its revision, so a slow request cannot undo a later refund.
  * Notifications use the same path as purchases and restoration. */
-export function createReconciler({ repository, providers, environment, maxAttempts = 3 }) {
+export function createReconciler({ repository, providers, environment, authorize, maxAttempts = 3 }) {
   check(['Sandbox', 'Production'].includes(environment), 'SERVER_CONFIGURATION');
   check(Number.isInteger(maxAttempts) && maxAttempts > 0 && maxAttempts <= 5, 'SERVER_CONFIGURATION');
 
@@ -23,6 +23,12 @@ export function createReconciler({ repository, providers, environment, maxAttemp
       const status = await adapter.verify(proof, identity.binding);
       check(status.provider === provider && status.environment === environment && status.binding === identity.binding
         && status.providerSubscriptionId === identity.providerSubscriptionId, 'PURCHASE_MISMATCH');
+      if(authorize && await authorize({provider,environment,status,owner,previous,accountId})===false) {
+        // Only verified owned webhook history may be ignored. Never acknowledge
+        // an authenticated client purchase without applying its verified state.
+        check(!accountId && previous?.revision>0 && previous.userId===owner.userId,'ACCOUNT_UNAVAILABLE');
+        return {ignored:true};
+      }
       if (accountId) check(await repository.activeCafe(accountId), 'ACCOUNT_UNAVAILABLE');
       const result = await repository.apply({ ...status, userId: owner.userId, expectedRevision: previous?.revision ?? 0 });
       if (result === 'retry') continue;

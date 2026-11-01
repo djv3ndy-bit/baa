@@ -9,6 +9,16 @@ const apple = { provider: 'apple', status: 'active', currentPeriodEnd: '2099-01-
 function combined(website = free, rows = [], checkoutPending = false) {
   return combinedAccountStatus({ account, website, native: { accountId: account.id, environment: 'Production', subscriptions: rows }, environment: 'Production', checkoutPending });
 }
+test('owner-paused native and Stripe access remains free in the legacy view without falsely canceling financial subscriptions',()=>{
+  for(const [website,rows] of [[free,[apple]],[websitePro,[]],[websitePro,[apple]]]) {
+    const value=combinedAccountStatus({account,website,native:{accountId:account.id,environment:'Production',ownerPaused:true,subscriptions:rows},environment:'Production',checkoutPending:false});
+    const view=accountBillingView(website,value);
+    assert.equal(view.plan,'free');assert.equal(view.nativeStatus.accessPaused,true);assert.equal(view.nativeStatus.canPurchase,false);
+    assert.equal(view.canManageBilling,true);assert.equal(view.status,'active');
+    assert.equal(view.cancelAtPeriodEnd,false);assert.ok(view.nativeStatus.subscriptions.every(row=>row.access==='free'));
+    assert.ok(view.nativeStatus.subscriptions.every(row=>row.status==='active' && row.autoRenews===true && row.canManage===true));
+  }
+});
 test('all legacy Stripe fields and original price/benefits remain unchanged without native history', () => {
   for (const website of [free, websitePro, { ...websitePro, status: 'trialing' }, { ...free, billingPaused: true }]) {
     assert.equal(accountBillingView(website, combined(website)), website);

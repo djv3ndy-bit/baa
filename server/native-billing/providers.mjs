@@ -7,7 +7,7 @@ function opaque(value, max = 32_768) { return typeof value === 'string' && value
 /** Expects Apple's official AppStoreServerAPIClient and SignedDataVerifier,
  * constructed on the server with pinned app identity, environment and trusted
  * Apple root certificates. Online signature/certificate checks stay enabled. */
-export function appleProvider({ client, verifier, bundleId, productId, environment, now = Date.now }) {
+export function appleProvider({ client, verifier, bundleId, productId, appAppleId, environment, now = Date.now }) {
   check(bundleId && productId && ['Sandbox', 'Production'].includes(environment), 'SERVER_CONFIGURATION');
   return {
     async identify(proof) {
@@ -40,6 +40,7 @@ export function appleProvider({ client, verifier, bundleId, productId, environme
       check(opaque(signedPayload, 131_072), 'INVALID_EVENT');
       const value = await verifier.verifyAndDecodeNotification(signedPayload);
       check(opaque(value.notificationUUID, 255) && value.data?.bundleId === bundleId && value.data?.environment === environment, 'INVALID_EVENT');
+      if(appAppleId!==undefined && value.data.appAppleId!==undefined)check(value.data.appAppleId===appAppleId,'INVALID_EVENT');
       if (value.notificationType === 'TEST') return { eventId: value.notificationUUID, provider: 'apple', test: true };
       // The event schedules authoritative reconciliation; it does not directly
       // grant/revoke access from an event name or client-supplied timestamp.

@@ -2,7 +2,7 @@ import { logPaymentFailure, paymentFailureReport } from './diagnostics.mjs';
 
 /** Verification transport. Enabling this endpoint alone does not enable sales:
  * native checkout and the shared entitlement integration have separate gates. */
-export function verificationHandler({ authenticateCafe, runtimeFor, reconcilerFor, logFailure = logPaymentFailure }) {
+export function verificationHandler({ authenticateCafe, contextFor, runtimeFor, appleEvent, reconcilerFor, logFailure = logPaymentFailure }) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Method not allowed.' }); }
@@ -28,9 +28,16 @@ export function verificationHandler({ authenticateCafe, runtimeFor, reconcilerFo
         }
         failureProvider = body.provider;
         stage = 'provider-setup';
-        const runtime = await runtimeFor(body.provider);
+        const context=contextFor ? await contextFor(user.id,body.provider) : undefined;
+        const runtime = await runtimeFor(body.provider,context);
         stage = 'reconciliation';
         const result = await reconcilerFor(body.provider, runtime).reconcile({ provider: body.provider, proof: body.proof, accountId: user.id });
+        if(contextFor) {
+          const latest=await contextFor(user.id,body.provider);
+          if(latest.environment!==context.environment || latest.appleSandboxTester!==context.appleSandboxTester) {
+            const error=new Error('Account context changed');error.code='ACCOUNT_UNAVAILABLE';throw error;
+          }
+        }
         // This describes the verified purchase, not the account's combined
         // entitlement. The client must refresh shared subscription status before
         // changing account access, including when restoring an expired receipt.
@@ -43,11 +50,12 @@ export function verificationHandler({ authenticateCafe, runtimeFor, reconcilerFo
       const provider = action === 'apple-events' ? 'apple' : 'google';
       failureProvider = provider;
       stage = 'provider-setup';
-      const runtime = await runtimeFor(provider);
+      const selected=provider==='apple' && appleEvent ? await appleEvent(body.signedPayload) : null;
+      const runtime = selected ? selected.runtime : await runtimeFor(provider);
       // No event may touch the ledger until its store signature or Google's
       // exact Pub/Sub audience and service-account identity have been checked.
       stage = 'signature';
-      const event = provider === 'apple' ? await runtime.provider.notification(body.signedPayload)
+      const event = selected ? selected.event : provider === 'apple' ? await runtime.provider.notification(body.signedPayload)
         : await runtime.notification(req.headers.authorization, body);
       const payload = provider === 'apple' ? body.signedPayload : body.message.data;
       stage = 'reconciliation';

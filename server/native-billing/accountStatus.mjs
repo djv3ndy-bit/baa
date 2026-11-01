@@ -12,6 +12,8 @@ export function combinedAccountStatus({ account, website, native, environment, c
       || typeof website.canManageBilling !== 'boolean' || typeof website.billingPaused !== 'boolean'
       || (website.plan === 'pro' && !website.connectedToBilling)) invalid();
   if (native?.accountId !== account.id || native.environment !== environment || !Array.isArray(native.subscriptions)) invalid();
+  if (native.ownerPaused !== undefined && typeof native.ownerPaused !== 'boolean') invalid();
+  const accessPaused = native.ownerPaused === true;
 
   const subscriptions = [];
   if (website.connectedToBilling) {
@@ -37,11 +39,12 @@ export function combinedAccountStatus({ account, website, native, environment, c
   const paid = subscriptions.some(row => row.access === 'pro');
   const requiresResolution = subscriptions.some(row => ['pending', 'payment_required'].includes(row.status));
   return {
-    accountId: account.id, verified: true, access: paid ? 'pro' : 'free',
+    accountId: account.id, verified: true, access: paid && !accessPaused ? 'pro' : 'free',
     provider: primary?.provider ?? null, status: checkoutPending && !paid && !requiresResolution ? 'pending' : primary?.status ?? 'free',
     currentPeriodEnd: primary?.currentPeriodEnd ?? null, gracePeriodEnd: primary?.gracePeriodEnd ?? null, autoRenews: primary?.autoRenews ?? false,
     canManage: subscriptions.some(row => row.canManage),
-    canPurchase: !paid && !requiresResolution && !checkoutPending && !website.billingPaused,
-    checkoutPending, subscriptions,
+    canPurchase: !accessPaused && !paid && !requiresResolution && !checkoutPending && !website.billingPaused,
+    checkoutPending, subscriptions: accessPaused ? subscriptions.map(row=>({...row,access:'free'})) : subscriptions,
+    ...(native.ownerPaused !== undefined ? {accessPaused} : {}),
   };
 }

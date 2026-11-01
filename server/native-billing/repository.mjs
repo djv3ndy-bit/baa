@@ -1,9 +1,11 @@
 /** Wraps the existing server-only Supabase transport. No client can select an
  * account, provider, or grant by calling the private ledger directly. */
 import { retryBillingRead } from './retryRead.mjs';
+import { checkedBillingContext } from './billingContext.mjs';
 
 const safeReads = new Set(['native_checkout_pending', 'native_billing_summary',
-  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified']);
+  'native_billing_owner', 'native_billing_read', 'native_checkout_settle_verified',
+  'native_billing_context','native_checkout_attempt_context']);
 
 export function nativeBillingRepository(adminRows) {
   const rpc = (name, body) => {
@@ -13,17 +15,27 @@ export function nativeBillingRepository(adminRows) {
     return safeReads.has(name) ? retryBillingRead(read) : read();
   };
   return {
-    claimCheckout(userId, provider, environment, attemptId) {
-      return rpc('native_checkout_claim', { p_user_id: userId, p_provider: provider, p_environment: environment, p_attempt_id: attemptId });
+    async context(userId,provider=null) {
+      return checkedBillingContext(await rpc('native_billing_context',{p_user_id:userId,p_provider:provider}));
     },
-    startCheckout(userId, environment, attemptId) {
-      return rpc('native_checkout_start', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId });
+    async attemptContext(userId,attemptId) {
+      const value=await rpc('native_checkout_attempt_context',{p_user_id:userId,p_attempt_id:attemptId});
+      if(value===null)return null;
+      if(!value || !['Production','Sandbox'].includes(value.environment) || !['apple','google'].includes(value.provider)
+        || (value.guardProtocol!==null && typeof value.guardProtocol!=='string'))throw new Error('Invalid checkout context');
+      return {environment:value.environment,provider:value.provider,guardProtocol:value.guardProtocol};
+    },
+    claimCheckout(userId, provider, environment, attemptId,guardProtocol=null) {
+      return rpc('native_checkout_claim', { p_user_id: userId, p_provider: provider, p_environment: environment, p_attempt_id: attemptId,p_guard_protocol:guardProtocol });
+    },
+    startCheckout(userId, environment, attemptId,guardProtocol=null) {
+      return rpc('native_checkout_start', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId,p_guard_protocol:guardProtocol });
     },
     cancelCheckout(userId, environment, attemptId, beforeLaunch) {
       return rpc('native_checkout_cancel', { p_user_id: userId, p_environment: environment, p_attempt_id: attemptId, p_before_launch: beforeLaunch });
     },
-    recoverAppleCheckout(userId, environment) {
-      return rpc('native_checkout_recover_apple', { p_user_id: userId, p_environment: environment });
+    recoverAppleCheckout(userId, environment,guardProtocol=null) {
+      return rpc('native_checkout_recover_apple', { p_user_id: userId, p_environment: environment,p_guard_protocol:guardProtocol });
     },
     checkoutPending(userId, environment) {
       return rpc('native_checkout_pending', { p_user_id: userId, p_environment: environment });
