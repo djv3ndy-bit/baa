@@ -1,3 +1,4 @@
+import { usWorkArea, usWorkAreaLabel, usJobMatchesWorkArea, usCandidateMatchesCafe } from './usLocation';
 const FLORIDA_NAME_SUFFIX = /^(.*?)(?:,\s*|\s+)florida$/i;
 const STATE_CODE_SUFFIX = /^(.*?)(?:,\s*|\s+)([a-z]{2})$/i;
 const ZIP_SUFFIX = /\s+\d{5}(?:-\d{4})?$/;
@@ -50,24 +51,8 @@ export function floridaPlaceParts(value?: string | null) {
   const state = text.match(/(?:^|[\s,]+)(fl|florida)$/);
   return { city: exactPlace(state ? text.slice(0, state.index) : text), state: state ? 'fl' : '', postal };
 }
-export function savedWorkArea(profile: AreaProfile) {
-  const home = floridaPlaceParts(profile.location), preferred = floridaPlaceParts(profile.preferred_city);
-  const state = exactPlace(profile.preferred_state || home.state || 'fl');
-  return { city: preferred.city || home.city, state: state === 'florida' ? 'fl' : state, postal: String(profile.preferred_postal_code || '').trim().replace(/-\d{4}$/, '') };
-}
-export function workAreaLabel(profile: AreaProfile) {
-  const area = savedWorkArea(profile);
-  if (area.state !== 'fl' || (area.postal && !/^\d{5}$/.test(area.postal))) return 'Set your Florida work city or ZIP';
-  return area.postal ? `ZIP ${area.postal}` : area.city ? `${area.city.replace(/\b[a-z]/g, letter => letter.toUpperCase())}, FL` : 'Set your Florida work city or ZIP';
-}
-export function jobMatchesWorkArea(profile: AreaProfile, job: AreaJob) {
-  const area = savedWorkArea(profile), legacy = floridaPlaceParts(job.location);
-  const state = exactPlace(job.state || legacy.state), city = exactPlace(job.city || legacy.city), postal = String(job.postal_code || legacy.postal).trim().replace(/-\d{4}$/, '');
-  if (area.state !== 'fl' || !['fl', 'florida'].includes(state)) return false;
-  return area.postal ? /^\d{5}$/.test(area.postal) && area.postal === postal : !!area.city && area.city === city;
-}
-export function candidateMatchesCafe(cafeProfile: AreaProfile, candidate: AreaProfile) {
-  const cafe = floridaPlaceParts(cafeProfile.location), address = floridaPlaceParts(cafeProfile.cafe_address), area = savedWorkArea(candidate);
-  if (cafe.state !== 'fl' || area.state !== 'fl') return false;
-  return area.postal ? /^\d{5}$/.test(area.postal) && area.postal === (cafe.postal || address.postal) : !!cafe.city && cafe.city === area.city;
-}
+// Keep existing imports compatible while nationwide matching uses the shared rules.
+export const savedWorkArea = usWorkArea;
+export const workAreaLabel = usWorkAreaLabel;
+export const jobMatchesWorkArea = usJobMatchesWorkArea;
+export const candidateMatchesCafe = usCandidateMatchesCafe;

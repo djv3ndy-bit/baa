@@ -1,3 +1,4 @@
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useRef, useState } from "react";
 import {
@@ -22,8 +23,8 @@ import { needsMediaLibraryPermission, normalizeOptionalGender, buildProfileUpdat
 import { getCurrentContext, requireCurrentUser, AppRole } from "@/lib/session";
 import { AppBottomNav } from "@/components/AppBottomNav";
 import {
-  floridaCityFromLocation,
-} from "@/lib/floridaLocation";
+  cityFromUSLocation, parseUSLocation,
+} from "@/lib/usLocation";
 
 const PREFERENCES = [
   "Warm customer service",
@@ -114,13 +115,16 @@ function formatOpeningHours(value: OpenHours) {
   return formatted || value._legacy || "";
 }
 
-export default function Profile() {
+function Profile() {
+  const memory = useSectionMemory<{ profile: any; role: AppRole; userId: string }>('profile');
+  const loaded = useRef(!!memory.initial);
   const [loading, setLoading] = useState(true),
     [editing, setEditing] = useState(false),
-    [profile, setProfile] = useState<any>({}),
-    [role, setRole] = useState<AppRole>("barista"),
+    [profile, setProfile] = useState<any>(memory.initial?.profile ?? {}),
+    [role, setRole] = useState<AppRole>(memory.initial?.role ?? "barista"),
     [saving, setSaving] = useState(false),
     [locationCity, setLocationCity] = useState(""),
+    [locationState, setLocationState] = useState(""),
     [openHours, setOpenHours] = useState<OpenHours>({}),
     [availability, setAvailability] = useState<string[]>([]),
     [availabilityNotes, setAvailabilityNotes] = useState(""),
@@ -128,8 +132,8 @@ export default function Profile() {
     [barPicture, setBarPicture] = useState<SelectedMedia | null>(null),
     [coffeeVideo, setCoffeeVideo] = useState<SelectedMedia | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<any>({});
-  const accountId = useRef<string | null>(null);
+  const [savedProfile, setSavedProfile] = useState<any>(memory.initial?.profile ?? {});
+  const accountId = useRef<string | null>(memory.initial?.userId ?? null);
   const saveInProgress = useRef(false);
   const active = useRef(false);
   const generation = useRef(0);
@@ -138,10 +142,11 @@ export default function Profile() {
     const version = ++generation.current;
     void load(version);
     return () => { active.current = false; generation.current += 1; };
-  }, []));
+  }, [memory]));
   function restoreDraft(saved: any) {
-    setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: floridaCityFromLocation(saved.preferred_city) });
-    setLocationCity(floridaCityFromLocation(saved.location));
+    setProfile({ ...saved, skills_text: (saved.skills || []).join(", "), preferred_city: cityFromUSLocation(saved.preferred_city) });
+    setLocationCity(cityFromUSLocation(saved.location));
+    setLocationState(parseUSLocation(saved.location, "FL")?.state || "");
     setOpenHours(parseOpeningHours(saved.open_hours));
     const value = parseAvailability(saved.availability);
     setAvailability(value.selected);
@@ -152,7 +157,7 @@ export default function Profile() {
     setLoading(true); setLoadError(false); setEditing(false);
     try {
     const { user, profile: p, role: r } = await getCurrentContext();
-    if (!active.current || generation.current !== version) return;
+    if (!active.current || generation.current !== version || !memory.current()) return;
     if (!user) return router.replace("/login");
     if (!r) return router.replace({ pathname: "/signup", params: { complete: "1" } });
     const demographicsResult = r === "barista"
@@ -161,14 +166,17 @@ export default function Profile() {
     const { data: demographics, error: demographicsError } = demographicsResult;
     if (demographicsError) throw demographicsError;
     await requireCurrentUser(user.id);
-    if (!active.current || generation.current !== version) return;
+    if (!active.current || generation.current !== version || !memory.current()) return;
     const saved = { ...p, ...demographics };
+    memory.save(user.id, r, { profile: saved, role: r, userId: user.id });
+    if (!memory.current()) return;
+    loaded.current = true;
     accountId.current = user.id;
     setSavedProfile(saved);
     restoreDraft(saved);
     setRole(r);
     } catch {
-      if (active.current && generation.current === version) setLoadError(true);
+      if (active.current && generation.current === version && memory.current()) { memory.forget(); setLoadError(true); }
     } finally {
       if (active.current && generation.current === version) setLoading(false);
     }
@@ -294,7 +302,7 @@ export default function Profile() {
     if (saveInProgress.current || !editing || !accountId.current) return;
     const userId = accountId.current;
     const version = generation.current;
-    const stillCurrent = () => active.current && generation.current === version;
+    const stillCurrent = () => active.current && generation.current === version && memory.current();
     const assertCurrent = async () => {
       if (!stillCurrent()) throw new Error("The profile editor was closed. Reopen it to continue.");
       await requireCurrentUser(userId);
@@ -303,7 +311,7 @@ export default function Profile() {
     // Capture every draft field before uploads; no asynchronous step reads a newer draft.
     let payload: Record<string, any>;
     try {
-      payload = buildProfileUpdate(profile, role, { locationCity, availability: [...availability], availabilityNotes, openHours: formatOpeningHours({ ...openHours }) });
+      payload = buildProfileUpdate(profile, role, { locationCity, locationState, availability: [...availability], availabilityNotes, openHours: formatOpeningHours({ ...openHours }) });
     } catch (error: any) {
       return Alert.alert("Check your profile", error.message);
     }
@@ -331,6 +339,8 @@ export default function Profile() {
       const saved = await persistProfileUpdate(supabase, userId, role, payload, demographics, assertCurrent);
       if (!stillCurrent()) return;
       const confirmed = { ...saved, ...(role === "barista" ? demographics : {}) };
+      memory.save(userId, role, { profile: confirmed, role, userId });
+      if (!memory.current()) return;
       setSavedProfile(confirmed);
       restoreDraft(confirmed);
       setEditing(false);
@@ -347,7 +357,7 @@ export default function Profile() {
     <Pressable accessibilityRole="button" onPress={() => void load()} style={s.primary}><Text style={s.primaryText}>Try again</Text></Pressable>
     <Pressable accessibilityRole="button" onPress={() => router.replace("/login")}><Text style={s.sub}>Return to login</Text></Pressable>
   </View></SafeAreaView>;
-  if (loading)
+  if (loading && !loaded.current)
     return (
       <SafeAreaView style={s.safe}>
         <View style={s.center}>
@@ -458,10 +468,11 @@ export default function Profile() {
               placeholder="Miami"
             />
             <Field
-              label="State"
-              value="Florida (FL)"
-              onChange={() => {}}
-              editable={false}
+              label="State (two-letter code)"
+              value={locationState}
+              onChange={(value) => setLocationState(value.toUpperCase().slice(0, 2))}
+              placeholder="FL, NY, CA…"
+              editable={!saving}
             />
             {isBarista ? (
               <View style={s.privateCard}>
@@ -501,10 +512,11 @@ export default function Profile() {
                   placeholder={locationCity || "Miami"}
                 />
                 <Field
-                  label="Preferred work state"
-                  value="Florida (FL)"
-                  onChange={() => {}}
-                  editable={false}
+                  label="Preferred work state (two-letter code)"
+                  value={profile.preferred_state || ""}
+                  onChange={(value) => set("preferred_state", value.toUpperCase().slice(0, 2))}
+                  placeholder={locationState || "FL"}
+                  editable={!saving}
                 />
                 <Field
               editable={!saving}
@@ -512,7 +524,7 @@ export default function Profile() {
                   value={profile.preferred_postal_code || ""}
                   onChange={(v) => set("preferred_postal_code", v)}
                 />
-                <Text style={s.privateHelp}>Discovery uses your saved city and optional exact ZIP code. Distance-based searching is not available yet.</Text>
+                <Text style={s.privateHelp}>Discovery uses your saved city and state, or your optional exact ZIP code in that state. Distance-based searching is not available yet.</Text>
               </>
             ) : null}
             <Field
@@ -1036,3 +1048,5 @@ const s = StyleSheet.create({
   },
   infoValue: { fontSize: 14, lineHeight: 21, color: prism.ink, marginTop: 5 },
 });
+
+export default withSectionMemory(Profile);

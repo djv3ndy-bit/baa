@@ -4,11 +4,11 @@ import { router, usePathname } from 'expo-router';
 import type { AppRole } from '../../lib/session';
 import { Icon } from './DashboardPrimitives';
 import { countLabel } from './model';
-import { dashboardTheme as t } from './theme';
+import { dashboardTheme as t, softGlassSurface } from './theme';
 import { useUnreadCount } from './useUnreadCount';
 
 type Tab = 'home' | 'jobs' | 'discover' | 'candidates' | 'matches' | 'messages' | 'profile';
-export function ApprovedBottomNav({ active, role = 'barista', unread: supplied }: { active: Tab; role?: AppRole; unread?: number }) {
+export function ApprovedBottomNav({ active, role = 'barista', unread: supplied, softGlass = false }: { active: Tab; role?: AppRole; unread?: number; softGlass?: boolean }) {
   const unread = useUnreadCount(supplied) ?? 0;
   const { fontScale } = useWindowDimensions();
   const largeText = fontScale > 1.5;
@@ -28,7 +28,7 @@ export function ApprovedBottomNav({ active, role = 'barista', unread: supplied }
     accessibilityState={{ selected: selected === item.key }} aria-selected={selected === item.key} onPress={() => { if (path !== item.path) router.replace(item.path); }}
     accessibilityHint={scrollTabs ? "Swipe horizontally to see more navigation tabs." : undefined}
     onLayout={scrollTabs && selected === item.key ? event => navigationScroll.current?.scrollTo({ x: Math.max(0, event.nativeEvent.layout.x - 8), animated: false }) : undefined}
-    style={[s.item, largeText && s.itemLarge, scrollTabs && s.itemScrollable, selected === item.key && s.selected]}>
+    style={[s.item, softGlass && s.glassItem, largeText && s.itemLarge, scrollTabs && s.itemScrollable, selected === item.key && s.selected]}>
     <View style={s.icon}><Icon name={selected === item.key ? item.filled : item.icon} color={selected === item.key ? t.accent : t.muted} />
       {item.key === 'messages' && unread > 0 ? <View accessible={false} style={[s.badge, largeText && s.badgeLarge]}><Text style={s.badgeText}>{unread > 99 ? '99+' : countLabel(unread)}</Text></View> : null}
     </View><Text numberOfLines={scrollTabs ? undefined : 1} adjustsFontSizeToFit={!scrollTabs}
@@ -37,7 +37,7 @@ export function ApprovedBottomNav({ active, role = 'barista', unread: supplied }
   </Pressable>);
   return scrollTabs ? <ScrollView ref={navigationScroll} horizontal accessibilityRole="tablist" accessibilityLabel="Main navigation"
     showsHorizontalScrollIndicator style={s.scrollBar} contentContainerStyle={[s.bar, s.barScrollable]}>{tabs}</ScrollView>
-    : <View style={[s.bar, largeText && s.barLarge]} accessibilityRole="tablist">{tabs}</View>;
+    : <View style={[s.bar, largeText && s.barLarge, softGlass && s.glassBar]} accessibilityRole="tablist">{tabs}</View>;
 }
 
 const s = StyleSheet.create({
@@ -51,4 +51,8 @@ const s = StyleSheet.create({
   badge: { position: 'absolute', left: 18, top: -6, backgroundColor: '#c92b25', borderRadius: 12, minWidth: 18, paddingHorizontal: 4, paddingVertical: 1 },
   badgeText: { color: '#fff', fontSize: 10, textAlign: 'center' },
   badgeLarge: { position: 'relative', left: 0, top: 0, alignSelf: 'center', marginTop: 3 },
+  // In-flow margins create the floating dock without covering scroll content.
+  // Maximum accessibility sizes retain the existing full-width scrolling bar.
+  glassBar: { ...softGlassSurface, borderRadius: 32, marginHorizontal: 12, marginTop: 6, marginBottom: 8, paddingHorizontal: 4, paddingVertical: 5, flexShrink: 0, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1 },
+  glassItem: { borderRadius: 26 },
 });

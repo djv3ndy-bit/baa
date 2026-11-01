@@ -1,25 +1,25 @@
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { dashboardTheme as t } from './theme';
+import { dashboardTheme as t, softGlassSurface } from './theme';
 
 export function Icon({ name, size = 24, color = t.ink }: { name: ComponentProps<typeof Ionicons>['name']; size?: number; color?: string }) {
   return <Ionicons accessible={false} importantForAccessibility="no" name={name} size={size} color={color} />;
 }
 
-export function Action({ label, onPress, primary = false, icon, disabled = false }: {
-  label: string; onPress: () => void; primary?: boolean; icon?: ComponentProps<typeof Ionicons>['name']; disabled?: boolean;
+export function Action({ label, onPress, primary = false, icon, disabled = false, softGlass = false }: {
+  label: string; onPress: () => void; primary?: boolean; icon?: ComponentProps<typeof Ionicons>['name']; disabled?: boolean; softGlass?: boolean;
 }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [s.action, primary && s.primary, (pressed || disabled) && s.dim]}>
+    style={({ pressed }) => [s.action, softGlass && s.glassAction, primary && s.primary, softGlass && primary && s.glassPrimary, (pressed || disabled) && s.dim]}>
     {icon ? <Icon name={icon} color={primary ? '#fff' : t.accent} /> : null}
     <Text style={[s.actionText, primary && s.primaryText]}>{label}</Text>
   </Pressable>;
 }
 
-export function Section({ title, action, onPress, children }: { title: string; action?: string; onPress?: () => void; children: ReactNode }) {
+export function Section({ title, action, onPress, children, softGlass = false }: { title: string; action?: string; onPress?: () => void; children: ReactNode; softGlass?: boolean }) {
   return <View style={s.section}><View style={s.sectionHeading}>
-    <Text accessibilityRole="header" style={s.sectionTitle}>{title}</Text>
+    <Text accessibilityRole="header" style={[s.sectionTitle, softGlass && s.glassSectionTitle]}>{title}</Text>
     {action && onPress ? <Pressable accessibilityRole="button" accessibilityLabel={`${action}: ${title}`} onPress={onPress} style={s.sectionAction}>
       <Text style={s.link}>{action}</Text><Icon name="arrow-forward" color={t.accent} size={20} />
     </Pressable> : null}
@@ -32,8 +32,8 @@ export function Avatar({ uri, name, cafe = false }: { uri?: string | null; name:
     : <View accessibilityLabel={`${name}, photo unavailable`} style={[s.avatar, s.fallback]}><Icon name={cafe ? 'cafe-outline' : 'person-outline'} size={28} color={t.accent} /></View>;
 }
 
-export function EmptyCard({ title, body }: { title: string; body: string }) {
-  return <View style={s.empty}><Text style={s.emptyTitle}>{title}</Text><Text style={s.copy}>{body}</Text></View>;
+export function EmptyCard({ title, body, softGlass = false }: { title: string; body: string; softGlass?: boolean }) {
+  return <View style={[s.empty, softGlass && s.glassEmpty]}><Text style={s.emptyTitle}>{title}</Text><Text style={s.copy}>{body}</Text></View>;
 }
 
 const s = StyleSheet.create({
@@ -47,4 +47,8 @@ const s = StyleSheet.create({
   avatar: { width: 52, height: 52, borderRadius: 26, flexShrink: 0 }, fallback: { backgroundColor: t.soft, justifyContent: 'center', alignItems: 'center' },
   empty: { borderWidth: 1, borderColor: t.border, borderRadius: 14, backgroundColor: t.surface, padding: 18 },
   emptyTitle: { color: t.ink, fontSize: 17, fontWeight: '600' }, copy: { color: t.muted, fontSize: 15, lineHeight: 22, marginTop: 5 },
+  glassAction: { ...softGlassSurface, minHeight: 50, borderRadius: 22, paddingHorizontal: 18 },
+  glassPrimary: { borderRadius: 999, shadowColor: t.accent, shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
+  glassSectionTitle: { fontFamily: t.interfaceFont, fontSize: 22, letterSpacing: -0.4 },
+  glassEmpty: { ...softGlassSurface, padding: 18 },
 });

@@ -4,7 +4,7 @@ import { ExpoStoreGateway, type NativePurchase, type NativePurchaseApi } from '.
 import { approvedStorePlan } from './storeCatalog';
 import type { StorePurchase } from './purchaseCoordinator';
 import { getAppEnvironment } from '../review-mode/environment';
-import { sandboxOnlyStore } from '../review-mode/reviewPurchaseGuard';
+import { googleLicenseTestingStore, sandboxOnlyStore } from '../review-mode/reviewPurchaseGuard';
 
 // This flag controls presentation only. The server independently enforces the
 // saved café role, billing environment, product, access and checkout reservation.
@@ -16,7 +16,11 @@ function createStore(onUnfinished: (purchase: StorePurchase) => void) {
   // Load the native module only for a configured store and a verified café.
   // Its exact 5.5.1 API is checked in review/validation against SDK declarations.
   const sdk = require('expo-iap') as NativePurchaseApi<NativePurchase>;
-  return new ExpoStoreGateway(getAppEnvironment().review ? sandboxOnlyStore(sdk) : sdk, plan, onUnfinished, undefined, undefined,
+  const environment = getAppEnvironment();
+  const store = !environment.review ? sdk : plan.provider === 'apple' ? sandboxOnlyStore(sdk)
+    : googleLicenseTestingStore(sdk, { environment, platform: Platform.OS,
+      enabled: process.env.EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING === 'true' });
+  return new ExpoStoreGateway(store, plan, onUnfinished, undefined, undefined,
     process.env.EXPO_PUBLIC_BILLING_DIAGNOSTICS === 'true'
       ? event => console.info(`[BaristaMatch Store] ${event}`) : undefined);
 }

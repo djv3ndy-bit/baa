@@ -1,63 +1,99 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { blockUser, reportUser } from '@/lib/safety';
+import { requireAccountSession } from '@/lib/api';
 import { useConversation } from '@/lib/useConversation';
 import { ConversationKeyboardView, ConversationTextInput } from '@/components/ConversationKeyboardView';
+import { sectionMemory } from '@/features/section-memory/store';
+import type { SectionLease } from '@/features/section-memory/store';
+import { withSectionMemory } from '@/features/section-memory/useSectionMemory';
 
 type ReportReason = 'harassment' | 'spam_or_scam';
+type SafetyContext = { accountId: string; conversationId: string; conversationKind: 'discovery' | 'application'; otherUserId: string; epoch: number; lease: SectionLease };
 
-export default function Chat() {
+export function Chat() {
   const params = useLocalSearchParams<{ id: string; kind?: 'discovery' | 'application' }>();
   const id = typeof params.id === 'string' ? params.id : '';
   const discovery = params.kind === 'discovery';
   const { loading, refreshing, ready, messages, body, setBody, me, otherUserId, name, sending, error, send, retry } = useConversation(id, discovery ? 'discovery' : 'application');
   const [safetyBusy, setSafetyBusy] = useState(false);
+  const ownerLease = useRef(sectionMemory.lease());
+  const focused = useRef(false), epoch = useRef(0), pending = useRef<object | null>(null);
+  const current = useRef({ accountId: me, conversationId: id, conversationKind: discovery ? 'discovery' as const : 'application' as const, otherUserId, name, ready, messages });
+  current.current = { accountId: me, conversationId: id, conversationKind: discovery ? 'discovery' : 'application', otherUserId, name, ready, messages };
+  useFocusEffect(useCallback(() => {
+    focused.current = true; epoch.current++; pending.current = null; setSafetyBusy(false);
+    return () => { focused.current = false; epoch.current++; pending.current = null; };
+  }, [id, discovery, me, otherUserId, ready]));
   const scroll = useRef<ScrollView>(null);
 
+  function available(origin: SafetyContext) {
+    const latest = current.current;
+    return sectionMemory.current(origin.lease) && focused.current && epoch.current === origin.epoch && latest.ready && !!origin.accountId && !!origin.otherUserId
+      && latest.accountId === origin.accountId && latest.conversationId === origin.conversationId
+      && latest.conversationKind === origin.conversationKind && latest.otherUserId === origin.otherUserId;
+  }
   function openSafetyMenu() {
-    if (!ready || !otherUserId || safetyBusy) return;
-    Alert.alert(`Safety options for ${name}`, 'Reports are reviewed by BaristaMatch. Blocking immediately ends contact between both accounts.', [
-      { text: 'Report conversation', onPress: chooseReportReason },
-      { text: 'Block account', style: 'destructive', onPress: confirmBlock },
+    const { accountId, conversationId, conversationKind, otherUserId } = current.current;
+    const origin: SafetyContext = { accountId, conversationId, conversationKind, otherUserId, epoch: epoch.current, lease: ownerLease.current };
+    if (!available(origin) || pending.current) return;
+    Alert.alert(`Safety options for ${current.current.name}`, 'Reports are reviewed by BaristaMatch. Blocking immediately ends contact between both accounts.', [
+      { text: 'Report conversation', onPress: () => chooseReportReason(origin) },
+      { text: 'Block account', style: 'destructive', onPress: () => confirmBlock(origin) },
       { text: 'Cancel', style: 'cancel' },
     ], { cancelable: true });
   }
 
-  function chooseReportReason() {
+  function chooseReportReason(origin: SafetyContext) {
+    if (!available(origin) || pending.current) return;
     Alert.alert('Why are you reporting this?', 'Choose the closest reason.', [
-      { text: 'Harassment or threats', onPress: () => submitReport('harassment') },
-      { text: 'Spam or scam', onPress: () => submitReport('spam_or_scam') },
+      { text: 'Harassment or threats', onPress: () => submitSafety(origin, 'harassment') },
+      { text: 'Spam or scam', onPress: () => submitSafety(origin, 'spam_or_scam') },
       { text: 'Cancel', style: 'cancel' },
     ], { cancelable: true });
   }
 
-  async function submitReport(reason: ReportReason) {
-    setSafetyBusy(true);
+  async function submitSafety(origin: SafetyContext, kind: ReportReason | 'block') {
+    if (!available(origin) || pending.current) return;
+    const operation = {};
+    pending.current = operation; setSafetyBusy(true);
     try {
-      const context = messages.filter(message => message.sender_id !== me).slice(-5).map(message => message.body).join('\n');
-      await reportUser({ reportedId: otherUserId, conversationId: id, conversationKind: discovery ? 'discovery' : 'application', reason, details: context });
-      Alert.alert('Report received', 'Thank you. BaristaMatch will review this conversation. You can also block the account to stop contact now.');
+      await requireAccountSession(origin.accountId);
+      if (!available(origin)) return;
+      if (kind === 'block') await blockUser(origin.otherUserId, origin.accountId);
+      else {
+        const context = current.current.messages.filter(message => message.sender_id !== origin.accountId).slice(-5).map(message => message.body).join('\n');
+        await reportUser({ reportedId: origin.otherUserId, conversationId: origin.conversationId, conversationKind: origin.conversationKind,
+          reason: kind, details: context, expectedAccountId: origin.accountId });
+      }
+      await requireAccountSession(origin.accountId);
+      if (!available(origin)) return;
+      if (kind === 'block') {
+        sectionMemory.reset();
+        router.replace('/messages');
+        Alert.alert('Account blocked', 'This account can no longer contact you.');
+      } else Alert.alert('Report received', 'Thank you. BaristaMatch will review this conversation. You can also block the account to stop contact now.');
     } catch (error) {
-      Alert.alert('Report not sent', error instanceof Error ? error.message : 'Please try again.');
-    } finally { setSafetyBusy(false); }
+      if (!available(origin)) return;
+      // Auth can change before useConversation's state has rendered. Even an
+      // error dialog belongs only to the account that confirmed this action.
+      try {
+        await requireAccountSession(origin.accountId);
+        if (available(origin)) Alert.alert(kind === 'block' ? 'Could not block account' : 'Report not sent', error instanceof Error ? error.message : 'Please try again.');
+      } catch { /* No current account ownership, so suppress the stale dialog. */ }
+    } finally {
+      // An old request must not unlock an action started after a context change.
+      if (pending.current === operation) { pending.current = null; if (focused.current) setSafetyBusy(false); }
+    }
   }
 
-  function confirmBlock() {
+  function confirmBlock(origin: SafetyContext) {
+    if (!available(origin) || pending.current) return;
     Alert.alert('Block this account?', 'You will no longer see each other or be able to exchange messages.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Block', style: 'destructive', onPress: performBlock },
+      { text: 'Block', style: 'destructive', onPress: () => submitSafety(origin, 'block') },
     ], { cancelable: true });
-  }
-
-  async function performBlock() {
-    setSafetyBusy(true);
-    try {
-      await blockUser(otherUserId);
-      Alert.alert('Account blocked', 'This account can no longer contact you.', [{ text: 'OK', onPress: () => router.replace('/messages') }]);
-    } catch (error) {
-      Alert.alert('Could not block account', error instanceof Error ? error.message : 'Please try again.');
-    } finally { setSafetyBusy(false); }
   }
 
   if (loading) return <SafeAreaView style={s.safe}><View style={s.center}><ActivityIndicator size="large" color="#321708" /></View></SafeAreaView>;
@@ -70,6 +106,7 @@ export default function Chat() {
           <View style={s.heading}><Text accessibilityLabel={name} numberOfLines={2} ellipsizeMode="tail" style={s.name}>{name}</Text><Text numberOfLines={2} style={s.sub}>Mutual match · Private conversation</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Conversation safety options" disabled={!ready || safetyBusy} onPress={openSafetyMenu} style={s.safety}><Text allowFontScaling={false} style={s.safetyText}>•••</Text></Pressable>
         </View>
+        {!ready && !error ? <View style={s.checking}><ActivityIndicator size="small" color="#746a61" /><Text style={s.sub}>Checking conversation…</Text></View> : null}
         {error ? <View style={s.error}><Text accessibilityRole="alert" style={s.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={retry}><Text style={s.retry}>Refresh conversation</Text></Pressable></View> : null}
         <ScrollView ref={scroll} style={s.stream} contentContainerStyle={s.streamContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} />} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
           {messages.length ? messages.map(message => (
@@ -89,6 +126,7 @@ export default function Chat() {
 }
 
 const s = StyleSheet.create({
+  checking: { padding: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   error: { padding: 14, backgroundColor: '#fff4e8' }, errorText: { color: '#84341f', fontSize: 13, lineHeight: 19 }, retry: { color: '#321708', fontWeight: '800', paddingVertical: 10 },
   safe: { flex: 1, backgroundColor: '#f7f0e9' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: { minHeight: 72, paddingVertical: 8, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eadfd5', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 8 },
@@ -103,4 +141,9 @@ const s = StyleSheet.create({
   input: { flex: 1, minHeight: 45, maxHeight: 110, borderWidth: 1, borderColor: '#ddd0c6', borderRadius: 23, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 10, fontSize: 15, color: '#24150d' },
   send: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#321708', alignItems: 'center', justifyContent: 'center' }, sendText: { color: '#fff', fontSize: 22, fontWeight: '900' },
   empty: { alignItems: 'center', paddingTop: 120 }, emptyText: { color: '#746a61', marginTop: 10 },
+});
+
+export default withSectionMemory(Chat, () => {
+  const params = useLocalSearchParams<{ id: string; kind?: string }>();
+  return `${params.kind === 'discovery' ? 'discovery' : 'application'}:${typeof params.id === 'string' ? params.id : ''}`;
 });

@@ -12,7 +12,7 @@ type Storage = {
 export const REVIEW_MODE_KEY = 'baristamatch_review_mode_v1';
 
 /** A process keeps one immutable environment. Switching takes effect only after a reload. */
-export function createEnvironmentController(storage: Storage, configured: AppEnvironment, review: AppEnvironment, timeoutMs = 5000) {
+export function createEnvironmentController(storage: Storage, configured: AppEnvironment, review: AppEnvironment, timeoutMs = 5000, options: { allowModeSwitching?: boolean } = {}) {
   let current: AppEnvironment | undefined;
   let opening: Promise<AppEnvironment> | undefined;
   let switching = false;
@@ -36,7 +36,9 @@ export function createEnvironmentController(storage: Storage, configured: AppEnv
     if (current) return Promise.resolve(current);
     if (!opening) {
       opening = (async () => {
-        const saved = await bounded(storage.getItem(REVIEW_MODE_KEY));
+        // Store iOS builds use the connection bundled with that build. Old local
+        // test-mode selections must not silently redirect ordinary sign-in.
+        const saved = options.allowModeSwitching === false ? null : await bounded(storage.getItem(REVIEW_MODE_KEY));
         if (saved !== null && saved !== 'review' && saved !== 'configured') {
           throw new Error('Your saved app mode could not be read. Please contact support.');
         }
@@ -53,6 +55,7 @@ export function createEnvironmentController(storage: Storage, configured: AppEnv
 
   async function switchMode(target: 'review' | 'configured', signedOut: () => Promise<boolean>, reload: () => Promise<void>) {
     const active = get();
+    if (options.allowModeSwitching === false) throw new Error('This build uses its configured account connection.');
     if (switching || restartRequired) throw new Error('The app is already restarting. Close and reopen it to continue.');
     if (target === 'configured' && configured.review) throw new Error('This test build has no live account connection.');
     if ((target === 'review') === active.review) return;

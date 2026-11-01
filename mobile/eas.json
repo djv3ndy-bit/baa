@@ -8,13 +8,11 @@
       "node": "22.23.2",
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development",
       "environment": "development"
     },
     "preview": {
       "node": "22.23.2",
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "ios": {
         "simulator": false
@@ -27,7 +25,6 @@
     "preview-simulator": {
       "node": "22.23.2",
       "distribution": "internal",
-      "channel": "preview",
       "environment": "preview",
       "ios": {
         "simulator": true
@@ -36,7 +33,6 @@
     "production": {
       "node": "22.23.2",
       "autoIncrement": true,
-      "channel": "production",
       "environment": "production",
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.0"
@@ -46,17 +42,52 @@
         "buildType": "app-bundle"
       }
     },
+    "ios-review-candidate": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "production",
+      "autoIncrement": true,
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release",
+        "image": "macos-tahoe-26.6-xcode-27.1",
+        "resourceClass": "medium"
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://lmwqrxoitraofaftpwhe.supabase.co",
+        "EXPO_PUBLIC_API_BASE_URL": "https://www.baristajobmatch.com/api",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      },
+      "credentialsSource": "remote"
+    },
     "payment-review": {
       "extends": "production",
       "distribution": "store",
       "environment": "preview",
-      "channel": "payment-review",
       "env": {
         "EXPO_NO_DOTENV": "1",
         "EXPO_PUBLIC_API_BASE_URL": "https://testing.baristajobmatch.com/api",
         "EXPO_PUBLIC_SUPABASE_URL": "https://iqtpsxxlpncaeabbcxht.supabase.co",
         "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_470rDNz5G4PrUD5mvMu4Eg_LPcLOM4x",
         "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
+      }
+    },
+    "android-payment-review": {
+      "extends": "production",
+      "distribution": "store",
+      "environment": "preview",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_NO_DOTENV": "1",
+        "EXPO_PUBLIC_API_BASE_URL": "https://android-testing.baristajobmatch.com/api",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://ojvjlvojvozvhktbclcg.supabase.co",
+        "EXPO_PUBLIC_NATIVE_SUBSCRIPTIONS_ENABLED": "true",
+        "EXPO_PUBLIC_GOOGLE_PLAY_LICENSE_TESTING": "true",
         "EXPO_PUBLIC_BILLING_DIAGNOSTICS": "false"
       }
     }

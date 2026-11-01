@@ -1,3 +1,4 @@
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { dashboardPrism as prism, prismPanel } from '@/lib/dashboardPrism';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,9 +8,10 @@ import { getCurrentContext, AppRole } from '@/lib/session';
 import { AppBottomNav } from '@/components/AppBottomNav';
 import { Conversation, LatestMessageRequest, loadConversations, messageError, withMessageDeadline } from '@/lib/messaging';
 
-export default function Messages() {
-  const [loading, setLoading] = useState(true), [refreshing, setRefreshing] = useState(false);
-  const [rows, setRows] = useState<Conversation[]>([]), [role, setRole] = useState<AppRole | null>(null);
+function Messages() {
+  const memory = useSectionMemory<{ rows: Conversation[]; role: AppRole }>('messages');
+  const [loading, setLoading] = useState(!memory.initial), [refreshing, setRefreshing] = useState(false);
+  const [rows, setRows] = useState<Conversation[]>(memory.initial?.rows ?? []), [role, setRole] = useState<AppRole | null>(memory.initial?.role ?? null);
   const [error, setError] = useState(''), [attempt, setAttempt] = useState(0);
   useFocusEffect(useCallback(() => {
     let live = true, userId = '';
@@ -17,15 +19,16 @@ export default function Messages() {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     async function load() {
       const current = requests.begin();
-      setRefreshing(true);
       try {
         const context = await withMessageDeadline(getCurrentContext());
-        if (!live || !current()) return;
+        if (!live || !current() || !memory.current()) return;
         if (!context.user) { router.replace('/login'); return; }
         if (!context.role) { router.replace('/signup'); return; }
         userId = context.user.id;
         const conversations = await loadConversations(supabase, userId, context.role);
-        if (!live || !current()) return;
+        if (!live || !current() || !memory.current()) return;
+        memory.save(userId, context.role, { rows: conversations, role: context.role });
+        if (!memory.current()) return;
         setRole(context.role); setRows(conversations); setError('');
         if (!channel) {
           channel = supabase.channel(`mobile-inbox-${userId}`)
@@ -35,7 +38,7 @@ export default function Messages() {
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'discovery_messages' }, () => { void load(); })
             .subscribe();
         }
-      } catch (cause) { if (live && current()) setError(messageError(cause, 'Messages could not load. Please try again.')); }
+      } catch (cause) { if (live && current() && memory.current()) { memory.forget(); setError(messageError(cause, 'Messages could not load. Please try again.')); } }
       finally { if (live && current()) { setLoading(false); setRefreshing(false); } }
     }
     void load();
@@ -46,8 +49,8 @@ export default function Messages() {
       }
     });
     return () => { live = false; requests.invalidate(); subscription.unsubscribe(); appState.remove(); if (channel) void supabase.removeChannel(channel); };
-  }, [attempt]));
-  const refresh = () => setAttempt(value => value + 1);
+  }, [attempt, memory]));
+  const refresh = () => { setRefreshing(true); setAttempt(value => value + 1); };
   const unread = rows.reduce((total, row) => total + row.unread, 0);
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><Text style={s.title}>Messages</Text><Text style={s.sub}>{unread ? `${unread} unread ${unread === 1 ? 'message' : 'messages'}` : 'Private conversations with mutual matches'}</Text></View>
@@ -65,3 +68,5 @@ export default function Messages() {
   </SafeAreaView>;
 }
 const s=StyleSheet.create({notice:{padding:14,backgroundColor:'#fff4e8',borderRadius:12,marginBottom:12},error:{fontSize:13,color:'#84341f',lineHeight:19},retry:{fontSize:14,fontWeight: '700',color:prism.accent,padding:14,textAlign:'center'},unread:{backgroundColor:prism.accent,borderRadius:20,minWidth:25,padding:5,alignItems:'center'},unreadText:{fontSize:11,color:prism.surface,fontWeight: '700'},safe:{flex:1,backgroundColor:prism.background},center:{flex:1,alignItems:'center',justifyContent:'center'},header:{padding:20,paddingBottom:10},title:{fontSize:31,fontWeight: '700',color:prism.ink},sub:{fontSize:14,color:prism.muted,marginTop:4},list:{padding:18,paddingBottom:30},row:{...prismPanel,borderRadius:20,paddingHorizontal:15,marginBottom:10,flexDirection:'row',alignItems:'center',gap:13,backgroundColor:prism.surface,paddingVertical:15},avatar:{width:50,height:50,borderRadius:25,backgroundColor:prism.accentSoft,alignItems:'center',justifyContent:'center'},name:{fontSize:16,fontWeight: '700',color:prism.ink},preview:{fontSize:13,color:prism.muted,marginTop:5},chev:{fontSize:28,color:prism.accent},empty:{alignItems:'center',paddingTop:100},emptyTitle:{fontSize:25,fontWeight: '700',color:prism.ink,marginTop:15},emptyCopy:{fontSize:14,color:prism.muted,marginTop:6,textAlign:'center'}});
+
+export default withSectionMemory(Messages);

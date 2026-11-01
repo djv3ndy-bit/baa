@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { MOBILE_AUTH_WEB_BRIDGE } from '@/lib/authCallback';
+import { getMobileAuthWebBridge } from '@/features/review-mode/environment';
 
 export default function VerifyEmailScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
@@ -16,7 +16,7 @@ export default function VerifyEmailScreen() {
     pending.current = true;
     setSending(true);
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: MOBILE_AUTH_WEB_BRIDGE } });
+      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: getMobileAuthWebBridge() } });
       if (!active.current) return;
       if (error) Alert.alert('Could not resend', 'Please wait a moment, check your connection, and try again.');
       else Alert.alert('Check your inbox', 'If this address needs confirmation, a new link will arrive shortly.');

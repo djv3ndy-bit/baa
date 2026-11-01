@@ -3,47 +3,82 @@ import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { getCurrentContext } from '@/lib/session';
+import { getCurrentContext, requireCurrentUser } from '@/lib/session';
 import { AppBottomNav } from '@/components/AppBottomNav';
+import { ProfileSafetyControl } from '@/components/ProfileSafetyControl';
+import { sectionMemory } from '@/features/section-memory/store';
+import { useSectionMemory, withSectionMemory } from '@/features/section-memory/useSectionMemory';
 import { authenticatedApi } from '@/lib/api';
 import { applicationStatus, loadApplications, MarketApplication, profileVideoUrl } from '@/lib/marketplace';
 
-export default function CandidatesScreen() {
-  const [loading, setLoading] = useState(true), [items, setItems] = useState<MarketApplication[]>([]);
+function CandidatesScreen() {
+  const memory = useSectionMemory<{ items: MarketApplication[]; userId: string }>('candidates');
+  const loaded = useRef(!!memory.initial);
+  const [loading, setLoading] = useState(true), [items, setItems] = useState<MarketApplication[]>(memory.initial?.items ?? []);
   const [history, setHistory] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const request = useRef(0), action = useRef(false), focused = useRef(false), userId = useRef('');
+  const request = useRef(0), action = useRef(false), focused = useRef(false), userId = useRef(memory.initial?.userId ?? '');
   const load = useCallback(async () => {
+    if (!focused.current || !memory.current()) return;
     const version = ++request.current; setLoading(true); setError('');
     try {
       const context = await getCurrentContext();
-      if (version !== request.current) return;
-      if (!context.user) { router.replace('/login'); return; }
-      if (context.role !== 'cafe_owner_manager') { router.replace('/home'); return; }
+      if (!focused.current || version !== request.current || !memory.current()) return;
+      if (!context.user) { memory.forget(); setItems([]); userId.current = ''; router.replace('/login'); return; }
+      if (context.role !== 'cafe_owner_manager') { memory.forget(); setItems([]); userId.current = ''; router.replace('/home'); return; }
+      userId.current = context.user.id;
       const next = await loadApplications(context.user.id, context.role);
-      if (version === request.current) { userId.current = context.user.id; setItems(next); }
-    } catch (caught) { if (version === request.current) { setItems([]); setError(caught instanceof Error ? caught.message : 'Candidates could not load. Please refresh.'); } }
-    finally { if (version === request.current) setLoading(false); }
-  }, []);
-  useFocusEffect(useCallback(() => { focused.current = true; void load(); return () => { focused.current = false; request.current++; }; }, [load]));
+      await requireCurrentUser(context.user.id);
+      if (!focused.current || version !== request.current || !memory.current()) return;
+      memory.save(context.user.id, context.role, { items: next, userId: context.user.id });
+      if (!memory.current()) return;
+      loaded.current = true; setItems(next);
+    } catch (caught) { if (focused.current && version === request.current && memory.current()) { memory.forget(); setItems([]); setError(caught instanceof Error ? caught.message : 'Candidates could not load. Please refresh.'); } }
+    finally { if (focused.current && version === request.current && memory.current()) setLoading(false); }
+  }, [memory]);
+  useFocusEffect(useCallback(() => {
+    focused.current = true; void load();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || (userId.current && session && session.user.id !== userId.current)) {
+        request.current++; userId.current = ''; setItems([]); setError(''); router.replace('/login');
+      }
+    });
+    return () => { focused.current = false; request.current++; subscription.unsubscribe(); };
+  }, [load]));
   async function decide(candidate: MarketApplication, decision: 'matched' | 'declined') {
-    if (action.current) return;
+    if (action.current || !focused.current || !memory.current() || !userId.current) return;
+    const accountId = userId.current;
+    const current = () => focused.current && memory.current() && userId.current === accountId;
     action.current = true; setBusy(true);
     try {
       const context = await getCurrentContext();
-      if (!context.user || context.user.id !== userId.current || context.role !== 'cafe_owner_manager') throw new Error('Your account changed. Refresh before reviewing this application.');
+      if (!context.user || context.user.id !== accountId || context.role !== 'cafe_owner_manager') throw new Error('Your account changed. Refresh before reviewing this application.');
+      if (!current()) return;
       if (decision === 'matched') await authenticatedApi('/match-application', { application_id: candidate.id }, 'POST', context.user.id);
       else {
         const { data, error: updateError } = await supabase.from('applications').update({ status: decision }).eq('id', candidate.id).eq('status', 'interested').select('id,status').single();
         if (updateError) throw updateError;
         if (!data) throw new Error('This application changed. Refresh Candidates to check its current status.');
       }
-      if (!focused.current) return;
+      await requireCurrentUser(accountId);
+      if (!current()) return;
+      // A confirmed decision must not let an older list request restore its old status.
+      request.current++; memory.forget(); setLoading(false);
       setItems(rows => rows.map(row => row.id === candidate.id ? { ...row, status: decision } : row));
       if (decision === 'matched') router.push({ pathname: '/match-success', params: { applicationId: candidate.id, name: candidate.barista?.display_name || 'Barista' } });
-    } catch (caught) { if (focused.current) Alert.alert('Application not updated', caught instanceof Error ? caught.message : 'Please refresh and try again.'); }
-    finally { action.current = false; setBusy(false); }
+    } catch (caught) { if (current()) Alert.alert('Application not updated', caught instanceof Error ? caught.message : 'Please refresh and try again.'); }
+    finally { action.current = false; if (current()) setBusy(false); }
   }
   async function viewVideo(path: string) { try { await Linking.openURL(await profileVideoUrl(path)); } catch { Alert.alert('Video unavailable', 'This video could not open. Please refresh and try again.'); } }
+  function startSafetyAction() {
+    if (action.current || !focused.current || !memory.current()) return false;
+    action.current = true; setBusy(true); return true;
+  }
+  function removeBlockedProfile(blockedId: string) {
+    if (!focused.current || !memory.current()) return;
+    request.current++; setLoading(false);
+    setItems(rows => rows.filter(row => row.barista_id !== blockedId));
+    sectionMemory.reset();
+  }
   const visible = items.filter(item => history ? item.status !== 'interested' : item.status === 'interested');
   return <SafeAreaView style={s.safe}>
     <View style={s.header}><View style={s.headerCopy}><Text style={s.title}>Candidates</Text><Text style={s.copy}>Review applications and keep their history</Text></View></View>
@@ -51,13 +86,16 @@ export default function CandidatesScreen() {
       <Pressable accessibilityRole="button" style={s.secondary} onPress={() => router.push({ pathname: '/discover', params: { tab: 'received' } })}><Text style={s.secondaryText}>Review profile interests</Text></Pressable>
       <Pressable accessibilityRole="button" style={[s.secondary, { marginTop: 9 }]} onPress={() => router.push('/matches')}><Text style={s.secondaryText}>View matches</Text></Pressable>
       <View style={s.actions}><Pressable accessibilityRole="tab" accessibilityState={{ selected: !history }} style={s.secondary} onPress={() => setHistory(false)}><Text style={s.secondaryText}>Awaiting review</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: history }} style={s.secondary} onPress={() => setHistory(true)}><Text style={s.secondaryText}>History</Text></Pressable><Pressable disabled={loading || busy} style={s.secondary} onPress={() => void load()}><Text style={s.secondaryText}>Refresh</Text></Pressable></View>
-      {loading ? <ActivityIndicator size="large" color={prism.ink} /> : error ? <Text accessibilityRole="alert" style={s.copy}>{error}</Text> : <><Text style={s.count}>{visible.length} {history ? 'reviewed applications' : 'applications awaiting review'}</Text>{visible.map(candidate => { const person = candidate.barista; return <View key={candidate.id} style={s.card}>
+      {loading && !loaded.current ? <ActivityIndicator size="large" color={prism.ink} /> : error ? <Text accessibilityRole="alert" style={s.copy}>{error}</Text> : <><Text style={s.count}>{visible.length} {history ? 'reviewed applications' : 'applications awaiting review'}</Text>{visible.map(candidate => { const person = candidate.barista; return <View key={candidate.id} style={s.card}>
         {person?.avatar_url ? <Image source={{ uri: person.avatar_url }} style={s.photo} accessibilityLabel="Barista profile photo" /> : null}<Text style={s.name}>{person?.display_name || 'Profile currently unavailable'}</Text><Text style={s.job}>{candidate.job?.title || 'Job no longer available'}{candidate.job?.active === false ? ' · Paused' : ''}</Text><Text style={s.copy}>{person?.location || 'Location not added'}</Text>
         <Info label="Skills" value={person?.skills?.join(' · ')} /><Info label="Experience" value={person?.experience} /><Info label="Availability" value={person?.availability} /><Info label="Desired pay" value={person?.pay_expectation} /><Info label="About" value={person?.bio} />{person?.video_path ? <Pressable accessibilityRole="button" style={s.secondary} onPress={() => void viewVideo(person.video_path!)}><Text style={s.secondaryText}>Watch coffee showcase</Text></Pressable> : null}
         {candidate.status === 'interested' ? <View style={s.actions}><Pressable accessibilityRole="button" disabled={busy} style={[s.secondary, busy && s.disabled]} onPress={() => Alert.alert('Decline this application?', 'The application will stay in your history as not selected.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Decline', onPress: () => void decide(candidate, 'declined') }])}><Text style={s.secondaryText}>Decline</Text></Pressable><Pressable accessibilityRole="button" disabled={busy || !person} style={[s.primary, (busy || !person) && s.disabled]} onPress={() => void decide(candidate, 'matched')}><Text style={s.primaryText}>Match with barista</Text></Pressable></View> : <><Text style={s.count}>{applicationStatus(candidate.status)}</Text>{candidate.status === 'matched' ? <Pressable style={s.primary} onPress={() => router.push({ pathname: '/chat/[id]', params: { id: candidate.id, kind: 'application' } })}><Text style={s.primaryText}>Open conversation</Text></Pressable> : null}</>}
+        {person ? <ProfileSafetyControl accountId={userId.current} profileId={candidate.barista_id} profileName={person.display_name || 'this barista'} disabled={busy || loading}
+          onStart={startSafetyAction} onFinish={() => { action.current = false; setBusy(false); }} onBlocked={removeBlockedProfile} /> : null}
       </View>; })}{!visible.length ? <View style={s.empty}><Text style={s.name}>{history ? 'No reviewed applications yet' : 'You’re caught up'}</Text><Text style={s.copy}>{history ? 'Matched and declined applications will remain here.' : 'Applications to your jobs will appear here. Profile interests are available above.'}</Text></View> : null}</>}
     </ScrollView><AppBottomNav active="candidates" role="cafe_owner_manager" />
   </SafeAreaView>;
 }
+export default withSectionMemory(CandidatesScreen);
 function Info({ label, value }: { label: string; value?: string | null }) { return value ? <View style={s.info}><Text style={s.infoLabel}>{label}</Text><Text style={s.copy}>{value}</Text></View> : null; }
 const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: prism.background }, header: { padding: 18, flexDirection: 'row', gap: 12 }, headerCopy: { flex: 1, minWidth: 0 }, title: { fontSize: 27, fontWeight: '700', color: prism.ink }, wrap: { padding: 18, paddingBottom: 32 }, card: { ...prismPanel, backgroundColor: prism.surface, padding: 18, marginTop: 14, borderRadius: 24, borderWidth: 1, borderColor: prism.line }, photo: { width: 80, height: 80, borderRadius: 15, marginBottom: 12 }, name: { fontSize: 23, fontWeight: '700', color: prism.ink }, job: { fontSize: 15, color: prism.accent, fontWeight: '700', marginTop: 4 }, copy: { fontSize: 14, lineHeight: 21, color: prism.muted, marginTop: 7 }, info: { marginTop: 12 }, infoLabel: { fontSize: 12, fontWeight: '700', color: prism.ink }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginVertical: 14 }, secondary: { minHeight: 44, padding: 12, justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: prism.line, alignSelf: 'flex-start' }, secondaryText: { fontWeight: '700', color: prism.ink }, primary: { minHeight: 44, padding: 12, justifyContent: 'center', borderRadius: 12, backgroundColor: prism.accent, alignSelf: 'flex-start' }, primaryText: { fontWeight: '700', color: prism.surface }, count: { fontSize: 14, fontWeight: '700', color: prism.ink, marginVertical: 12 }, empty: { paddingVertical: 40 }, disabled: { opacity: .5 } });

@@ -4,7 +4,6 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { mobileCallbackUrlFromParams, parseMobileAuthCallback } from '@/lib/authCallback';
 import { completeMobileAuth, getCurrentContext } from '@/lib/session';
-import { trackConfirmedEmailSignup } from '@/lib/productEvents';
 
 export default function AuthCallbackScreen() {
   const [failed, setFailed] = useState(false);
@@ -27,7 +26,6 @@ export default function AuthCallbackScreen() {
         const context = await getCurrentContext();
         if (!active) return;
         if (context.user?.id !== user.id) throw new Error('session_changed');
-        void trackConfirmedEmailSignup(url, user, context.role);
         router.replace(context.role ? '/home' : { pathname: '/signup', params: { complete: '1' } });
       } catch {
         if (active) setFailed(true);

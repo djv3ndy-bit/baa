@@ -3,6 +3,7 @@ import { ActivityIndicator, Keyboard, Platform, Pressable, ScrollView, StyleShee
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { getCurrentContext } from '@/lib/session';
+import { canSwitchAppMode } from './environment';
 import { ConversationKeyboardView, ConversationTextInput } from '@/components/ConversationKeyboardView';
 
 const ReviewKeyboardView = Platform.OS === 'ios' ? View : ConversationKeyboardView;
@@ -61,7 +62,7 @@ export default function ReviewLogin() {
       <Pressable accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={signIn} style={styles.button}>
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in to test account</Text>}
       </Pressable>
-      <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>
+      {canSwitchAppMode() && <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.push('/review-mode')} style={styles.secondary}><Text style={styles.link}>Test mode information and exit</Text></Pressable>}
     </ScrollView>
   </ReviewKeyboardView>;
 }

@@ -1,0 +1,63 @@
+# Repository-root EAS uploads replace gitignore rules, so retain their exclusions.
+node_modules/
+dist/
+mobile/dist/
+.vercel/
+.env
+.env.*
+.DS_Store
+.git/
+# Preserve the mobile project's existing local-state exclusions.
+/mobile/**/.expo/
+/mobile/**/*.log
+# Only the generated app-level iOS tree is excluded; nested native modules stay.
+/mobile/ios/
+# Owner review/evidence and local build tools are never source-upload inputs.
+/review/
+/artifacts/
+/outputs/
+/build-tools/
+/ios-derived-data/
+/mobile/review/
+/mobile/artifacts/
+/mobile/outputs/
+/mobile/build-tools/
+/mobile/ios-derived-data/
+# Local auth/tool state; retain .eas/workflows and ordinary auth route sources.
+.expo/
+.auth/
+.sessions/
+.aws/
+.ssh/
+.gnupg/
+.codex/
+.gradle/
+xcuserdata/
+**/supabase/.temp/
+**/supabase/.branches/
+.npmrc
+.netrc
+.env
+.env.*
+# Signing/private-key material; public .cer/.pem CA assets remain included.
+credentials.json
+*.p12
+*.pfx
+*.p8
+*.key
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
+*.xcuserstate
+id_rsa
+id_ed25519
+*service-account*.json
+*service_account*.json
+*serviceAccount*.json
+storage-state*.json
+storage_state*.json
+playwright-auth*.json
+reviewer-*-private-form.*

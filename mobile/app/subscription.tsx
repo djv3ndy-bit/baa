@@ -6,7 +6,7 @@ import { useCafeAccess } from '@/lib/useCafeAccess';
 import { CafeAccessCheck } from '@/components/CafeAccessCheck';
 
 const freeBenefits = [
-  'Post your first job free',
+  'First job free for 30 days',
   'View applicants and full profiles',
   'Message your matches',
   'Schedule interviews with matches',
@@ -43,7 +43,7 @@ function PreservedSubscriptionScreen() {
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>SIMPLE CAFÉ PRICING</Text>
           <Text style={styles.title}>Post your first job free.</Text>
-          <Text style={styles.subtitle}>Match, message, and schedule interviews for your first role. Upgrade when you are ready to post a second job.</Text>
+          <Text style={styles.subtitle}>Your first job is free for 30 days. Editing or pausing does not extend it. A second job or reopening an expired post requires Pro. Existing matches and conversations stay saved.</Text>
         </View>
 
         <View style={styles.freeCard}>
@@ -52,12 +52,12 @@ function PreservedSubscriptionScreen() {
               <Text style={styles.freeLabel}>FREE</Text>
               <View style={styles.priceRow}>
                 <Text style={styles.freePrice}>$0</Text>
-                <Text style={styles.pricePeriod}> forever</Text>
+                <Text style={styles.pricePeriod}> first 30 days</Text>
               </View>
             </View>
             <View style={styles.currentPill}><Text style={styles.currentText}>START HERE</Text></View>
           </View>
-          <Text style={styles.planDescription}>Your first job and interview flow are on us.</Text>
+          <Text style={styles.planDescription}>Your first job is free for 30 days. Its existing interview flow stays included.</Text>
           <View style={styles.benefits}>{freeBenefits.map(item => <Benefit key={item} text={item} dark={false} />)}</View>
           <View style={styles.freeButton}><Text style={styles.freeButtonText}>Included with your café account</Text></View>
         </View>

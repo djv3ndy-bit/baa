@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { getPasswordResetRedirect } from '@/features/review-mode/environment';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -18,7 +19,7 @@ export default function ForgotPassword() {
     pending.current = true;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, { redirectTo: 'https://www.baristajobmatch.com/reset-password' });
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, { redirectTo: getPasswordResetRedirect() });
       if (!active.current) return;
       if (error) return Alert.alert('Could not send reset email', error.message);
       Alert.alert('Check your email', 'We sent a secure password-reset link if an account exists for that address.', [{ text: 'Back to login', onPress: () => router.replace('/login') }]);

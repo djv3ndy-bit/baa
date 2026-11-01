@@ -1,19 +1,19 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getAppEnvironment } from './environment';
+import { canSwitchAppMode, getAppEnvironment } from './environment';
 
 export function ReviewModeBanner() {
   if (!getAppEnvironment().review) return null;
   return <View style={styles.banner}>
     <Text style={styles.copy}>Test mode · Isolated accounts</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Test mode information and exit" onPress={() => router.push('/review-mode')} style={styles.info}><Text style={styles.link}>Info / Exit</Text></Pressable>
+    {canSwitchAppMode() && <Pressable accessibilityRole="button" accessibilityLabel="Test mode information and exit" onPress={() => router.push('/review-mode')} style={styles.info}><Text style={styles.link}>Info / Exit</Text></Pressable>}
   </View>;
 }
 
 export function ReviewModeEntry() {
   const insets = useSafeAreaInsets();
-  if (getAppEnvironment().review) return null;
+  if (!canSwitchAppMode() || getAppEnvironment().review) return null;
   return <Pressable accessibilityRole="button" onPress={() => router.push('/review-mode')} style={[styles.entry, { top: insets.top + 4 }]}><Text style={styles.entryText}>App review</Text></Pressable>;
 }
 const styles = StyleSheet.create({

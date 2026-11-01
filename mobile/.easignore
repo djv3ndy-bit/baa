@@ -4,3 +4,48 @@ node_modules
 .env.*
 *.log
 .DS_Store
+# iOS uses reviewed CNG plugins; never upload a stale generated Xcode project.
+/ios/
+.git/
+# Owner review/evidence and local build tools are not app source inputs.
+/review/
+/artifacts/
+/outputs/
+/build-tools/
+/ios-derived-data/
+# Local auth/tool state. Do not exclude .eas/workflows or runtime auth routes.
+.vercel/
+.auth/
+.sessions/
+.aws/
+.ssh/
+.gnupg/
+.codex/
+.gradle/
+xcuserdata/
+**/supabase/.temp/
+**/supabase/.branches/
+.npmrc
+.netrc
+# Signing/private-key material; public .cer/.pem CA assets remain included.
+credentials.json
+*.p12
+*.pfx
+*.p8
+*.key
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
+*.xcuserstate
+id_rsa
+id_ed25519
+*service-account*.json
+*service_account*.json
+*serviceAccount*.json
+storage-state*.json
+storage_state*.json
+playwright-auth*.json
+reviewer-*-private-form.*

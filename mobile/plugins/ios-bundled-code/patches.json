@@ -1,0 +1,111 @@
+{
+  "packages": [
+    {
+      "name": "react-native",
+      "version": "0.81.5",
+      "files": [
+        {
+          "path": "React/Base/RCTBundledCodePolicy.h",
+          "beforeSha256": null,
+          "afterSha256": "74a2bc09d59d931c339d578060102262eaff6eda0c81843760d2d7b0a1cb82c5",
+          "asset": "RCTBundledCodePolicy.h"
+        },
+        {
+          "path": "React/Base/RCTJavaScriptLoader.mm",
+          "beforeSha256": "c525e85e77116875f506a2ee7dfd9e432bd3d9576737f7dd3282acc8d14a178f",
+          "afterSha256": "778a2bce8eaef70cea600a13697fd8d6ccfbd8c2dce54750628c13318c8e8dc7",
+          "edits": [
+            {
+              "before": "#import \"RCTJavaScriptLoader.h\"",
+              "after": "#import \"RCTJavaScriptLoader.h\"\n#import \"RCTBundledCodePolicy.h\""
+            },
+            {
+              "before": "#import \"RCTMultipartDataTask.h\"",
+              "after": "#if RCT_DEV\n#import \"RCTMultipartDataTask.h\"\n#endif"
+            },
+            {
+              "before": "  NSString *unsanitizedScriptURLString = scriptURL.absoluteString;",
+              "after": "#if !RCT_DEV\n  if (!RCTIsInstalledCodeURL(scriptURL)) {\n    if (error) *error = RCTBundledCodePolicyError();\n    return nil;\n  }\n#endif\n\n  NSString *unsanitizedScriptURLString = scriptURL.absoluteString;"
+            },
+            {
+              "before": "static void parseHeaders(NSDictionary *headers, RCTSource *source)",
+              "after": "#if RCT_DEV\nstatic void parseHeaders(NSDictionary *headers, RCTSource *source)"
+            },
+            {
+              "before": "\nstatic void attemptAsynchronousLoadOfBundleAtURL(",
+              "after": "\n#endif\n\nstatic void attemptAsynchronousLoadOfBundleAtURL("
+            },
+            {
+              "before": "  scriptURL = sanitizeURL(scriptURL);\n\n  if (scriptURL.fileURL)",
+              "after": "#if !RCT_DEV\n  if (!RCTIsInstalledCodeURL(scriptURL)) {\n    onComplete(RCTBundledCodePolicyError(), nil);\n    return;\n  }\n#endif\n\n  scriptURL = sanitizeURL(scriptURL);\n\n  if (scriptURL.fileURL)"
+            },
+            {
+              "before": "  RCTMultipartDataTask *task =",
+              "after": "#if RCT_DEV\n  RCTMultipartDataTask *task ="
+            },
+            {
+              "before": "  [task startTask];",
+              "after": "  [task startTask];\n#else\n  onComplete(RCTBundledCodePolicyError(), nil);\n#endif"
+            },
+            {
+              "before": "static RCTLoadingProgress *progressEventFromData(NSData *rawData)",
+              "after": "#if RCT_DEV\nstatic RCTLoadingProgress *progressEventFromData(NSData *rawData)"
+            },
+            {
+              "before": "      @{NSLocalizedDescriptionKey : parsedResponse[@\"message\"] ?: @\"No message provided\", @\"stack\" : [fakeStack copy]};\n}",
+              "after": "      @{NSLocalizedDescriptionKey : parsedResponse[@\"message\"] ?: @\"No message provided\", @\"stack\" : [fakeStack copy]};\n}\n#endif"
+            }
+          ]
+        },
+        {
+          "path": "ReactCommon/react/runtime/platform/ios/ReactCommon/RCTInstance.mm",
+          "beforeSha256": "fe00b2b7987f793398436e90c98fe2980959a29c74cabce5a95e233e07acf470",
+          "afterSha256": "a8b55a9177357f9d33b553e68ad43edd84103c23d87fc4855d3659f15aff43eb",
+          "edits": [
+            {
+              "before": "#import <React/RCTAssert.h>",
+              "after": "#import <React/RCTAssert.h>\n#import <React/RCTBundledCodePolicy.h>"
+            },
+            {
+              "before": "- (void)registerSegmentWithId:(NSNumber *)segmentId path:(NSString *)path\n{",
+              "after": "- (void)registerSegmentWithId:(NSNumber *)segmentId path:(NSString *)path\n{\n#if !RCT_DEV\n  if (!path.isAbsolutePath || !RCTIsInstalledCodeURL([NSURL fileURLWithPath:path])) {\n    RCTLogError(@\"Refusing an executable segment outside the installed app bundle.\");\n    return;\n  }\n#endif"
+            }
+          ]
+        },
+        {
+          "path": "React/CxxBridge/RCTCxxBridge.mm",
+          "beforeSha256": "bd5ffc6fbca8ab6972618d648c6d2941de9e48aec1094f05d736e3b8a0348dbb",
+          "afterSha256": "27e445af093df625d77f19423b9fd82f2b85c30b79c223f4bd746e80133c7d49",
+          "edits": [
+            {
+              "before": "#import <React/RCTAssert.h>",
+              "after": "#import <React/RCTAssert.h>\n#import <React/RCTBundledCodePolicy.h>"
+            },
+            {
+              "before": "- (void)registerSegmentWithId:(NSUInteger)segmentId path:(NSString *)path\n{",
+              "after": "- (void)registerSegmentWithId:(NSUInteger)segmentId path:(NSString *)path\n{\n#if !RCT_DEV\n  if (!path.isAbsolutePath || !RCTIsInstalledCodeURL([NSURL fileURLWithPath:path])) {\n    RCTLogError(@\"Refusing an executable segment outside the installed app bundle.\");\n    return;\n  }\n#endif"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "react-native-screens",
+      "version": "4.16.0",
+      "files": [
+        {
+          "path": "ios/utils/UINavigationBar+RNSUtility.mm",
+          "beforeSha256": "544fce4971facb34e7e0f6d746b298b2bbf8b8b25294967886058de6e936397e",
+          "afterSha256": "0bea836d8c23e40426cb3787bd3d56f3fddfb2483795311f805e575a7a532493",
+          "asset": "UINavigationBar+RNSUtility.mm"
+        },
+        {
+          "path": "ios/utils/UINavigationBar+RNSUtility.h",
+          "beforeSha256": "c1e1aee8f434d601b181c3fd55ab8b5197a8527601f3061094b991ef69d6ba0b",
+          "afterSha256": "d98ea51ffd18e586309b64a8ada397abd43b5ba799961504b9dad5164b7a08e8",
+          "asset": "UINavigationBar+RNSUtility.h"
+        }
+      ]
+    }
+  ]
+}

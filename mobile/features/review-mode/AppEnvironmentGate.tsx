@@ -1,6 +1,7 @@
 import { useEffect, useState, type PropsWithChildren } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { initializeSupabaseEnvironment } from '@/lib/supabase';
+import { initializeSectionMemory } from '@/features/section-memory/session';
+import { initializeSupabaseEnvironment, supabase, AUTH_STORAGE_KEY } from '@/lib/supabase';
 
 export function AppEnvironmentGate({ children }: PropsWithChildren) {
   const [ready, setReady] = useState(false);
@@ -11,6 +12,8 @@ export function AppEnvironmentGate({ children }: PropsWithChildren) {
     setFailed(false);
     const timer = setTimeout(() => { if (active) setFailed(true); }, 8000);
     void initializeSupabaseEnvironment().then(() => {
+      // Display memory must never delay login or prevent authentication recovery.
+      void initializeSectionMemory(supabase, AUTH_STORAGE_KEY);
       if (active) setReady(true);
     }).catch(() => { if (active) setFailed(true); }).finally(() => clearTimeout(timer));
     return () => { active = false; clearTimeout(timer); };

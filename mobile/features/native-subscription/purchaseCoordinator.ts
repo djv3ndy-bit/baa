@@ -1,7 +1,10 @@
 /** Store adapters and the server must supply these values. Client receipt data
  * alone never grants access. This module is not wired into the release yet. */
 export type BillingProvider = 'apple' | 'google' | 'stripe';
+export type StoreCheckoutContext = { storeEnvironment: 'Production' | 'Sandbox'; appleSandboxTester: boolean };
 export type VerifiedSubscription = {
+  storeEnvironment?: StoreCheckoutContext['storeEnvironment'];
+  appleSandboxTester?: boolean;
   accountId: string;
   verified: true;
   access: 'free' | 'pro';
@@ -15,7 +18,7 @@ export type VerifiedSubscription = {
   gracePeriodEnd?: string | null;
   subscriptions?: { provider: BillingProvider; canManage: boolean; access: 'free' | 'pro' }[];
 };
-export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google' };
+export type StoreProduct = { id: string; displayPrice: string; currency: string; period: 'month'; provider: 'apple' | 'google'; basePlanId?: string };
 export type StorePurchase = { id: string; productId: string; provider: 'apple' | 'google'; proof: string };
 export type PurchaseResult = { kind: 'cancelled' | 'pending' } | { kind: 'purchased'; purchase: StorePurchase };
 export type PurchaseOutcome =

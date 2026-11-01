@@ -10,13 +10,14 @@ export async function requireAccountSession(expectedUserId?: string) {
   return session;
 }
 
-export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST', expectedUserId?: string): Promise<T> {
+export async function authenticatedApi<T>(path: string, body: Record<string, unknown>, method: 'GET'|'POST' = 'POST', expectedUserId?: string, options?: { storeGuard?: 'apple-app-transaction-v1' }): Promise<T> {
   const session = await requireAccountSession(expectedUserId);
   return requestJson<T>(`${APP_API_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
+      ...(options?.storeGuard === 'apple-app-transaction-v1' ? { 'X-BJM-Store-Guard': options.storeGuard } : {}),
     },
     ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
   });

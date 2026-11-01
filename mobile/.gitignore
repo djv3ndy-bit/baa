@@ -5,3 +5,5 @@ dist/
 .env.*
 *.log
 .DS_Store
+# Generated only through the reviewed iOS CNG plugins.
+/ios/

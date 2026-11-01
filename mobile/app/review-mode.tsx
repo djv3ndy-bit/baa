@@ -1,10 +1,14 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { supabase } from '@/lib/supabase';
-import { canReturnToLive, getAppEnvironment, reviewRestartRequired, switchAppMode } from '@/features/review-mode/environment';
+import { canReturnToLive, canSwitchAppMode, getAppEnvironment, reviewRestartRequired, switchAppMode } from '@/features/review-mode/environment';
 
 export default function ReviewModeScreen() {
+  return canSwitchAppMode() ? <SwitchableReviewModeScreen /> : <Redirect href="/" />;
+}
+
+function SwitchableReviewModeScreen() {
   const review = getAppEnvironment().review;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

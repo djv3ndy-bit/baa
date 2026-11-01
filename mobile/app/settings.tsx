@@ -24,6 +24,9 @@ import { getCurrentContext, AppRole } from "@/lib/session";
 import { registerForPhoneNotifications, unregisterThisDeviceNotifications } from "@/lib/pushNotifications";
 import { authenticatedApi, requireAccountSession, updateAccountPassword } from "@/lib/api";
 import { useWebsiteCheckout } from '@/lib/useWebsiteCheckout';
+import { sectionMemory, type SectionLease } from '@/features/section-memory/store';
+
+type AccountDisplay = { accountId: string; role: AppRole; email: string };
 
 type BillingStatus = {
   nativeStatus?: VerifiedSubscription;
@@ -41,6 +44,15 @@ function canManage(billing: BillingStatus | null) {
 }
 
 export default function Settings() {
+  // Display-only identity. Passwords, purchase state and billing never enter this cache.
+  // Keep this component mounted across auth events: the checkout-return owner below
+  // must retain its invalidation history rather than being reset by a keyed wrapper.
+  const display = useRef<{ lease: SectionLease; initial?: AccountDisplay } | null>(null);
+  if (!display.current) {
+    const lease = sectionMemory.lease();
+    display.current = { lease, initial: sectionMemory.read<AccountDisplay>(lease, 'settings-display') };
+  }
+  const saved = display.current.initial;
   const returnParams = useLocalSearchParams<{ billing?: string; session_id?: string }>();
   const returnResult = typeof returnParams.billing === 'string' ? returnParams.billing : undefined;
   const returnSessionId = typeof returnParams.session_id === 'string' ? returnParams.session_id : undefined;
@@ -48,9 +60,10 @@ export default function Settings() {
   const actionBusy = useRef(false);
   const active = useRef(false);
   const generation = useRef(0);
-  const account = useRef<string | null>(null);
-  const [role, setRole] = useState<AppRole | null>(null);
-  const [accountId, setAccountId] = useState<string | null>(null);
+  const account = useRef<string | null>(saved?.accountId ?? null);
+  const verifiedAccount = useRef<string | null>(null);
+  const [role, setRole] = useState<AppRole | null>(saved?.role ?? null);
+  const [accountId, setAccountId] = useState<string | null>(saved?.accountId ?? null);
   const returnKey = JSON.stringify([returnResult, returnSessionId]);
   if (returnOwner.current.key !== returnKey) returnOwner.current = { key: returnKey, accountId: null, invalidated: false };
   if (accountId && !returnOwner.current.invalidated) {
@@ -59,9 +72,8 @@ export default function Settings() {
   }
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(saved?.email ?? '');
   const [showPassword, setShowPassword] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [p1, setP1] = useState('');
   const [p2, setP2] = useState('');
   const [saving, setSaving] = useState(false);
@@ -83,12 +95,18 @@ export default function Settings() {
     try {
       const { user, role: savedRole } = await getCurrentContext();
       if (!active.current || run !== generation.current) return;
-      if (!user) return router.replace('/login');
-      if (!savedRole) return router.replace({ pathname: '/signup', params: { complete: '1' } });
+      if (!user || !savedRole) {
+        sectionMemory.forget(display.current!.lease, 'settings-display');
+        account.current = null; verifiedAccount.current = null; setAccountId(null); setRole(null); setEmail('');
+        return user ? router.replace({ pathname: '/signup', params: { complete: '1' } }) : router.replace('/login');
+      }
       account.current = user.id;
+      verifiedAccount.current = user.id;
       setAccountId(user.id);
       setEmail(user.email || 'Email not available');
       setRole(savedRole);
+      sectionMemory.save(display.current!.lease, 'settings-display', user.id, savedRole,
+        { accountId: user.id, role: savedRole, email: user.email || 'Email not available' });
       if (savedRole === 'cafe_owner_manager') {
         try {
           const result = await authenticatedApi<BillingStatus>('/billing-status', {}, 'GET', user.id);
@@ -100,7 +118,9 @@ export default function Settings() {
       }
     } catch (error) {
       if (active.current && run === generation.current) {
+        sectionMemory.forget(display.current!.lease, 'settings-display');
         account.current = null;
+        verifiedAccount.current = null;
         setAccountId(null);
         setRole(null);
         setEmail('');
@@ -131,10 +151,12 @@ export default function Settings() {
   }, []);
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || (event === 'SIGNED_IN' && account.current && session?.user.id !== account.current)) {
+      if (event === 'SIGNED_OUT' || (account.current && session && session.user.id !== account.current)) {
+        sectionMemory.forget(display.current!.lease, 'settings-display');
         returnOwner.current.invalidated = true;
         ++generation.current;
         account.current = null;
+        verifiedAccount.current = null;
         setAccountId(null);
         setRole(null);
         setEmail('');
@@ -142,7 +164,6 @@ export default function Settings() {
         setP1('');
         setP2('');
         setShowPassword(false);
-        setShowAdvanced(false);
         if (active.current) setTimeout(() => { void load(); }, 0);
       }
     });
@@ -286,8 +307,8 @@ export default function Settings() {
         <View style={s.headerSpacer} />
       </View>
       <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={s.wrap}>
-        {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading ? 'Loading your account…' : email} />}
-        {role === 'cafe_owner_manager' && accountId && returnResult && !returnOwner.current.invalidated && returnOwner.current.accountId === accountId ? <CheckoutReturnStatus key={accountId} accountId={accountId} result={returnResult} sessionId={returnSessionId} onBilling={acceptConfirmedBilling} /> : null}
+        {loadError ? <Card title="Account unavailable" copy={loadError} action="Try again" onPress={() => { void load(); }} /> : <Card title="Account email" copy={loading && !email ? 'Loading your account…' : email} />}
+        {role === 'cafe_owner_manager' && accountId && verifiedAccount.current === accountId && returnResult && !returnOwner.current.invalidated && returnOwner.current.accountId === accountId ? <CheckoutReturnStatus key={accountId} accountId={accountId} result={returnResult} sessionId={returnSessionId} onBilling={acceptConfirmedBilling} /> : null}
         {role === "cafe_owner_manager" ? <SubscriptionCard billing={billing} error={billingError} opening={openingBilling || loading} onPress={manageSubscription} /> : null}
         <View style={s.card}>
           <Text style={s.cardTitle}>Notifications</Text>
@@ -390,35 +411,19 @@ export default function Settings() {
           <Text style={s.advancedText}>Terms of Service</Text>
         </Pressable>
         <View style={s.card}>
+          <Text style={s.dangerTitle}>Delete my account</Text>
+          <Text style={s.copy}>
+            Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
+          </Text>
+          {role === "cafe_owner_manager" && nativeSubscriptionScreenEnabled ? <Pressable accessibilityRole="button" disabled={disabled} style={s.secondary} onPress={() => router.push('/subscription')}><Text style={s.secondaryText}>Review subscriptions before deletion</Text></Pressable> : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{ expanded: showAdvanced }}
-            style={s.row}
-            onPress={() => setShowAdvanced((value) => !value)}
+            disabled={disabled}
+            style={[s.dangerButton, deleting && s.disabled]}
+            onPress={requestAccountDeletion}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={s.cardTitle}>Advanced settings</Text>
-              <Text style={s.copy}>Sensitive account controls.</Text>
-            </View>
-            <Text style={s.chev}>{showAdvanced ? "⌄" : "›"}</Text>
+            <Text style={s.dangerButtonText}>{deleting ? "Deleting…" : "Delete my account"}</Text>
           </Pressable>
-          {showAdvanced ? (
-            <View style={s.dangerZone}>
-              <Text style={s.dangerTitle}>Delete my account</Text>
-              <Text style={s.copy}>
-                Permanently removes your profile, jobs, matches, messages, and uploaded media. This cannot be undone.
-              </Text>
-              {role === "cafe_owner_manager" && nativeSubscriptionScreenEnabled ? <Pressable accessibilityRole="button" disabled={disabled} style={s.secondary} onPress={() => router.push('/subscription')}><Text style={s.secondaryText}>Review subscriptions before deletion</Text></Pressable> : null}
-              <Pressable
-                accessibilityRole="button"
-                disabled={disabled}
-                style={[s.dangerButton, deleting && s.disabled]}
-                onPress={requestAccountDeletion}
-              >
-                <Text style={s.dangerButtonText}>{deleting ? "Deleting…" : "Delete my account"}</Text>
-              </Pressable>
-            </View>
-          ) : null}
         </View>
         <Text style={s.legalOperator}>Operated by BaristaMatch LLC</Text>
       </ScrollView>
@@ -451,7 +456,7 @@ function SubscriptionCard({ billing, error, opening, onPress }: { billing: Billi
   else if (paying && date && ["active", "trialing"].includes(billing?.status || "")) detail = `Next billing date: ${date}`;
   else if (paying && ["past_due", "unpaid"].includes(billing?.status || "")) detail = "Payment needs attention. Update your payment method.";
   else if (paying) detail = "Your Pro subscription is connected to Stripe.";
-  else if (billing) detail = "Your first job, matches, and interview messaging are included. A second job requires Pro.";
+  else if (billing) detail = "Your first job is free for 30 days. A second job or reopening an expired post requires Pro. Existing matches and interview messaging stay included.";
   const action = error ? "Retry subscription status" : canManage(billing) ? "Manage subscription" : "View Free and Pro plans";
   return <View style={s.card}>
     <View style={s.subscriptionHead}><View style={s.subscriptionIcon}><Text style={s.subscriptionIconText}>$</Text></View><View style={s.subscriptionCopy}><Text style={s.cardTitle}>Subscription</Text><Text style={s.subscriptionPlan}>{!billing ? (error ? "Status unavailable" : "Checking plan…") : paying ? `Pro · ${statusLabel || "Active"} · $9.99/month` : paymentAttention ? `Payment needs attention · ${statusLabel}` : "Free · Active · $0"}</Text><Text style={[s.copy, error ? s.errorText : undefined]}>{detail}</Text></View></View>
@@ -552,7 +557,6 @@ const s = StyleSheet.create({
     marginTop: 14,
   },
   secondaryText: { color: prism.ink, fontWeight: '600' },
-  dangerZone: { borderTopWidth: 1, borderTopColor: "#f0d4d4", marginTop: 16, paddingTop: 16 },
   dangerTitle: { color: "#8f2020", fontSize: 15, fontWeight: '600' },
   dangerButton: { alignSelf: "flex-start", borderWidth: 1, borderColor: "#b43b3b", backgroundColor: "#fff7f7", borderRadius: 12, paddingHorizontal: 15, paddingVertical: 11, marginTop: 14 },
   dangerButtonText: { color: "#9c2626", fontWeight: '600' },
