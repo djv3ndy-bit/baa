@@ -6,33 +6,36 @@ export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, contextFor, enabled, productId, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, contextFor, enabled, purchaseAllowed=null, productId, ready, createId=randomUUID }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
   const resolve = async(account, provider=null) => checkedBillingContext(contextFor
     ? await contextFor(account.id,provider) : {environment,appleSandboxTester:false});
   const view = context => contextFor ? storeContextView(context) : {};
   const protocolArgs = (context,protocol) => context.appleSandboxTester ? [protocol] : [];
+  const enabledFor = (context,provider) => purchaseAllowed === null ? Boolean(enabled)
+    : typeof purchaseAllowed === 'function' && purchaseAllowed(context,provider) === true;
   return {
     async status(account,website) {
       accountCheck(account);
-      const context=await resolve(account);
+      const context=await resolve(account,'apple');
+      const purchaseEnabled=enabledFor(context,'apple');
       // Already-verified recorded cleanup remains possible after map revocation.
       for(const recorded of contextFor ? ['Production','Sandbox'] : [environment]) await repository.settleVerifiedCheckout(account.id,recorded);
       const [native,checkoutPending]=await Promise.all([repository.summary(account.id,context.environment),repository.checkoutPending(account.id,context.environment)]);
       const status=combinedAccountStatus({account,website,native,environment:context.environment,checkoutPending});
-      const recovery = enabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
+      const recovery = purchaseEnabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'
         && !website.billingPaused && !status.accessPaused && repository.recoverAppleCheckout
         ? await repository.recoverAppleCheckout(account.id,context.environment,...protocolArgs(context,APPLE_STORE_GUARD)) : null;
-      const latest=await resolve(account);
+      const latest=await resolve(account,'apple');
       requireValue(latest.environment===context.environment && latest.appleSandboxTester===context.appleSandboxTester,'CHECKOUT_BLOCKED');
-      return {...status,canPurchase:enabled && status.canPurchase,canResumeAppleCheckout:!!recovery,...view(context)};
+      return {...status,canPurchase:purchaseEnabled && status.canPurchase,canResumeAppleCheckout:!!recovery,...view(context)};
     },
     async prepare(account,request,protocol=null) {
       accountCheck(account);
-      requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
-      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
+      const context=await resolve(account,'apple');
+      requireValue(enabledFor(context,request.provider),'NOT_ENABLED'); requireStoreGuard(context,protocol);
       // Fail before opening the store if server verification is not configured.
       await ready(context);
       const attempt=await repository.claimCheckout(account.id,'apple',context.environment,createId(),...protocolArgs(context,protocol));
@@ -51,9 +54,9 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
     },
     async resume(account,request,websiteInput,protocol=null) {
       accountCheck(account);
-      requireValue(enabled,'NOT_ENABLED');
       requireValue(request?.provider==='apple' && request.productId===productId && request.storefront==='USA','PRODUCT_UNAVAILABLE');
-      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
+      const context=await resolve(account,'apple');
+      requireValue(enabledFor(context,request.provider),'NOT_ENABLED'); requireStoreGuard(context,protocol);
       await ready(context);
       const website=typeof websiteInput==='function' ? await websiteInput() : websiteInput;
       requireValue(website?.billingPaused === false && website.plan === 'free','CHECKOUT_BLOCKED');
@@ -67,10 +70,20 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       return {...attempt,...view(context)};
     },
     async start(account,attemptId,protocol=null) {
-      accountCheck(account);requireValue(enabled && uuid.test(attemptId),'CHECKOUT_BLOCKED');
-      const context=await resolve(account,'apple'); requireStoreGuard(context,protocol);
-      if(repository.attemptContext) {
-        const attempt=await repository.attemptContext(account.id,attemptId);
+      accountCheck(account);requireValue(uuid.test(attemptId),'CHECKOUT_BLOCKED');
+      let attempt;
+      if(typeof repository.attemptContext === 'function') {
+        attempt=await repository.attemptContext(account.id,attemptId);
+        requireValue(attempt && attempt.provider==='apple','CHECKOUT_BLOCKED');
+      } else {
+        // The new policy must derive provider from an owned durable reservation.
+        // Only the legacy service constructor retains its previous fallback.
+        requireValue(purchaseAllowed === null,'CHECKOUT_BLOCKED');
+      }
+      const provider=attempt?.provider || 'apple';
+      const context=await resolve(account,provider);
+      requireValue(enabledFor(context,provider),'CHECKOUT_BLOCKED'); requireStoreGuard(context,protocol);
+      if(attempt) {
         requireValue(attempt && attempt.environment===context.environment && attempt.provider==='apple'
           && (!context.appleSandboxTester || attempt.guardProtocol===APPLE_STORE_GUARD),'CHECKOUT_BLOCKED');
       }

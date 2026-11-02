@@ -6,6 +6,7 @@ import {checkoutHandler} from '../server/native-billing/checkoutHandler.mjs';
 import {readContextConfiguration,providerRuntimeCache} from '../server/native-billing/runtime.mjs';
 import {configuredBillingContext} from '../server/native-billing/billingContext.mjs';
 import {captureBillingStatus} from '../server/native-billing/accountBillingHandler.mjs';
+import {nativePurchasePolicyFromEnvironment} from '../server/native-billing/purchasePolicy.mjs';
 
 const repository=nativeBillingRepository(adminRows);
 const runtime=providerRuntimeCache();
@@ -16,6 +17,7 @@ export function nativeAccountService(){
     return nativeCheckoutService({repository,environment,
       contextFor:async(userId,provider)=>configuredBillingContext(await repository.context(userId,provider),environment,provider),
       enabled:process.env.NATIVE_PURCHASES_ENABLED==='true' && process.env.BILLING_ENABLED==='true',productId:'com.baristajobmatch.cafe.pro.monthly',
+      purchaseAllowed:nativePurchasePolicyFromEnvironment(process.env),
       async ready(context){
         const config=readContextConfiguration('apple',context);
         if(config.productId!=='com.baristajobmatch.cafe.pro.monthly')throw new Error('Store product mismatch');
