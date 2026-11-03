@@ -72,7 +72,7 @@ jobs:
               assert.equal(Number(match[1]),expected,"Unexpected TAP summary: "+name);
             }
           ' "$result"
-      - name: Run all50 Storage commit checks with zero skips
+      - name: Run all52 Storage commit checks with zero skips
         shell: bash
         run: |
           set -euo pipefail
@@ -86,7 +86,7 @@ jobs:
             import assert from "node:assert/strict";
             import {readFileSync} from "node:fs";
             const output=readFileSync(process.argv[1],"utf8");
-            for(const [name,expected] of Object.entries({tests:50,pass:50,fail:0,skipped:0,cancelled:0})){
+            for(const [name,expected] of Object.entries({tests:52,pass:52,fail:0,skipped:0,cancelled:0})){
               const match=output.match(new RegExp("^# "+name+" (\\d+)$","m"));
               assert(match,"Missing TAP summary: "+name);
               assert.equal(Number(match[1]),expected,"Unexpected TAP summary: "+name);
