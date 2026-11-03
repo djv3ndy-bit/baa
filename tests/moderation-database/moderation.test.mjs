@@ -21,7 +21,7 @@ const { Client } = pg.default || pg;
 const db = new Client(connectionConfig);
 await db.connect();
 const serverVersion=Number((await db.query("SHOW server_version_num")).rows[0].server_version_num);assert(serverVersion>=170000&&serverVersion<180000,'This suite requires PostgreSQL17');
-const foundation = readFileSync(new URL('../../supabase/migrations/20261103061704_member_content_moderation_foundation.sql', import.meta.url), 'utf8');
+const foundation = readFileSync(new URL('../../supabase/migrations/20261103072016_member_content_moderation_foundation.sql', import.meta.url), 'utf8');
 const activation = readFileSync(new URL('../../review/HELD-20261103061904_reviewed_media_publication_activation.sql', import.meta.url), 'utf8');
 const fixture = readFileSync(new URL('./moderation-fixture.sql', import.meta.url), 'utf8');
 const alice='11111111-1111-4111-8111-111111111111', bob='22222222-2222-4222-8222-222222222222', cafe='33333333-3333-4333-8333-333333333333';
