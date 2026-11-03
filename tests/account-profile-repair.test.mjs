@@ -49,8 +49,9 @@ function profileSaveHarness(options={}){
  const firstWrite=deferred(),firstMedia=deferred();let closes=0,refreshes=0,mediaBusy=Boolean(options.mediaBusy);
  const dialog={open:true,close(){this.open=false;closes++},showModal(){this.open=true}};
  const mediaInputs=Object.fromEntries(['barista_image','cafe_image','bar_picture','video'].map(name=>[name,{name,value:fields[name]?'selected-file':'',disabled:false}]));
- const controls=[nameInput,cancel,button,alreadyDisabled,...Object.values(mediaInputs)],initialDisabled=controls.map(control=>control.disabled),form={elements:mediaInputs,querySelector:()=>button,querySelectorAll:()=>controls,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
- const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog};
+ const mediaButton={disabled:false,textContent:'Submit media for review'};
+ const controls=[nameInput,cancel,button,mediaButton,alreadyDisabled,...Object.values(mediaInputs)],initialDisabled=controls.map(control=>control.disabled),form={elements:mediaInputs,querySelector:()=>button,querySelectorAll:()=>controls,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
+ const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog,'profile-media-submit':mediaButton};
  function request(table,kind,payload){let executed;const headers={},filters=[];return{
   eq(column,value){filters.push([column,value]);return this},select(){return this},single(){return this},setHeader(name,value){headers[name]=value;return this},
   then(resolve,reject){executed||=(async()=>{
