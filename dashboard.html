@@ -419,6 +419,8 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
 <label id="video-field">Optional skills video<input name="video" type="file" accept="video/mp4,video/quicktime,video/webm"><small>Show latte art, espresso preparation, or customer-service skills · up to 50 MB</small></label>
 </div>
 <section id="profile-media-review" aria-label="Photo and video review" style="margin-top:20px;border-top:1px solid var(--line);padding-top:16px"></section>
+<div class="form-actions" style="justify-content:flex-start"><button class="secondary" type="button" id="profile-media-submit" aria-describedby="profile-media-submit-help">Submit media for review</button></div>
+<p id="profile-media-submit-help" style="margin:10px 0;color:var(--muted);font-size:13px">Submit selected photos and videos only. Your unsaved profile details and discovery settings stay unchanged.</p>
 <p class="form-status" id="profile-status" role="status"></p>
 <div class="form-actions"><button class="secondary" type="button" id="profile-cancel">Cancel</button><button class="primary" type="submit">Save profile</button></div>
 </form></dialog>
@@ -963,12 +965,14 @@ function collectOpeningHours(form){const selected=OPEN_DAYS.filter(day=>form.que
 function parseAvailability(value){const parts=String(value||'').split(' · ').filter(Boolean),selected=parts.filter(part=>AVAILABILITY_OPTIONS.includes(part)),notes=parts.filter(part=>!AVAILABILITY_OPTIONS.includes(part)).join(' · ');return {selected:new Set(selected),notes}}
 function collectAvailability(data){return [...data.getAll('availability_option').map(String),String(data.get('availability_notes')||'').trim()].filter(Boolean).join(' · ')}
 function maximumBaristaBirthDate(){const date=new Date();date.setFullYear(date.getFullYear()-16);return date.toISOString().slice(0,10)}
-let profileSaveInProgress=false,profileMediaGeneration=0,profileMediaController=null;
+let profileSaveInProgress=false,profileFormOperation=null,profileMediaGeneration=0,profileMediaController=null;
 function profileOwner(){return {accountId:currentUser?.id,role:currentRole,generation:profileMediaGeneration,client:activeClient};}
 function sameProfileOwner(owner){const now=profileOwner();return now.accountId===owner.accountId&&now.role===owner.role&&now.generation===owner.generation&&now.client===owner.client;}
 function profileSaveError(message){const error=new Error(message);error.safeMessage=message;return error;}
 function contentSaveMessage(error,fallback){if(error?.code==='JOB_ACTIVE_LIMIT')return 'You already have 3 active jobs. Pause one before publishing another.';return error?.safeMessage||window.BaristaMatchProfileMediaReview?.safeMessage(error,fallback)||fallback;}
-function invalidateProfileMediaSession(){profileMediaGeneration++;profileMediaController?.invalidate();profileMediaController=null;const form=document.getElementById('profile-form');form?.reset();document.getElementById('profile-media-review')?.replaceChildren();document.getElementById('profile-dialog')?.close();}
+function resetProfileFormOperation(operation){operation?.controls.forEach(({control,disabled})=>control.disabled=disabled);if(operation)operation.button.textContent=operation.label;document.getElementById('profile-form')?.removeAttribute('aria-busy');}
+function finishProfileFormOperation(operation,owner){if(profileFormOperation!==operation||!sameProfileOwner(owner))return;profileFormOperation=null;profileSaveInProgress=false;resetProfileFormOperation(operation);renderProfileMediaReview();}
+function invalidateProfileMediaSession(){profileMediaGeneration++;profileMediaController?.invalidate();profileMediaController=null;resetProfileFormOperation(profileFormOperation);profileFormOperation=null;profileSaveInProgress=false;const form=document.getElementById('profile-form');form?.reset();document.getElementById('profile-media-review')?.replaceChildren();document.getElementById('profile-dialog')?.close();}
 async function withProfileOwner(owner,work){return window.BaristaMatchProfileMediaReview.withOwnerSession(owner,profileOwner,work);}
 function unwrapProfileResult(result){if(result.error)throw result.error;return result.data;}
 function ensureProfileMediaController(){
@@ -989,7 +993,7 @@ function renderProfileMediaReview(state=profileMediaController?.state()){
   panel.replaceChildren();const title=document.createElement('strong');title.textContent='Photo and video review';panel.append(title);
   const intro=document.createElement('p');intro.textContent='New photos and videos stay private until reviewed. Your current approved media stays visible.';panel.append(intro);
   const retention=document.createElement('p');retention.textContent='Unsubmitted uploads may be cleared 24 hours after expiry. Temporary copies may be cleared 7 days after publication, rejection or cancellation. Published profile media stays in place.';panel.append(retention);
-  const action=(label,run)=>{const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=label;button.disabled=state.busy||profileSaveInProgress;button.onclick=()=>{if(profileSaveInProgress)return;Promise.resolve().then(run).catch(()=>{});};return button;};
+  const action=(label,run)=>{const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=label;button.disabled=state.busy||profileSaveInProgress;button.onclick=()=>{if(profileSaveInProgress)return;Promise.resolve().then(()=>{if(!profileSaveInProgress)return run();}).catch(()=>{});};return button;};
   panel.append(action('Check status',()=>ensureProfileMediaController().refresh()));
   const labels={avatar_url:currentRole==='barista'?'Profile photo':'Café photo',bar_picture_url:'Bar photo',video_path:'Skills video'},statuses={pending:'Waiting for review',approved:'Approved — ready to publish',rejected:'Not approved',publishing:'Publication being checked',published:'Previously published',cancelled:'Cancelled'};
   for(const item of state.reviews){const card=document.createElement('div');card.style.cssText='padding:12px 0;border-bottom:1px solid var(--line)';const heading=document.createElement('p');heading.textContent=`${labels[item.field]}: ${item.status==='approved'&&!item.can_publish?'Approved — publication not available yet':statuses[item.status]}`;card.append(heading);
@@ -1002,15 +1006,42 @@ function renderProfileMediaReview(state=profileMediaController?.state()){
   const status=document.createElement('p');status.setAttribute('role','status');status.textContent=state.error||state.notice||(state.busy?'Checking media…':'');panel.append(status);
   const fields={barista_image:'avatar_url',cafe_image:'avatar_url',bar_picture:'bar_picture_url',video:'video_path'},form=document.getElementById('profile-form');
   for(const [name,field] of Object.entries(fields)){const input=form.elements[name];input.disabled=profileSaveInProgress||state.busy||!window.BaristaMatchProfileMediaReview.allowedField(field,currentRole)||name==='barista_image'&&currentRole!=='barista'||name==='cafe_image'&&currentRole!=='cafe_owner_manager'||state.drafts.some(item=>item.field===field)||state.reviews.some(item=>item.field===field&&['pending','approved','publishing'].includes(item.status));}
+  document.getElementById('profile-media-submit').disabled=profileSaveInProgress||state.busy;
 }
+
+async function submitProfileMediaOnly(){
+  const form=document.getElementById('profile-form'),button=document.getElementById('profile-media-submit'),status=document.getElementById('profile-status');
+  if(profileSaveInProgress||button.disabled||!document.getElementById('profile-dialog').open)return;
+  if(profileMediaController?.state().busy){status.textContent='Wait for the current media check before submitting.';return;}
+  const owner=profileOwner();
+  if(!owner.accountId||!owner.client||!['barista','cafe_owner_manager'].includes(owner.role)){status.textContent='Please sign in again and reopen your profile.';return;}
+  const isBarista=owner.role==='barista',mediaFiles=[[isBarista?'barista_image':'cafe_image','avatar_url'],[isBarista?'video':'bar_picture',isBarista?'video_path':'bar_picture_url']]
+    .map(([name,field])=>({name,field,file:form.elements[name].disabled?null:form.elements[name].files?.[0]})).filter(item=>item.file?.size>0);
+  if(!mediaFiles.length){status.textContent='Choose a photo or video, or use the existing review controls for an unfinished upload.';return;}
+  const controls=[...form.querySelectorAll('input,textarea,select,button')].map(control=>({control,disabled:Boolean(control.disabled)})),operation={controls,button,label:'Submit media for review'};
+  profileFormOperation=operation;profileSaveInProgress=true;form.setAttribute('aria-busy','true');button.textContent='Submitting media…';status.textContent='Submitting selected media privately for review…';controls.forEach(({control})=>control.disabled=true);
+  try{
+    await withProfileOwner(owner,()=>undefined);
+    const controller=ensureProfileMediaController();
+    for(const item of mediaFiles){
+      if(!sameProfileOwner(owner))throw profileSaveError('Your account changed. Reopen your profile before continuing.');
+      await controller.stage(item.field,item.file);
+      if(!sameProfileOwner(owner))return;
+      form.elements[item.name].value='';
+    }
+    status.textContent='Selected media submitted privately for review. Your profile details, discovery settings and current media are unchanged.';
+  }catch(error){if(sameProfileOwner(owner))status.textContent=contentSaveMessage(error,'The media submission could not be confirmed. Check the existing review controls before trying again.')+' Your profile details and discovery settings were not saved.';}
+  finally{finishProfileFormOperation(operation,owner);}
+}
+document.getElementById('profile-media-submit').onclick=submitProfileMediaOnly;
 
 function openProfileEditor(){if(profileSaveInProgress)return;const form=document.getElementById('profile-form'),isBarista=currentRole==='barista';document.getElementById('profile-form-title').textContent=isBarista?'Build your barista profile':'Build your café profile';document.getElementById('profile-name-label').firstChild.textContent=isBarista?'Display name':'Café name';['skills-field','availability-field','experience-field','pay-field','video-field','barista-image-field','date-of-birth-field','gender-field','private-demographics-copy'].forEach(id=>document.getElementById(id).hidden=!isBarista);['cafe-image-field','cafe-address-field','open-hours-field','shop-type-field','bar-picture-field','barista-preferences-field'].forEach(id=>document.getElementById(id).hidden=isBarista);['preferred-city-field','preferred-state-field','preferred-zip-field','preferred-radius-field'].forEach(id=>document.getElementById(id).hidden=!isBarista);form.date_of_birth.disabled=!isBarista;form.date_of_birth.required=isBarista;form.date_of_birth.max=maximumBaristaBirthDate();form.gender_identity.disabled=!isBarista;form.gender_identity.required=false;form.name.value=isBarista?(currentProfile.display_name||''):(currentProfile.cafe_name||'');form.location.value=currentProfile.location||'';form.bio.value=currentProfile.bio||'';form.date_of_birth.value=currentDemographics.date_of_birth||'';form.gender_identity.value=currentDemographics.gender_identity||'';if(isBarista){form.preferred_city.value=currentProfile.preferred_city||'';form.preferred_state.value=currentProfile.preferred_state||'';form.preferred_postal_code.value=currentProfile.preferred_postal_code||'';form.preferred_radius_miles.value=String(currentProfile.preferred_radius_miles||25);form.skills.value=(currentProfile.skills||[]).join(', ');const availability=parseAvailability(currentProfile.availability);form.querySelectorAll('[name="availability_option"]').forEach(input=>input.checked=availability.selected.has(input.value));form.availability_notes.value=availability.notes;form.experience.value=currentProfile.experience||'';form.pay_expectation.value=currentProfile.pay_expectation||''}else{form.cafe_address.value=currentProfile.cafe_address||'';const hours=parseOpeningHours(currentProfile.open_hours),hoursField=document.getElementById('open-hours-field');hoursField.dataset.legacyHours=Object.keys(hours).length?'':(currentProfile.open_hours||'');OPEN_DAYS.forEach(day=>{form.querySelector(`[name="open_day"][value="${day}"]`).checked=Object.hasOwn(hours,day);form.elements[`open_hours_${day}`].value=hours[day]||''});form.shop_type.value=currentProfile.shop_type||'';const selected=new Set(currentProfile.barista_preferences||[]);form.querySelectorAll('[name="barista_preferences"]').forEach(input=>input.checked=selected.has(input.value))}document.getElementById('profile-status').textContent='';document.getElementById('profile-dialog').showModal();const controller=ensureProfileMediaController();renderProfileMediaReview(controller.state());controller.refresh().catch(()=>{});}
 document.getElementById('profile-cancel').onclick=()=>{if(!profileSaveInProgress)document.getElementById('profile-dialog').close()};
 document.getElementById('profile-dialog').oncancel=event=>{if(profileSaveInProgress)event.preventDefault()};
 document.getElementById('profile-form').onsubmit=async event=>{
   event.preventDefault();const form=event.currentTarget,button=form.querySelector('[type="submit"]'),status=document.getElementById('profile-status');if(profileSaveInProgress||button.disabled)return;if(profileMediaController?.state().busy){status.textContent='Wait for the current media check before saving.';return;}const owner=profileOwner();
-  const controls=[...form.querySelectorAll('input,textarea,select,button')].map(control=>({control,disabled:Boolean(control.disabled)})),sectionAtStart=currentSection;
-  profileSaveInProgress=true;form.setAttribute('aria-busy','true');button.textContent='Saving…';status.textContent='Saving your profile…';
+  const controls=[...form.querySelectorAll('input,textarea,select,button')].map(control=>({control,disabled:Boolean(control.disabled)})),sectionAtStart=currentSection,operation={controls,button,label:'Save profile'};
+  profileFormOperation=operation;profileSaveInProgress=true;form.setAttribute('aria-busy','true');button.textContent='Saving…';status.textContent='Saving your profile…';
   try{
     const data=new FormData(form),isBarista=owner.role==='barista',openingHours=isBarista?null:collectOpeningHours(form)||null;
     // Snapshot every field before uploads; disabled controls keep this draft stable.
@@ -1041,7 +1072,7 @@ document.getElementById('profile-form').onsubmit=async event=>{
     document.getElementById('profile-dialog').close();
     if(currentSection===sectionAtStart&&currentSection!=='Messages')openSection(currentSection,currentView,currentRole)
 
-  }catch(error){if(sameProfileOwner(owner))status.textContent=contentSaveMessage(error,'We could not save your profile. Your draft is still here.');}finally{profileSaveInProgress=false;if(sameProfileOwner(owner)){controls.forEach(({control,disabled})=>control.disabled=disabled);form.removeAttribute('aria-busy');button.textContent='Save profile';renderProfileMediaReview();}}
+  }catch(error){if(sameProfileOwner(owner))status.textContent=contentSaveMessage(error,'We could not save your profile. Your draft is still here.');}finally{finishProfileFormOperation(operation,owner);}
 };
 document.getElementById('job-cancel').onclick=()=>{if(!editingJobId)clearPendingJobDraft();document.getElementById('job-dialog').close()};
 document.getElementById('job-form').elements.state.defaultValue='';document.getElementById('job-form').elements.state.readOnly=false;

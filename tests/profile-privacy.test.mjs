@@ -71,7 +71,7 @@ const visibilityCode = web.match(/const profileFields=[^\n]+/)[0]+'\n'+web.slice
 const saveCode = web.slice(web.indexOf('let profileSaveInProgress='), web.indexOf("document.getElementById('job-cancel')"));
 function webHarness(gender, previousGender = null) {
   const owner='11111111-1111-4111-8111-111111111111';
-  const rows = [], headers=[], status = { textContent: '' }, button = {disabled:false}, cancel={}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button],setAttribute(){},removeAttribute(){} };
+  const rows = [], headers=[], status = { textContent: '' }, button = {disabled:false}, mediaButton={disabled:false,textContent:'Submit media for review'}, cancel={}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button,mediaButton],setAttribute(){},removeAttribute(){} };
   const values = { location:'Miami, FL', date_of_birth:'2000-01-01', gender_identity:gender, name:'Test barista', bio:'Coffee experience', skills:'Espresso', experience:'2 years', pay_expectation:'20' };
   const profile = { id:owner,role:'barista',display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
   function request(table,kind,payload){let pending;const requestHeaders={},filters=[];return{
@@ -84,7 +84,7 @@ function webHarness(gender, previousGender = null) {
       Object.assign(profile,payload);return{data:{...profile},error:null};
     });return pending.then(resolve,reject)}
   }}
-  const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog};
+  const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog,'profile-media-submit':mediaButton};
   const context = {
     window:{...locationWindow},
     document:{getElementById:id => elements[id]||null},
