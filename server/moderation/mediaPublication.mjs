@@ -100,8 +100,13 @@ export function createMediaPublisher({ fetchImpl = fetch, env = process.env, new
       const bytes = await boundedBytes(source, claim.byteSize);
       if (bytes.length !== claim.byteSize || !matchesMediaSignature(bytes, claim.mimeType)) { unsafe = true; throw new Error('signature'); }
       const digest = createHash('sha256').update(bytes).digest('hex');
-      const upload = await fetchImpl(`${base}${storagePath(claim.targetBucket, claim.targetPath)}`, { method: 'POST', redirect: 'error', headers: { ...storageHeaders, 'Content-Type': claim.mimeType, 'x-upsert': 'false' }, body: bytes, signal: AbortSignal.timeout(25000) });
-      if (!upload.ok && ![400, 409].includes(upload.status)) throw new Error('upload');
+      // The copy API carries authoritative source metadata into Storage's
+      // permission probe. Keep the strict destination guard and verify the
+      // actual copied bytes below. Preserve file metadata but drop unreviewed
+      // user metadata, matching raw uploads; never fall back to raw upload.
+      const copy = await fetchImpl(`${base}/storage/v1/object/copy`, { method: 'POST', redirect: 'error', headers: { ...storageHeaders, 'x-upsert': 'false' },
+        body: JSON.stringify({ bucketId: claim.sourceBucket, sourceKey: claim.sourcePath, destinationBucket: claim.targetBucket, destinationKey: claim.targetPath, copyMetadata: false }), signal: AbortSignal.timeout(25000) });
+      if (!copy.ok && ![400, 409].includes(copy.status)) throw new Error('copy');
       // Download even after successful upload. Unknown earlier copies must contain exactly the reviewed source bytes.
       const target = await fetchImpl(`${base}${storagePath(claim.targetBucket, claim.targetPath)}`, { redirect: 'error', headers: storageHeaders, signal: AbortSignal.timeout(20000) });
       if (!target.ok) throw new Error('target');
