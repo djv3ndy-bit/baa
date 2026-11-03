@@ -1,0 +1,78 @@
+name: Member content moderation
+
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: member-content-moderation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  moderation-database:
+    name: Isolated PostgreSQL17 moderation checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Exact official PG17 OCI digest already reviewed in website-security.yml.
+        image: postgres:17@sha256:a63c1ea3f6a3a5a1621f97d2aba3b30faecfab4224c1b0000cc85ced57bb1939
+        env:
+          POSTGRES_DB: bjm_moderation_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated-moderation-ci-fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bjm_moderation_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      BJM_MODERATION_FIXTURE_ACK: isolated-fixture-only
+      BJM_MODERATION_CI_FIXTURE: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: bjm_moderation_test
+      PGUSER: postgres
+      PGPASSWORD: isolated-moderation-ci-fixture-only
+    steps:
+      - name: Check out the proposed revision without persistent credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Use Node.js22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install only the locked isolated PostgreSQL test driver
+        run: npm ci --prefix tests/moderation-database --ignore-scripts --no-audit --no-fund
+      - name: Run all28 real database checks with zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/member-content-moderation.tap"
+          if ! node --test --test-concurrency=1 --test-reporter=tap tests/moderation-database/moderation.test.mjs > "$result" 2>&1; then
+            cat "$result"
+            exit 1
+          fi
+          cat "$result"
+          node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import {readFileSync} from "node:fs";
+            const output=readFileSync(process.argv[1],"utf8");
+            for(const [name,expected] of Object.entries({tests:28,pass:28,fail:0,skipped:0,cancelled:0})){
+              const match=output.match(new RegExp("^# "+name+" (\\d+)$","m"));
+              assert(match,"Missing TAP summary: "+name);
+              assert.equal(Number(match[1]),expected,"Unexpected TAP summary: "+name);
+            }
+          ' "$result"
+# This job has a dedicated disposable service/database and synthetic fixture credentials.
+# It receives no production, Supabase, signing, payment, email or deployment secrets.
+# The suite intentionally lives outside tests/database/*.test.mjs and must never share
+# another job's database: it drops and recreates only its isolated fixture schemas.

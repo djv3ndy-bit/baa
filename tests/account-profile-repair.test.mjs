@@ -38,25 +38,44 @@ test('visibility banner respects persisted availability while preserving opt-out
  c.currentProfile.suspended_at=null;c.currentProfile.is_discoverable=true;assert.match(c.trustBanner(),/Visible to café owners/);
 });
 function deferred(){let resolve;const promise=new Promise(done=>resolve=done);return {promise,resolve}}
+async function boundedWait(promise,label){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Harness never reached '+label)),1000)})])}finally{clearTimeout(timer)}}
+const profileActor='11111111-1111-4111-8111-111111111111';
 function profileSaveHarness(options={}){
  const source=html.slice(html.indexOf('let profileSaveInProgress='),html.indexOf("document.getElementById('job-cancel')"));
  const role=options.role||'cafe_owner_manager';
- const profile={...(role==='barista'?base:{}),cafe_name:'Cafe',avatar_url:'/photo.png',location:'Miami, FL',bio:'Coffee',cafe_address:'123 Street',open_hours:'Monday 7-5',shop_type:'Cafe',barista_preferences:['Espresso'],is_discoverable:false};
+ const profile={...(role==='barista'?base:{}),id:profileActor,role,cafe_name:'Cafe',avatar_url:'/photo.png',location:'Miami, FL',bio:'Coffee',cafe_address:'123 Street',open_hours:'Monday 7-5',shop_type:'Cafe',barista_preferences:['Espresso'],is_discoverable:false};
  const c=completionContext(profile,role==='barista'?'2000-01-01':null,role),status={textContent:''},button={disabled:false,textContent:'Save profile'},cancel={disabled:false},nameInput={disabled:false,name:'name'},alreadyDisabled={disabled:true};
- const fields={name:'Cafe',location:'Miami, FL',bio:'Coffee',cafe_address:'123 Street',shop_type:'Cafe',...(role==='barista'?{date_of_birth:'2000-01-01',skills:'Espresso',experience:'Two years',pay_expectation:'$20/hour'}:{}),...options.fields},hours={value:'Monday 7-5'},attributes=new Map(),writes=[],timers=[],renders=[];
- let closes=0,refreshes=0;
+ const fields={name:'Cafe',location:'Miami, FL',bio:'Coffee',cafe_address:'123 Street',shop_type:'Cafe',...(role==='barista'?{date_of_birth:'2000-01-01',skills:'Espresso',experience:'Two years',pay_expectation:'$20/hour'}:{}),...options.fields},hours={value:'Monday 7-5'},attributes=new Map(),writes=[],timers=[],renders=[],mediaStages=[],requestHeaders=[],events=[];
+ const firstWrite=deferred(),firstMedia=deferred();let closes=0,refreshes=0,mediaBusy=Boolean(options.mediaBusy);
  const dialog={open:true,close(){this.open=false;closes++},showModal(){this.open=true}};
- const controls=[nameInput,cancel,button,alreadyDisabled],form={querySelector:()=>button,querySelectorAll:()=>controls,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
+ const mediaInputs=Object.fromEntries(['barista_image','cafe_image','bar_picture','video'].map(name=>[name,{name,value:fields[name]?'selected-file':'',disabled:false}]));
+ const controls=[nameInput,cancel,button,alreadyDisabled,...Object.values(mediaInputs)],initialDisabled=controls.map(control=>control.disabled),form={elements:mediaInputs,querySelector:()=>button,querySelectorAll:()=>controls,setAttribute:(key,value)=>attributes.set(key,value),removeAttribute:key=>attributes.delete(key)};
  const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog};
- Object.assign(c,{window:locationWindow,currentUser:{id:'test'},currentSection:options.section||'Café Profile',currentView:{},document:{getElementById:id=>elements[id]},FormData:class{
+ function request(table,kind,payload){let executed;const headers={},filters=[];return{
+  eq(column,value){filters.push([column,value]);return this},select(){return this},single(){return this},setHeader(name,value){headers[name]=value;return this},
+  then(resolve,reject){executed||=(async()=>{
+   assert.equal(headers.Authorization,'Bearer synthetic-profile-owner');requestHeaders.push({...headers});
+   if(table==='profile_demographics'){assert.equal(kind,'upsert');assert.equal(payload.user_id,profileActor);return {data:payload};}
+   assert.equal(table,'profiles');assert.equal(kind,'update');assert.deepEqual(filters,[['id',profileActor]]);
+   assert(!Object.hasOwn(payload,'avatar_url'));assert(!Object.hasOwn(payload,'bar_picture_url'));assert(!Object.hasOwn(payload,'video_path'));
+   writes.push(payload);events.push('profile-write-'+writes.length);firstWrite.resolve();const result=await options.write?.(writes.length,payload);
+   return result||{data:{...profile,...payload,id:profileActor,role,is_discoverable:Boolean(options.discoverable)}};
+  })();return executed.then(resolve,reject)}
+ }}
+ const activeClient={auth:{getSession:async()=>({data:{session:{user:{id:options.sessionUserId||profileActor},access_token:'synthetic-profile-owner',expires_at:Math.floor(Date.now()/1000)+3600}},error:null})},from:table=>({upsert:payload=>request(table,'upsert',payload),update:payload=>request(table,'update',payload)})};
+ Object.assign(c,{window:{...locationWindow},currentUser:{id:profileActor},currentSection:options.section||'Café Profile',currentView:{},document:{getElementById:id=>elements[id]},FormData:class{
   constructor(){this.snapshot={...fields};if(nameInput.disabled)delete this.snapshot.name}
   get(key){return this.snapshot[key]||''}set(key,value){this.snapshot[key]=value}getAll(){return ['Espresso']}
- },isFloridaPlace:value=>Boolean(locationWindow.BaristaMatchLocation.normalizeUSLocation(value)),collectAvailability:()=> 'Weekdays',collectOpeningHours:()=>hours.value,refreshMarketplaceAfterProfileSave:async()=>{refreshes++;return await options.refresh?.()},setTimeout:callback=>timers.push(callback),openSection:section=>renders.push(section),activeClient:{
-  storage:{from:()=>({upload:async()=>options.upload?options.upload():{error:null},getPublicUrl:()=>({data:{publicUrl:'/uploaded.png'}})})},
-  from:()=>({upsert:payload=>({select:()=>({single:async()=>({data:payload})})}),update:payload=>({eq:()=>({select:()=>({single:async()=>{writes.push(payload);const result=await options.write?.(writes.length,payload);return result||{data:{...profile,...payload,is_discoverable:Boolean(options.discoverable)}}}})})})})
- }});
+ },isFloridaPlace:value=>Boolean(locationWindow.BaristaMatchLocation.normalizeUSLocation(value)),collectAvailability:()=> 'Weekdays',collectOpeningHours:()=>hours.value,refreshMarketplaceAfterProfileSave:async()=>{refreshes++;return await options.refresh?.()},setTimeout:callback=>timers.push(callback),openSection:section=>renders.push(section),activeClient});
+ // Reuse the actual actor/session/error contract; only page-level media orchestration is a fixture.
+ vm.runInContext(readFileSync(new URL('../profile-media-review.js',import.meta.url),'utf8'),c);
+ c.window.BaristaMatchProfileMediaReview={...c.BaristaMatchProfileMediaReview,createController:()=>({
+  isCurrent:()=>true,invalidate(){},state:()=>({reviews:[],drafts:[],busy:mediaBusy,error:'',notice:''}),refresh:async()=>{},
+  stage:async(field,file)=>{assert.equal(writes.length>=2,true,'Text and visibility must be confirmed before private upload');mediaStages.push({field,file});events.push('private-media');mediaBusy=true;firstMedia.resolve();try{await options.upload?.();return {status:'pending'};}finally{mediaBusy=false;}}
+ })};
  vm.runInContext(source,c);
- return {c,form,fields,hours,status,button,cancel,dialog,controls,attributes,writes,timers,renders,get closes(){return closes},get refreshes(){return refreshes},submit:()=>form.onsubmit({preventDefault(){},currentTarget:form})};
+ if(options.mediaBusy)c.ensureProfileMediaController();
+ return {c,form,fields,hours,status,button,cancel,dialog,controls,initialDisabled,attributes,writes,timers,renders,mediaStages,requestHeaders,events,waitForWrite:()=>boundedWait(firstWrite.promise,'first profile write'),waitForMedia:()=>boundedWait(firstMedia.promise,'private media stage'),get closes(){return closes},get refreshes(){return refreshes},submit:()=>form.onsubmit({preventDefault(){},currentTarget:form})};
 }
 test('profile save displays the database visibility and refreshes the saved search area',async()=>{
  const h=profileSaveHarness();await h.submit();
@@ -64,31 +83,42 @@ test('profile save displays the database visibility and refreshes the saved sear
 });
 test('pending save locks Cancel, Escape and reopening and never closes a later draft',async()=>{
  const gate=deferred(),h=profileSaveHarness({discoverable:true,write:async index=>{if(index===1)await gate.promise}});
- const saving=h.submit();assert.equal(h.writes.length,1);assert.equal(h.attributes.get('aria-busy'),'true');assert.ok(h.controls.every(control=>control.disabled));
+ const saving=h.submit();await h.waitForWrite();assert.equal(h.writes.length,1);assert.equal(h.attributes.get('aria-busy'),'true');assert.ok(h.controls.every(control=>control.disabled));
  await h.submit();assert.equal(h.writes.length,1);
  h.cancel.onclick();let prevented=false;h.dialog.oncancel({preventDefault(){prevented=true}});h.c.openProfileEditor();
  assert.equal(prevented,true);assert.equal(h.closes,0);assert.equal(h.dialog.open,true);
  gate.resolve();await saving;
  assert.equal(h.writes.length,2);assert.equal(h.writes[0].cafe_name,'Cafe');assert.equal(h.closes,1);assert.equal(h.timers.length,0);
- assert.deepEqual(h.controls.map(control=>control.disabled),[false,false,false,true]);assert.equal(h.attributes.has('aria-busy'),false);
+ assert.deepEqual(h.controls.map(control=>control.disabled),h.initialDisabled);assert.equal(h.attributes.has('aria-busy'),false);
  h.dialog.showModal();h.fields.name='New draft';h.timers.forEach(callback=>callback());
  assert.equal(h.dialog.open,true);assert.equal(h.fields.name,'New draft');assert.equal(h.closes,1);
 });
-test('café opening hours and fields are captured before asynchronous upload begins',async()=>{
+test('café draft is captured and text is saved before private media review begins',async()=>{
  const gate=deferred(),h=profileSaveHarness({discoverable:true,fields:{cafe_image:{size:10,name:'cafe.png',type:'image/png'}},upload:async()=>{await gate.promise;return {error:null}}});
- const saving=h.submit();assert.equal(h.writes.length,0);h.hours.value='Tuesday 10-2';h.fields.name='Changed after upload started';
+ const saving=h.submit();await h.waitForMedia();assert.equal(h.writes.length,2);h.hours.value='Tuesday 10-2';h.fields.name='Changed after upload started';
  gate.resolve();await saving;
- assert.equal(h.writes[0].open_hours,'Monday 7-5');assert.equal(h.writes[0].cafe_name,'Cafe');assert.equal(h.writes[0].avatar_url,'/uploaded.png');
+ assert.equal(h.writes[0].open_hours,'Monday 7-5');assert.equal(h.writes[0].cafe_name,'Cafe');assert.equal(h.c.currentProfile.avatar_url,'/photo.png');assert.equal(h.mediaStages.length,1);assert.equal(h.mediaStages[0].field,'avatar_url');assert.deepEqual(h.events,['profile-write-1','profile-write-2','private-media']);assert.equal(h.dialog.open,true);assert.equal(h.refreshes,0);assert.match(h.status.textContent,/submitted privately for review/);
 });
 test('failed save preserves the draft and restores controls for a successful retry',async()=>{
  const h=profileSaveHarness({discoverable:true,write:async index=>index===1?{error:new Error('Connection lost')}:null});
- await h.submit();assert.equal(h.closes,0);assert.equal(h.fields.name,'Cafe');assert.match(h.status.textContent,/Connection lost/);
- assert.deepEqual(h.controls.map(control=>control.disabled),[false,false,false,true]);assert.equal(h.button.textContent,'Save profile');
+ await h.submit();assert.equal(h.closes,0);assert.equal(h.fields.name,'Cafe');assert.match(h.status.textContent,/could not save your profile.*draft is still here/i);assert.doesNotMatch(h.status.textContent,/Connection lost/);
+ assert.deepEqual(h.controls.map(control=>control.disabled),h.initialDisabled);assert.equal(h.button.textContent,'Save profile');
  await h.submit();assert.equal(h.writes.length,3);assert.equal(h.closes,1);assert.match(h.status.textContent,/ready for discovery/);
+});
+test('an account-session mismatch prevents every text and media operation while preserving the draft',async()=>{
+ const h=profileSaveHarness({sessionUserId:'22222222-2222-4222-8222-222222222222',fields:{cafe_image:{size:10,name:'cafe.png',type:'image/png'}}});await h.submit();
+ assert.equal(h.writes.length,0);assert.equal(h.mediaStages.length,0);assert.equal(h.refreshes,0);assert.equal(h.fields.name,'Cafe');assert.equal(h.dialog.open,true);assert.deepEqual(h.controls.map(control=>control.disabled),h.initialDisabled);assert.match(h.status.textContent,/account changed/i);
+});
+test('a mismatched saved profile cannot replace this account or proceed to visibility/media writes',async()=>{
+ const h=profileSaveHarness({write:async()=>({data:{id:'22222222-2222-4222-8222-222222222222',role:'cafe_owner_manager'}})});await h.submit();
+ assert.equal(h.writes.length,1);assert.equal(h.c.currentProfile.id,profileActor);assert.equal(h.mediaStages.length,0);assert.equal(h.refreshes,0);assert.equal(h.dialog.open,true);assert.match(h.status.textContent,/account changed/i);
+});
+test('an active media check blocks a new text save without resetting or cancelling the draft',async()=>{
+ const h=profileSaveHarness({mediaBusy:true});await h.submit();assert.equal(h.writes.length,0);assert.equal(h.mediaStages.length,0);assert.equal(h.fields.name,'Cafe');assert.equal(h.dialog.open,true);assert.equal(h.closes,0);assert.equal(h.attributes.has('aria-busy'),false);assert.deepEqual(h.controls.map(control=>control.disabled),h.initialDisabled);assert.match(h.status.textContent,/Wait for the current media check/);
 });
 test('profile completion does not replace a subsequently opened Messages conversation',async()=>{
  const gate=deferred(),started=deferred(),h=profileSaveHarness({discoverable:true,refresh:async()=>{started.resolve();await gate.promise}});
- const saving=h.submit();await started.promise;h.c.currentSection='Messages';h.c.activeDiscoveryMatchId='new-conversation';gate.resolve();await saving;
+ const saving=h.submit();await boundedWait(started.promise,'marketplace refresh');h.c.currentSection='Messages';h.c.activeDiscoveryMatchId='new-conversation';gate.resolve();await saving;
  assert.equal(h.c.currentProfile.is_discoverable,true);assert.equal(h.c.activeDiscoveryMatchId,'new-conversation');assert.deepEqual(h.renders,[]);assert.equal(h.timers.length,0);
 });
 test('profile completion never rebuilds Messages even when it was the originating section',async()=>{
@@ -138,7 +168,7 @@ function profileEditorHarness(role,profile){
  const dayInput={checked:false};form.elements={...form,open_hours_Monday:{value:''}};form.querySelector=()=>dayInput;form.querySelectorAll=()=>[];
  const ids=new Proxy({'profile-form':form},{get(target,id){return target[id]||(target[id]={hidden:false,textContent:'',firstChild:{textContent:''},dataset:{},showModal(){this.open=true}})}});
  const code=html.match(/^function openProfileEditor\(\)[^\n]+/m)[0];
- const context={currentRole:role,currentProfile:profile,currentDemographics:{date_of_birth:'2000-01-01'},profileSaveInProgress:false,document:{getElementById:id=>ids[id]},maximumBaristaBirthDate:()=> '2010-01-01',parseAvailability:()=>({selected:new Set(),notes:''}),parseOpeningHours:()=>({Monday:'7-5'}),OPEN_DAYS:['Monday']};
+ const context={currentRole:role,currentProfile:profile,currentDemographics:{date_of_birth:'2000-01-01'},profileSaveInProgress:false,document:{getElementById:id=>ids[id]},maximumBaristaBirthDate:()=> '2010-01-01',parseAvailability:()=>({selected:new Set(),notes:''}),parseOpeningHours:()=>({Monday:'7-5'}),OPEN_DAYS:['Monday'],ensureProfileMediaController:()=>({state:()=>({}),refresh:async()=>{}}),renderProfileMediaReview:()=>{}};
  vm.createContext(context);vm.runInContext(code,context);context.openProfileEditor();return {form,ids,context};
 }
 

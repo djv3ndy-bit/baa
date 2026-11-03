@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 
 const jsonHeaders = { "Cache-Control": "no-store", "Content-Type": "application/json" };
 const DELETE_CONFIRMATION = "DELETE";
-const UPLOAD_BUCKETS = ["coffee-videos", "cafe-images"];
+const UPLOAD_BUCKETS = ["coffee-videos", "cafe-images", "ugc-media-staging"];
 const PAGE_SIZE = 100;
 const MAX_OBJECTS = 5000;
 const MAX_FOLDERS = 100;
@@ -331,6 +331,14 @@ export default async function handler(req, res) {
       } : undefined;
       await endStripeBillingForDeletion(stripe, billing, user.id, user.email || "", true, settleCheckoutAttempt);
     }
+
+    // Freeze new media metadata before enumerating files. The storage guard
+    // orders an in-flight publisher against this marker, including service
+    // uploads. A failed cleanup keeps the marker for a safe, idempotent retry.
+    const mediaDeletionResponse = await request("/rest/v1/rpc/begin_profile_media_account_deletion", {
+      method: "POST", body: JSON.stringify({ p_owner_id: user.id })
+    });
+    if (!mediaDeletionResponse.ok || await mediaDeletionResponse.json() !== true) throw new CleanupError();
 
     const objects = new Map();
     for (const item of [...await listOwnedUploads(user.id, request), ...storedObjectsForProfile(profile, user.id, supabaseUrl)]) {

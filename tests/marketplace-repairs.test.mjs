@@ -8,6 +8,7 @@ vm.runInNewContext(fs.readFileSync(new URL('../us-location.js', import.meta.url)
 
 const dashboard = fs.readFileSync(new URL('../dashboard.html', import.meta.url), 'utf8');
 const quietFocus = fs.readFileSync(new URL('../dashboard-quiet-focus.js', import.meta.url), 'utf8');
+const profileMediaSandbox={};vm.runInNewContext(fs.readFileSync(new URL('../profile-media-review.js',import.meta.url),'utf8'),profileMediaSandbox);
 function source(name) {
   const start = dashboard.search(new RegExp(`^(?:async )?function ${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
@@ -15,10 +16,11 @@ function source(name) {
   const next = tail.slice(1).search(/\n(?=(?:async )?function |Object\.defineProperty|let activeMessageApplicationId|document\.)/);
   return next < 0 ? tail : tail.slice(0, next + 1);
 }
-const baseFunctions = ['normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
+const baseFunctions = ['contentSaveMessage', 'normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
 function context(extra = {}, functions = []) {
   const ctx = { currentRole: 'barista', currentUser: { id: 'barista' }, currentProfile: { id: 'barista', location: 'Miami, FL' }, applications: [], discoveryInterests: [], discoveryMatches: [], discoveryProfiles: {}, candidateProfiles: [], marketJobs: [], marketplaceRefreshMessage: '', editingJobId: null, window: {}, ...extra };
   ctx.window.BaristaMatchLocation = locationWindow.BaristaMatchLocation;
+  ctx.window.BaristaMatchProfileMediaReview=profileMediaSandbox.BaristaMatchProfileMediaReview;
   vm.createContext(ctx);
   vm.runInContext([...new Set([...baseFunctions, ...functions])].map(source).join('\n'), ctx);
   return ctx;
@@ -319,7 +321,8 @@ test('repeated submits during the same job save issue one write and remain retry
   assert.equal(h.button.disabled, false);
   assert.equal(h.dialog.open, true);
   assert.equal(h.elements.title.value, 'Keep this draft');
-  assert.equal(h.status.textContent, 'Connection lost');
+  assert.match(h.status.textContent,/could not save this job.*draft is still here/i);assert.doesNotMatch(h.status.textContent,/Connection lost/);
+  h.ctx.saveJobPost=async()=>{writes++;return{id:job.id}};await h.submit();assert.equal(writes,2);assert.equal(h.dialog.open,false);assert.equal(h.button.disabled,false);
 });
 
 test('viewing cached or fetched outside-area interest profiles does not alter filtered candidates', async () => {

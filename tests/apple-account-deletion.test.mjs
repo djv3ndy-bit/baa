@@ -36,6 +36,7 @@ async function callHandler(t, { user = { id: USER }, profiles = [], subscription
     if (p === '/auth/v1/user') return response(user);
     if (p === '/rest/v1/rpc/claim_stripe_deletion') return response('claimed');
     if (p === '/rest/v1/rpc/release_stripe_checkout') return response(true);
+    if (p === '/rest/v1/rpc/begin_profile_media_account_deletion') return response(true);
     if (p === '/rest/v1/cafe_subscriptions') return response(subscriptions);
     if (p === '/rest/v1/profiles') {
       if (options.method === 'PATCH') return response(parsed.searchParams.get('suspended_at') === 'is.null' ? lockRows : []);
@@ -148,7 +149,19 @@ test('web confirmation survives SIGNED_OUT and has no tokens or account IDs in r
   assert.deepEqual(h.redirects,['/account-deleted.html']);
   const receipt=JSON.parse(h.stored['bjm-deletion-receipt-v1']);assert.equal(receipt.appleDisconnectRequired,true);assert.equal(receipt.localSignOutComplete,true);
   assert.doesNotMatch(JSON.stringify(h.stored),/test-token|11111111/);assert.equal(h.removed.length,3);
-  assert.match(html,/event==='SIGNED_OUT'&&!accountDeletionCompleted/);
+});
+test('actual auth callback clears switched or signed-out media state without losing a completed deletion receipt',()=>{
+  const callback=html.match(/client\.auth\.onAuthStateChange\(([\s\S]*?)\);const \{data:profile/)[1];
+  for(const completed of [false,true])for(const event of ['SIGNED_OUT','TOKEN_REFRESHED']){
+    const redirects=[],app={hidden:false};let invalidations=0;
+    const client={};const context={client,activeClient:client,currentUser:{id:USER},currentProfile:{id:USER},currentDemographics:{date_of_birth:'2000-01-01'},accountDeletionCompleted:completed,
+      invalidateProfileMediaSession:()=>invalidations++,document:{getElementById:()=>app},location:{replace:url=>redirects.push(url)}};
+    const onAuthChange=vm.runInNewContext(callback,context);
+    onAuthChange(event,event==='SIGNED_OUT'?null:{user:{id:OTHER}});
+    assert.equal(invalidations,1);assert.equal(app.hidden,true);assert.equal(context.currentUser,null);
+    assert.equal(Object.keys(context.currentProfile).length,0);assert.equal(Object.keys(context.currentDemographics).length,0);
+    assert.deepEqual(redirects,completed?[]:['/login.html?reason=expired']);
+  }
 });
 test('web requires success true, not just HTTP 200',async()=>{
   for(const result of [{},{success:false},{success:'true'}]){

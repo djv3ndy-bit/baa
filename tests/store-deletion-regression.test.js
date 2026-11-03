@@ -34,7 +34,7 @@ function setup(t, options = {}) {
     if (testStripe) testStripe._setApiField('httpClient', previousStripeHttpClient);
     for (const key of keys) previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key];
   });
-  const files = new Map(['coffee-videos', 'cafe-images'].map(bucket => [bucket, new Set(options.files?.[bucket] || [])]));
+  const files = new Map(['coffee-videos', 'cafe-images', 'ugc-media-staging'].map(bucket => [bucket, new Set(options.files?.[bucket] || [])]));
   const calls = [];
   globalThis.fetch = async (url, init = {}) => {
     const parsed = new URL(url);
@@ -47,6 +47,7 @@ function setup(t, options = {}) {
     if (path === '/rest/v1/rpc/claim_stripe_deletion') return response(options.deletionClaim || 'claimed');
     if (path === '/rest/v1/rpc/settle_stripe_checkout_attempt_for_deletion') return response(true);
     if (path === '/rest/v1/rpc/release_stripe_checkout') return response(true);
+    if (path === '/rest/v1/rpc/begin_profile_media_account_deletion') return response(true);
     if (path === '/rest/v1/cafe_subscriptions') return response(options.subscriptions || []);
     if (path === '/rest/v1/profiles') {
       if (call.method === 'PATCH') {
