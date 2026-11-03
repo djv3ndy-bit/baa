@@ -1,0 +1,11 @@
+{
+  "name": "baristamatch-isolated-moderation-database-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 moderation.test.mjs"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  }
+}

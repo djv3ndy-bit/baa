@@ -68,30 +68,43 @@ test('picker failure is recoverable and oversized files are rejected', async () 
 });
 
 const visibilityCode = web.match(/const profileFields=[^\n]+/)[0]+'\n'+web.slice(web.indexOf('function validBaristaBirthDate'),web.indexOf('function trustBanner'));
-const saveCode = web.slice(web.indexOf("document.getElementById('profile-form').onsubmit"), web.indexOf("document.getElementById('job-cancel')"));
+const saveCode = web.slice(web.indexOf('let profileSaveInProgress='), web.indexOf("document.getElementById('job-cancel')"));
 function webHarness(gender, previousGender = null) {
-  const rows = [], status = { textContent: '' }, button = {}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button],setAttribute(){},removeAttribute(){} };
+  const owner='11111111-1111-4111-8111-111111111111';
+  const rows = [], headers=[], status = { textContent: '' }, button = {disabled:false}, cancel={}, dialog={close(){}}, form = { querySelector: () => button,querySelectorAll:()=>[button],setAttribute(){},removeAttribute(){} };
   const values = { location:'Miami, FL', date_of_birth:'2000-01-01', gender_identity:gender, name:'Test barista', bio:'Coffee experience', skills:'Espresso', experience:'2 years', pay_expectation:'20' };
-  const profile = { display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
+  const profile = { id:owner,role:'barista',display_name:'Test', avatar_url:'https://example.invalid/a.png', location:'Miami, FL', bio:'Coffee', availability:'Full-time', experience:'2 years', pay_expectation:'20', skills:['Espresso'] };
+  function request(table,kind,payload){let pending;const requestHeaders={},filters=[];return{
+    eq(key,value){filters.push([key,value]);return this},select(){return this},single(){return this},setHeader(key,value){requestHeaders[key]=value;return this},
+    then(resolve,reject){pending||=Promise.resolve().then(()=>{
+      assert.equal(requestHeaders.Authorization,'Bearer synthetic-private-profile-owner');headers.push({...requestHeaders});rows.push([table,payload]);
+      if(table==='profile_demographics'){assert.equal(kind,'upsert');assert.equal(payload.user_id,owner);return{data:payload,error:null};}
+      assert.equal(table,'profiles');assert.equal(kind,'update');assert.deepEqual(filters,[['id',owner]]);
+      assert(!Object.hasOwn(payload,'avatar_url'));assert(!Object.hasOwn(payload,'bar_picture_url'));assert(!Object.hasOwn(payload,'video_path'));
+      Object.assign(profile,payload);return{data:{...profile},error:null};
+    });return pending.then(resolve,reject)}
+  }}
+  const elements={'profile-form':form,'profile-status':status,'profile-cancel':cancel,'profile-dialog':dialog};
   const context = {
-    window:locationWindow,
-    document:{getElementById:id => id==='profile-form' ? form : id==='profile-dialog'?dialog:status},
-    profileSaveInProgress:false,currentSection:'My Profile',currentView:{},openSection(){},
-    currentRole:'barista', currentUser:{id:'test-user'}, currentProfile:profile,
+    window:{...locationWindow},
+    document:{getElementById:id => elements[id]||null},
+    currentSection:'My Profile',currentView:{},openSection(){},
+    currentRole:'barista', currentUser:{id:owner}, currentProfile:profile,
     currentDemographics:{ date_of_birth:'2000-01-01', gender_identity:previousGender },
     FormData:class { get(key) {return values[key] ?? null} set(key,value){values[key]=value} getAll(){return []} },
     isFloridaPlace:() => true, maximumBaristaBirthDate:() => '2010-01-01',
     collectAvailability:() => 'Full-time', refreshMarketplaceAfterProfileSave:async()=>{}, setTimeout:() => {}, Date,
-    activeClient:{from:table=>({ update:payload=>({eq:()=>({select:()=>({single:async()=>{rows.push([table,payload]);Object.assign(profile,payload);return{data:{...profile},error:null}}})})}),upsert:payload=>({select:()=>({single:async()=>{rows.push([table,payload]);return{data:payload,error:null}}})}) })},
+    activeClient:{auth:{getSession:async()=>({data:{session:{user:{id:owner},access_token:'synthetic-private-profile-owner',expires_at:Math.floor(Date.now()/1000)+3600}},error:null})},from:table=>({update:payload=>request(table,'update',payload),upsert:payload=>request(table,'upsert',payload)})},
   };
-  vm.createContext(context);vm.runInContext(visibilityCode+'\n'+saveCode,context);
-  return { rows, status, context, run:()=>form.onsubmit({preventDefault(){},currentTarget:form}) };
+  vm.createContext(context);vm.runInContext(read('profile-media-review.js'),context);context.window.BaristaMatchProfileMediaReview=context.BaristaMatchProfileMediaReview;
+  vm.runInContext(visibilityCode+'\n'+saveCode,context);
+  return { rows, headers, status, context, run:()=>form.onsubmit({preventDefault(){},currentTarget:form}) };
 }
 for (const gender of ['', 'female', 'male']) test(`web saves profile with ${gender || 'unprovided'} gender without exposing it`, async () => {
   const h=webHarness(gender);await h.run();
   assert.equal(h.rows.find(([table])=>table==='profile_demographics')[1].gender_identity, gender || null);
   assert.ok(h.rows.filter(([table])=>table==='profiles').every(([,row])=>!Object.hasOwn(row,'gender_identity')&&!Object.hasOwn(row,'date_of_birth')));
-  assert.equal(h.context.profileVisibilityReady(), true);
+  assert.equal(h.context.profileVisibilityReady(), true);assert.equal(h.rows.length,3);assert.equal(h.headers.length,3);assert.equal(h.context.currentProfile.id,'11111111-1111-4111-8111-111111111111');assert.equal(h.context.currentProfile.role,'barista');
 });
 test('web can remove an existing gender selection without hiding the profile', async () => {
   const h=webHarness('', 'female');await h.run();
