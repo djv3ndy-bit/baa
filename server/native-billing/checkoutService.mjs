@@ -6,7 +6,7 @@ export class CheckoutUnavailable extends Error {
   constructor(code) { super('Native checkout unavailable'); this.code=code; }
 }
 const requireValue=(condition,code)=>{if(!condition)throw new CheckoutUnavailable(code);};
-export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, contextFor, enabled, purchaseAllowed=null, productId, ready, createId=randomUUID }) {
+export function nativeCheckoutService({ repository, inspectWebsiteBilling, environment, contextFor, enabled, purchaseAllowed=null, productId, ready, createId=randomUUID, refreshExisting=null }) {
   requireValue(['Production','Sandbox'].includes(environment),'CONFIGURATION');
   const accountCheck=account=>requireValue(account?.id && account.role==='cafe_owner_manager' && !account.suspendedAt,'ACCOUNT_UNAVAILABLE');
   const resolve = async(account, provider=null) => checkedBillingContext(contextFor
@@ -22,6 +22,9 @@ export function nativeCheckoutService({ repository, inspectWebsiteBilling, envir
       const purchaseEnabled=enabledFor(context,'apple');
       // Already-verified recorded cleanup remains possible after map revocation.
       for(const recorded of contextFor ? ['Production','Sandbox'] : [environment]) await repository.settleVerifiedCheckout(account.id,recorded);
+      if(environment==='Production' && context.appleSandboxTester && context.environment==='Sandbox' && website.billingPaused!==true && typeof refreshExisting==='function') {
+        try { await refreshExisting(account,context); } catch { /* Fall back to the existing stored status. */ }
+      }
       const [native,checkoutPending]=await Promise.all([repository.summary(account.id,context.environment),repository.checkoutPending(account.id,context.environment)]);
       const status=combinedAccountStatus({account,website,native,environment:context.environment,checkoutPending});
       const recovery = purchaseEnabled && status.checkoutPending && status.status === 'pending' && status.access === 'free'

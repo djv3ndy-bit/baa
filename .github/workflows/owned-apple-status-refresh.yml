@@ -1,0 +1,79 @@
+name: Owned Apple status refresh
+on:
+  pull_request:
+    paths:
+      - 'api/native-billing.js'
+      - 'server/native-billing/**'
+      - 'supabase/migrations/20261104143313_owned_apple_status_refresh.sql'
+      - 'tests/owned-apple-*.test.mjs'
+      - 'tests/database/owned-apple-status-refresh*'
+      - '.github/workflows/owned-apple-status-refresh.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'api/native-billing.js'
+      - 'server/native-billing/**'
+      - 'supabase/migrations/20261104143313_owned_apple_status_refresh.sql'
+      - 'tests/owned-apple-*.test.mjs'
+      - 'tests/database/owned-apple-status-refresh*'
+      - '.github/workflows/owned-apple-status-refresh.yml'
+permissions:
+  contents: read
+jobs:
+  owned-apple-refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Reuse the exact official PostgreSQL17 image pinned by existing security checks.
+        image: postgres:17@sha256:a63c1ea3f6a3a5a1621f97d2aba3b30faecfab4224c1b0000cc85ced57bb1939
+        env:
+          POSTGRES_DB: bjm_owned_refresh_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: isolated-owned-refresh-ci-fixture-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bjm_owned_refresh_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      BJM_OWNED_REFRESH_CI_FIXTURE: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: bjm_owned_refresh_test
+      PGUSER: postgres
+      PGPASSWORD: isolated-owned-refresh-ci-fixture-only
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install pinned server libraries without lifecycle scripts
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install the existing locked disposable PostgreSQL driver
+        run: npm ci --prefix tests/moderation-database --ignore-scripts --no-audit --no-fund
+      - name: Verify provider and status protections without live provider access
+        run: node --test tests/owned-apple-provider-refresh.test.mjs tests/owned-apple-refresh.test.mjs tests/owned-apple-route-integration.test.mjs
+      - name: Verify the exact migration and real PostgreSQL races with zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$RUNNER_TEMP/owned-apple-refresh.tap"
+          if ! node --test --test-concurrency=1 --test-reporter=tap tests/database/owned-apple-status-refresh.test.mjs > "$result" 2>&1; then
+            cat "$result"
+            exit 1
+          fi
+          cat "$result"
+          node --input-type=module - "$result" <<'JS'
+          import {readFileSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          const text=readFileSync(process.argv[2],'utf8');
+          assert.match(text,/# fail 0(?:\r?\n|$)/);
+          assert.match(text,/# cancelled 0(?:\r?\n|$)/);
+          assert.match(text,/# skipped 0(?:\r?\n|$)/);
+          assert(Number(text.match(/# pass (\d+)/)?.[1])>=21);
+          JS
+# Synthetic fixtures only. No deployment, provider keys, purchase or hosted database access.

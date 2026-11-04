@@ -3,12 +3,37 @@ import { retryBillingRead } from './retryRead.mjs';
 
 function check(condition, code) { if (!condition) throw new PurchaseVerificationError(code); }
 function opaque(value, max = 32_768) { return typeof value === 'string' && value.length > 0 && value.length <= max; }
+function checkAbort(signal) { check(!signal?.aborted, 'REQUEST_ABORTED'); }
 
 /** Expects Apple's official AppStoreServerAPIClient and SignedDataVerifier,
  * constructed on the server with pinned app identity, environment and trusted
  * Apple root certificates. Online signature/certificate checks stay enabled. */
-export function appleProvider({ client, verifier, bundleId, productId, appAppleId, environment, now = Date.now }) {
+export function appleProvider({ client, verifier, bundleId, productId, appAppleId, environment, now = Date.now, readExistingStatus }) {
   check(bundleId && productId && ['Sandbox', 'Production'].includes(environment), 'SERVER_CONFIGURATION');
+  async function verifiedCurrent(current, originalId, binding, requireSignedRenewal = false, signal) {
+    checkAbort(signal);
+    if (requireSignedRenewal) check(current && typeof current === 'object', 'INVALID_RESPONSE');
+    check(current.bundleId === bundleId && current.environment === environment && Array.isArray(current.data), 'INVALID_RESPONSE');
+    const entries = current.data.flatMap(group => group.lastTransactions || []).filter(row => row.originalTransactionId === originalId);
+    check(entries.length === 1, 'AMBIGUOUS_SUBSCRIPTION');
+    const row = entries[0];
+    check(opaque(row.signedTransactionInfo), 'INVALID_TRANSACTION');
+    if (requireSignedRenewal) check(opaque(row.signedRenewalInfo), 'RENEWAL_UNAVAILABLE');
+    const transaction = await verifier.verifyAndDecodeTransaction(row.signedTransactionInfo);
+    checkAbort(signal);
+    check(transaction.originalTransactionId === originalId, 'PURCHASE_MISMATCH');
+    const renewal = row.signedRenewalInfo ? await verifier.verifyAndDecodeRenewalInfo(row.signedRenewalInfo) : null;
+    checkAbort(signal);
+    if (requireSignedRenewal || [1, 3, 4].includes(row.status)) check(renewal !== null, 'RENEWAL_UNAVAILABLE');
+    // An absent/unknown renewal value must never masquerade as signed renewal OFF.
+    // Keep the receipt path's existing normalization unchanged.
+    if (requireSignedRenewal) {
+      check(renewal && [0, 1].includes(renewal.autoRenewStatus), 'INVALID_RENEWAL');
+      check(renewal.autoRenewProductId == null || renewal.autoRenewProductId === productId, 'RENEWAL_MISMATCH');
+      check(renewal.appAccountToken == null || renewal.appAccountToken === binding, 'ACCOUNT_MISMATCH');
+    }
+    return verifiedAppleStatus(transaction, renewal, row.status, { bundleId, productId, environment, binding }, now());
+  }
   return {
     async identify(proof) {
       check(opaque(proof), 'INVALID_PROOF');
@@ -25,16 +50,19 @@ export function appleProvider({ client, verifier, bundleId, productId, appAppleI
       // A historically valid receipt is not proof that a subscription is still
       // active. Always fetch current status and verify each returned JWS.
       const current = await retryBillingRead(() => client.getAllSubscriptionStatuses(presented.originalTransactionId));
-      check(current.bundleId === bundleId && current.environment === environment && Array.isArray(current.data), 'INVALID_RESPONSE');
-      const entries = current.data.flatMap(group => group.lastTransactions || []).filter(row => row.originalTransactionId === presented.originalTransactionId);
-      check(entries.length === 1, 'AMBIGUOUS_SUBSCRIPTION');
-      const row = entries[0];
-      check(opaque(row.signedTransactionInfo), 'INVALID_TRANSACTION');
-      const transaction = await verifier.verifyAndDecodeTransaction(row.signedTransactionInfo);
-      check(transaction.originalTransactionId === presented.originalTransactionId, 'PURCHASE_MISMATCH');
-      const renewal = row.signedRenewalInfo ? await verifier.verifyAndDecodeRenewalInfo(row.signedRenewalInfo) : null;
-      if ([1, 3, 4].includes(row.status)) check(renewal !== null, 'RENEWAL_UNAVAILABLE');
-      return verifiedAppleStatus(transaction, renewal, row.status, { bundleId, productId, environment, binding }, now());
+      return verifiedCurrent(current, presented.originalTransactionId, binding);
+    },
+    // Server-owned recorded identity only: the caller must discover and authorize
+    // this chain/binding from its private ledger, and retain the existing CAS guard.
+    async verifyExisting(providerSubscriptionId, binding, { signal } = {}) {
+      checkAbort(signal);
+      check(opaque(providerSubscriptionId, 255) && opaque(binding, 255), 'INVALID_TRANSACTION');
+      // Deliberately one API-method call. The status service owns any later attempt;
+      // never multiply its durable budget through retryBillingRead here.
+      const current = readExistingStatus
+        ? await readExistingStatus(providerSubscriptionId, { signal })
+        : await client.getAllSubscriptionStatuses(providerSubscriptionId);
+      return verifiedCurrent(current, providerSubscriptionId, binding, true, signal);
     },
     async notification(signedPayload) {
       check(opaque(signedPayload, 131_072), 'INVALID_EVENT');

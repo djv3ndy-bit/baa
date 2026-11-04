@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { createHash, createPrivateKey, X509Certificate } from 'node:crypto';
 import { appleProvider, googleProvider, verifiedGoogleNotification } from './providers.mjs';
 import { PurchaseVerificationError } from './verifiedStatus.mjs';
@@ -90,13 +91,47 @@ export function providerRuntimeCache(createRuntime=createProviderRuntime) {
 export async function createProviderRuntime(config, {
   loadApple = () => import('@apple/app-store-server-library'),
   loadGoogle = () => import('google-auth-library'),
+  appleExistingStatusFetch,
+  appleExistingStatusTimeoutMs = 10_000,
 } = {}) {
   if (config.provider === 'apple') {
     const { AppStoreServerAPIClient, SignedDataVerifier, Environment, VerificationException, VerificationStatus } = await loadApple();
     const environment = config.environment === 'Production' ? Environment.PRODUCTION : Environment.SANDBOX;
     const verifier = new SignedDataVerifier(appleRootCertificates(), true, environment, config.bundleId, config.appAppleId);
     const client = new AppStoreServerAPIClient(config.privateKey, config.keyId, config.issuerId, config.bundleId, environment);
-    return { environment: config.environment, provider: appleProvider({ ...config, client, verifier }),
+    const readExistingStatus = async (originalId, { signal } = {}) => {
+      check(Number.isInteger(appleExistingStatusTimeoutMs) && appleExistingStatusTimeoutMs >= 1 && appleExistingStatusTimeoutMs <= 10_000);
+      // The pinned SDK 3.1.0 declares makeFetchRequest as a protected extension
+      // seam. Use its own node-fetch dependency, with no unsupported constructor
+      // options or private SDK field access. The legacy client stays untouched.
+      const fromHere = createRequire(import.meta.url);
+      const fetchExisting = appleExistingStatusFetch || createRequire(fromHere.resolve('@apple/app-store-server-library'))('node-fetch');
+      check(typeof fetchExisting === 'function');
+      const origin = config.environment === 'Production' ? 'https://api.storekit.apple.com' : 'https://api.storekit-sandbox.apple.com';
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      if (signal?.aborted) throw new PurchaseVerificationError('REQUEST_ABORTED');
+      signal?.addEventListener('abort', abort, { once: true });
+      const timer = setTimeout(() => controller.abort(), appleExistingStatusTimeoutMs);
+      class ExistingStatusClient extends AppStoreServerAPIClient {
+        async makeFetchRequest(path, query, method, body, headers) {
+          check(method === 'GET' && path === `/inApps/v1/subscriptions/${originalId}` && query.toString() === '' && body === undefined);
+          return fetchExisting(`${origin}/inApps/v1/subscriptions/${encodeURIComponent(originalId)}`, {
+            method, body, headers, signal: controller.signal, redirect: 'error',
+          });
+        }
+      }
+      try {
+        const bounded = new ExistingStatusClient(config.privateKey, config.keyId, config.issuerId, config.bundleId, environment);
+        // Keep the abort timer through the SDK's response.json(), not merely
+        // until response headers arrive. This does not time out OCSP verification.
+        return await bounded.getAllSubscriptionStatuses(originalId);
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
+      }
+    };
+    return { environment: config.environment, provider: appleProvider({ ...config, client, verifier, readExistingStatus }),
       isEnvironmentMismatch: error => Boolean(VerificationException && error instanceof VerificationException
         && error.status===VerificationStatus.INVALID_ENVIRONMENT),
       // The SDK checks Production appAppleId before environment; that optional
