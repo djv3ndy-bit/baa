@@ -8,15 +8,18 @@ const safeReads = new Set(['native_checkout_pending', 'native_billing_summary',
   'native_billing_context','native_checkout_attempt_context']);
 
 export function nativeBillingRepository(adminRows) {
-  const rpc = (name, body) => {
-    const read = () => adminRows(`rpc/${name}`, { method: 'POST', body: JSON.stringify(body) });
+  const rpc = (name, body, options = {}) => {
+    const read = () => {
+      if(options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+      return adminRows(`rpc/${name}`, { method: 'POST', body: JSON.stringify(body), ...(options.signal ? {signal:options.signal} : {}) });
+    };
     // settle_verified only settles a reservation using provider status already
     // verified in the ledger; repeating it cannot create a purchase or charge.
     return safeReads.has(name) ? retryBillingRead(read) : read();
   };
   return {
-    async context(userId,provider=null) {
-      return checkedBillingContext(await rpc('native_billing_context',{p_user_id:userId,p_provider:provider}));
+    async context(userId,provider=null,options={}) {
+      return checkedBillingContext(await rpc('native_billing_context',{p_user_id:userId,p_provider:provider},options));
     },
     async attemptContext(userId,attemptId) {
       const value=await rpc('native_checkout_attempt_context',{p_user_id:userId,p_attempt_id:attemptId});
@@ -45,6 +48,22 @@ export function nativeBillingRepository(adminRows) {
     },
     summary(userId, environment) {
       return rpc('native_billing_summary', { p_user_id: userId, p_environment: environment });
+    },
+    ownedAppleRefresh(userId, options={}) {
+      return rpc('native_billing_owned_apple_refresh', {p_user_id:userId}, options);
+    },
+    consumeOwnedAppleRefreshBudget(buckets, options={}) {
+      return rpc('consume_public_form_budget', {p_buckets:buckets}, options);
+    },
+    applyOwnedAppleRefresh(snapshot, status, options={}) {
+      return rpc('native_billing_apply_owned_apple_refresh', {
+        p_user_id:snapshot.userId, p_binding:snapshot.binding, p_subscription_id:snapshot.subscriptionId,
+        p_expected_revision:snapshot.revision, p_expected_generation:snapshot.generation,
+        p_expected_authorized_at:snapshot.authorizedAt, p_expected_expires_at:snapshot.expiresAt,
+        p_expected_window_start:snapshot.windowStartsAt, p_expected_window_end:snapshot.windowEndsAt,
+        p_product_id:status.productId, p_transaction_id:status.transactionId, p_status:status.status,
+        p_period_end:status.currentPeriodEnd, p_grace_end:status.gracePeriodEnd, p_auto_renews:status.autoRenews,
+      }, options);
     },
     async owner(binding) {
       const result = await rpc('native_billing_owner', { p_binding: binding });
