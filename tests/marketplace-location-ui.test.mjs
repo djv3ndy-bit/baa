@@ -162,7 +162,7 @@ test('Reset returns to the current profile work area and clears temporary text a
   assert.equal(h.ctx.marketplaceTextQuery, '');
   assert.equal(h.ctx.marketplaceLocationDistances.size, 0);
   assert.deepEqual(ids(h.ctx.marketJobs), ['beach']);
-  assert.equal(h.ctx.defaultMarketplaceLocation().place, 'miami beach');
+  assert.equal(h.ctx.defaultMarketplaceLocation().place, 'Miami Beach');
   assert.deepEqual(Array.from(h.navigations.at(-1)).slice(0, 1), ['Discover']);
 });
 

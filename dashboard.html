@@ -542,7 +542,9 @@ function defaultMarketplaceLocation() {
   const area = currentRole === 'barista'
     ? workArea(currentProfile)
     : window.BaristaMatchLocation.usPlaceParts(currentProfile.location, 'FL');
-  return { state: area.state.toUpperCase(), place: area.postal || area.city, radius: 'city', sameState: true };
+  const homeCity = window.BaristaMatchLocation.parseUSLocation(currentProfile.location, 'FL')?.city;
+  const savedCity = currentRole === 'barista' ? currentProfile.preferred_city || homeCity : homeCity;
+  return { state: area.state.toUpperCase(), place: area.postal || savedCity || area.city, radius: 'city', sameState: true };
 }
 function marketplaceLocationFormHtml() {
   const options = marketplaceLocationSearch || defaultMarketplaceLocation();
@@ -552,16 +554,23 @@ function marketplaceLocationFormHtml() {
   const radiusOptions = ranges.map(([value, label]) =>
     `<option value="${value}" ${String(options.radius) === String(value) ? 'selected' : ''}>${label}</option>`).join('');
   const numericRadius = Number.isFinite(Number(options.radius));
-  const label = marketplaceLocationSearch?.label || (currentRole === 'barista' ? workAreaLabel() : currentProfile.location || 'Your café city');
   const noun = currentRole === 'barista' ? 'jobs' : 'baristas';
-  return `<form class="marketplace-location-form" id="marketplace-location-form">
-    <label>State<select name="search_state" required><option value="">Choose a state</option>${states}</select></label>
-    <label>City or ZIP<input name="search_place" value="${escapeHtml(options.place || '')}" maxlength="120" placeholder="Miami or 33101" autocomplete="off" ${options.radius === 'state' ? 'disabled' : 'required'}></label>
-    <label>Search area<select name="search_radius">${radiusOptions}</select></label>
-    <div class="marketplace-location-actions"><button class="primary" type="submit">Search ${noun}</button><button class="secondary" type="button" data-reset-search-area>Reset</button></div>
-    <label class="marketplace-state-boundary"><input type="checkbox" name="search_same_state" ${options.sameState ? 'checked' : ''} ${numericRadius ? '' : 'disabled'}>Stay within the selected state</label>
+  const keywordLabel = currentRole === 'barista' ? 'Job title or keyword' : 'Name or skill';
+  const keywordPlaceholder = currentRole === 'barista' ? 'Barista, café name, or skill' : 'Barista name, skill, or city';
+  return `<form class="marketplace-location-form" id="marketplace-location-form" aria-label="Search ${noun}">
+    <div class="marketplace-search-fields">
+      <label class="marketplace-search-field">${keywordLabel}<input class="search" id="job-search" type="search" value="${escapeHtml(marketplaceTextQuery)}" placeholder="${keywordPlaceholder}"></label>
+      <label class="marketplace-search-field">City or ZIP<input name="search_place" value="${escapeHtml(options.place || '')}" maxlength="120" placeholder="City or ZIP code" autocomplete="off" ${options.radius === 'state' ? 'disabled' : 'required'}></label>
+    </div>
+    <div class="marketplace-search-filters">
+      <label class="marketplace-search-field">State<select name="search_state" required><option value="">Choose a state</option>${states}</select></label>
+      <label class="marketplace-search-field">Search area<select name="search_radius">${radiusOptions}</select></label>
+      <label class="marketplace-state-boundary" ${numericRadius ? '' : 'hidden'}><input type="checkbox" name="search_same_state" ${options.sameState ? 'checked' : ''} ${numericRadius ? '' : 'disabled'}>Stay within this state</label>
+      <button class="marketplace-reset-search" type="button" data-reset-search-area>Reset search</button>
+    </div>
+    <div class="marketplace-location-actions"><button class="primary" type="submit">Search ${noun}</button></div>
     <p class="marketplace-location-status" id="marketplace-location-status" role="status" aria-live="polite"></p>
-  </form><p class="marketplace-location-summary">${escapeHtml(label)}</p>${numericRadius ? `<p class="marketplace-location-note">Distances are approximate straight-line distances between city or ZIP centers. Location data from <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a>.</p>` : ''}${marketplaceUnlocatedCount ? `<p class="marketplace-location-note" role="status">${marketplaceUnlocatedCount} ${noun} could not be located for a miles search. Try exact city or ZIP, or the entire state, to include locations without a known center.</p>` : ''}`;
+  </form>${numericRadius ? `<p class="marketplace-location-note">Approximate straight-line distances from city or ZIP centers. Location data from <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a>.</p>` : ''}${marketplaceUnlocatedCount ? `<p class="marketplace-location-note" role="status">${marketplaceUnlocatedCount} ${noun} could not be located for a miles search. Try exact city or ZIP, or the entire state, to include locations without a known center.</p>` : ''}`;
 }
 async function loadMarketplaceLocationIndex() {
   if (marketplaceLocationIndex) return marketplaceLocationIndex;
@@ -627,7 +636,10 @@ function bindMarketplaceLocationForm(content) {
   const updateFields = () => {
     form.elements.search_place.disabled = range.value === 'state';
     form.elements.search_place.required = range.value !== 'state';
-    form.elements.search_same_state.disabled = ['city', 'state'].includes(range.value);
+    const boundary = form.querySelector('.marketplace-state-boundary');
+    const numericRadius = !['city', 'state'].includes(range.value);
+    form.elements.search_same_state.disabled = !numericRadius;
+    if (boundary) boundary.hidden = !numericRadius;
   };
   range.onchange = updateFields;
   content.querySelector('[data-reset-search-area]').onclick = resetMarketplaceLocation;
@@ -667,7 +679,10 @@ function incomingInterestsHtml(){
   return `<article class="card" style="margin-bottom:18px"><h3>Interested in you</h3><p>These profiles showed interest in you. Review them here even when they are outside your current search.</p>${rows}</article>`;
 }
 function marketplaceNoticeHtml(){return marketplaceRefreshMessage?`<p class="form-status" role="status">${escapeHtml(marketplaceRefreshMessage)} <button class="secondary" data-refresh-marketplace>Refresh results</button></p>`:''}
-function searchSummaryHtml(noun,count){return `<h3 id="marketplace-result-count" data-result-noun="${noun}" role="status" aria-live="polite">${count} ${noun}</h3><div id="marketplace-search-empty" class="empty-state" hidden><h3>No matching results</h3><p>Try a different name, skill, job title, or location.</p><button class="secondary" data-clear-market-search>Clear search</button></div>`}
+function searchSummaryHtml(noun, count) {
+  const label = marketplaceLocationSearch?.label || (currentRole === 'barista' ? workAreaLabel() : currentProfile.location || 'Your café city');
+  return `<div class="marketplace-results-heading"><h3 id="marketplace-result-count" data-result-noun="${noun}" role="status" aria-live="polite">${count} ${count === 1 ? noun.slice(0, -1) : noun}</h3><p class="marketplace-location-summary">${escapeHtml(label)}</p></div><div id="marketplace-search-empty" class="empty-state" hidden><h3>No matching results</h3><p>Try another name, skill, or job title.</p><button class="secondary" data-clear-market-search>Clear keywords</button></div>`;
+}
 function applicationButton(job){const existing=applications.find(app=>app.job_id===job.id);return existing?`<button class="secondary" disabled>${existing.status==='matched'?'Matched ✓':'Application sent ✓'}</button>`:`<button class="primary" data-apply-job="${escapeHtml(job.id)}">Apply to this job</button>`}
 function jobCardHtml(job){
   const haystack=[job.title,job.owner?.cafe_name,job.location,job.description,job.schedule,(job.required_skills||[]).join(' ')].join(' ').toLowerCase();
@@ -675,11 +690,11 @@ function jobCardHtml(job){
 }
 function jobsHtml(){
   const rows=marketJobs.map(jobCardHtml).join('');
-  return `<div class="section-head"><div><h2>Find jobs</h2><p>Explore café jobs in your state or a place you’re considering moving to. Your profile stays saved in its current location.</p></div><button class="secondary" data-go="My Profile">Change work area</button></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<input class="search" id="job-search" type="search" aria-label="Search jobs" placeholder="Search cafés, jobs, skills, or locations"><article class="card">${searchSummaryHtml('jobs',marketJobs.length)}${rows||'<div class="empty-state"><div class="avatar">☕</div><h3>No jobs in this search area yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
+  return `<div class="section-head marketplace-section-head"><div><h2>Find jobs</h2><p>Find your next café, near home or in a new city.</p></div><button class="secondary" data-go="My Profile">Edit saved work area</button></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<article class="card marketplace-results">${searchSummaryHtml('jobs',marketJobs.length)}${rows||'<div class="empty-state"><div class="avatar">☕</div><h3>No jobs in this search area yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
 }
 function baristaDiscoveryHtml(){
   const rows=candidateProfiles.map(person=>{const haystack=[person.display_name,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code,person.availability,(person.skills||[]).join(' ')].join(' ').toLowerCase();return `<div class="item applicant-item" data-job-row data-search="${escapeHtml(haystack)}"><div class="applicant-main"><div class="avatar">${person.avatar_url?`<img src="${escapeHtml(person.avatar_url)}" alt="${escapeHtml(person.display_name||'Barista')} profile photo">`:'👤'}</div><div class="itemtext"><b>${escapeHtml(person.display_name||'Local barista')}</b><small>${escapeHtml(person.location||'Location not added')} · ${escapeHtml(person.availability||'Availability not added')}</small>${baristaWorkAreaHtml(person)}${marketplaceDistanceHtml(person.id)}<small>${escapeHtml((person.skills||[]).slice(0,4).join(' · ')||person.experience||'Profile available')}</small></div></div><div class="applicant-actions"><button class="secondary" data-view-barista="${escapeHtml(person.id)}">View profile</button>${discoveryButton(person.id)}</div></div>`}).join('');
-  return `<div class="section-head"><div><h2>Find baristas</h2><p>Find baristas by their preferred work area, including people planning a move. A private chat opens after both sides match.</p></div></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<input class="search" id="job-search" type="search" aria-label="Search baristas" placeholder="Search name, skill, or location"><article class="card">${searchSummaryHtml('baristas',candidateProfiles.length)}${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No matching baristas yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
+  return `<div class="section-head marketplace-section-head"><div><h2>Find baristas</h2><p>Find baristas ready to work in your area.</p></div></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<article class="card marketplace-results">${searchSummaryHtml('baristas',candidateProfiles.length)}${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No matching baristas yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
 }
 function jobPostsHtml(){const rows=marketJobs.map(job=>`<div class="item job-item job-post-item"><div class="avatar" aria-hidden="true">📋</div><div class="itemtext"><b>${escapeHtml(job.title)}</b><small>${escapeHtml(job.location)} · ${money(job)}</small><span class="job-state ${job.active?'active':''}">${job.active?'Visible to baristas':'Paused and hidden'}</span></div><div class="applicant-actions"><button class="secondary" data-edit-job="${escapeHtml(job.id)}">Edit post</button><button class="secondary job-toggle" data-toggle-job="${escapeHtml(job.id)}" data-next-active="${job.active?'false':'true'}">${job.active?'Pause post':'Resume post'}</button></div></div>`).join('');return `<div class="section-head section-head-actions"><div><p>Edit existing posts without losing applicants. Pause a role when it is filled.</p></div><button class="primary" data-post-job>Post a job</button></div>${marketplaceNoticeHtml()}<article class="card"><h3>Your jobs</h3>${rows||'<div class="empty-state"><div class="avatar">📋</div><h3>Post your first job</h3><p>Add pay, schedule, location, skills, and a friendly description.</p><button class="primary" data-post-job>Create job</button></div>'}</article>`}
 function applicantHtml(){const rows=applications.map(app=>`<div class="item applicant-item"><div class="applicant-main"><div class="avatar">${app.barista?.avatar_url?`<img src="${escapeHtml(app.barista.avatar_url)}" alt="${escapeHtml(app.barista?.display_name||'Barista')} profile photo">`:'👤'}</div><div class="itemtext"><b>${escapeHtml(app.barista?.display_name||'Barista')}</b><small>${escapeHtml(app.job?.title||'Your job')} · ${escapeHtml(app.barista?.location||'Location not added')} · ${escapeHtml(app.status)}</small></div></div><div class="applicant-actions"><button class="secondary" data-view-barista="${app.barista_id}" aria-label="View ${escapeHtml(app.barista?.display_name||'barista')} profile">View profile</button>${app.status==='interested'?`<button class="primary" data-match-app="${app.id}">Match</button>`:''}</div></div>`).join('');return `<div class="section-intro"><p>Review job applications and profile interest.</p></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}<article class="card"><h3>Job applicants</h3>${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No applicants yet</h3><p>Publish a job and complete your café profile to attract local baristas.</p><button class="primary" data-go="Job Posts">Post a job</button></div>'}</article>`}
@@ -1012,10 +1027,30 @@ async function manageAccountSubscription(button){
   try{const {data:{session}}=await activeClient.auth.getSession();const response=await fetch('/api/create-portal-session',{method:'POST',headers:{Authorization:`Bearer ${session?.access_token||''}`,'Content-Type':'application/json'},body:JSON.stringify({channel:'web'})}),result=await response.json().catch(()=>({}));if(!response.ok||!result.url)throw new Error(result.error||'Billing management is unavailable.');location.assign(result.url)}catch(error){alert(error.message||'Billing management is unavailable.');button.disabled=false;button.textContent='Manage subscription'}
 }
 
-function bindMarketplaceSearch(content){
-  const search=content.querySelector('#job-search');if(!search)return;
-  const update=()=>{const query=normalizePlace(search.value),rows=[...content.querySelectorAll('[data-job-row]')];let visible=0;for(const row of rows){row.hidden=!row.dataset.search.includes(query);if(!row.hidden)visible++}const count=content.querySelector('#marketplace-result-count'),empty=content.querySelector('#marketplace-search-empty');if(count)count.textContent=`${visible} of ${rows.length} ${count.dataset.resultNoun}`;if(empty)empty.hidden=visible>0||!query;};
-  search.value=marketplaceTextQuery;search.oninput=()=>{marketplaceTextQuery=search.value;update()};const clear=content.querySelector('[data-clear-market-search]');if(clear)clear.onclick=()=>{marketplaceTextQuery='';search.value='';update();search.focus()};update();
+function bindMarketplaceSearch(content) {
+  const search = content.querySelector('#job-search');
+  if (!search) return;
+  const update = () => {
+    const query = normalizePlace(search.value), rows = [...content.querySelectorAll('[data-job-row]')];
+    let visible = 0;
+    for (const row of rows) {
+      row.hidden = !row.dataset.search.includes(query);
+      if (!row.hidden) visible++;
+    }
+    const count = content.querySelector('#marketplace-result-count'), empty = content.querySelector('#marketplace-search-empty');
+    if (count) {
+      const noun = count.dataset.resultNoun;
+      count.textContent = query && visible !== rows.length
+        ? `${visible} of ${rows.length} ${rows.length === 1 ? noun.slice(0, -1) : noun}`
+        : `${visible} ${visible === 1 ? noun.slice(0, -1) : noun}`;
+    }
+    if (empty) empty.hidden = visible > 0 || !query || rows.length === 0;
+  };
+  search.value = marketplaceTextQuery;
+  search.oninput = () => { marketplaceTextQuery = search.value; update(); };
+  const clear = content.querySelector('[data-clear-market-search]');
+  if (clear) clear.onclick = () => { marketplaceTextQuery = ''; search.value = ''; update(); search.focus(); };
+  update();
 }
 function openJobEditor(id=null){
   if(currentRole!=='cafe_owner_manager')return;

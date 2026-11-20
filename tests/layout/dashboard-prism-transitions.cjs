@@ -11,7 +11,7 @@ const repo=path.resolve(__dirname,'../..');
  const scripts=[...raw.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].filter(m=>!m[1].includes('src=')).map(m=>m[2].replace(/^start\(\);$/m,''));
  const browser=await chromium.launch({headless:true,...(process.env.BJM_BROWSER_EXECUTABLE ? {executablePath:process.env.BJM_BROWSER_EXECUTABLE} : {})});
  const page=await browser.newPage({viewport:{width:1512,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname!=='preview.invalid')return route.abort();if(u.pathname==='/dashboard')return route.fulfill({contentType:'text/html',body:raw.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')});if(u.pathname.startsWith('/assets/')||['/checkout.css','/dashboard-quiet-focus.css'].includes(u.pathname)){const p=repo+u.pathname;return fs.existsSync(p)?route.fulfill({path:p}):route.fulfill({status:404,body:''});}return route.fulfill({contentType:'application/json',body:'{}'});});
+ await page.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname!=='preview.invalid')return route.abort();if(u.pathname==='/dashboard')return route.fulfill({contentType:'text/html',body:raw.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')});if(u.pathname.startsWith('/assets/')||['/checkout.css','/dashboard-quiet-focus.css','/marketplace-location-search.css'].includes(u.pathname)){const p=repo+u.pathname;return fs.existsSync(p)?route.fulfill({path:p}):route.fulfill({status:404,body:''});}return route.fulfill({contentType:'application/json',body:'{}'});});
  await page.goto('https://preview.invalid/dashboard');
  await page.addScriptTag({content:fs.readFileSync(repo+'/us-location.js','utf8')});
  await page.addScriptTag({content:fs.readFileSync(repo+'/dashboard-quiet-focus.js','utf8')});
@@ -70,6 +70,25 @@ const repo=path.resolve(__dirname,'../..');
     if(section!=='Overview')assert.deepEqual(m.visiblePageTitle,[m.expectedTitle],`Missing or duplicated page title: ${role}/${section}/${width}`);
     assert.ok(m.headings.every(h=>!/(Georgia|Times New Roman)/i.test(h.font)),`Old serif heading returned on ${role}/${section}/${width}`);
     assert.ok(m.buttons.every(b=>b.left>=-1&&b.right<=width+1),JSON.stringify({role,populated,section,width,buttons:m.buttons}));
+    if(section==='Discover'){
+     const searchLayout=await page.locator('#marketplace-location-form').evaluate(form=>{
+      const bounds=element=>{const rect=element.getBoundingClientRect();return {left:rect.left,right:rect.right,height:rect.height};};
+      const controls=[...form.querySelectorAll('input:not([type="checkbox"]):not([type="hidden"]),select')].filter(element=>element.getClientRects().length);
+      return {
+       form:bounds(form),
+       controls:controls.map(element=>({name:element.name||element.id,...bounds(element),hasLabel:Boolean(element.labels?.length)})),
+       buttons:[...form.querySelectorAll('button')].filter(element=>element.getClientRects().length).map(element=>({text:element.textContent.trim(),...bounds(element)}))
+      };
+     });
+     assert.equal(searchLayout.controls.length,4,`Search keywords and three location fields must share one panel: ${role}/${width}`);
+     assert.ok(searchLayout.form.left>=-1&&searchLayout.form.right<=width+1,`Search panel exceeds viewport: ${JSON.stringify({role,width,searchLayout})}`);
+     for(const control of searchLayout.controls){
+      assert.ok(Math.abs(control.height-48)<=1,`Search controls must share 48px height: ${JSON.stringify({role,width,control})}`);
+      assert.ok(control.left>=searchLayout.form.left-1&&control.right<=searchLayout.form.right+1,`Search control exceeds its panel: ${JSON.stringify({role,width,control})}`);
+      assert.ok(control.hasLabel,`Search control needs a visible label: ${JSON.stringify({role,width,control})}`);
+     }
+     for(const button of searchLayout.buttons)assert.ok(button.height>=44,`Search actions need 44px targets: ${JSON.stringify({role,width,button})}`);
+    }
     assert.ok(m.navLabels.length>0,`No visible navigation labels: ${role}/${section}/${width}`);
     for(const label of m.navLabels){
      for(const [container,b] of Object.entries({label:label.labelBounds,button:label.buttonBounds,viewport:{left:0,right:width,top:0,bottom:m.height}})){
