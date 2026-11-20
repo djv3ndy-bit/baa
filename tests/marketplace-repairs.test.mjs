@@ -16,9 +16,9 @@ function source(name) {
   const next = tail.slice(1).search(/\n(?=(?:async )?function |Object\.defineProperty|let activeMessageApplicationId|document\.)/);
   return next < 0 ? tail : tail.slice(0, next + 1);
 }
-const baseFunctions = ['contentSaveMessage', 'normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
+const baseFunctions = ['contentSaveMessage', 'normalizePlace', 'floridaPlaceParts', 'legacyJobState', 'legacyJobCity', 'isFloridaPlace', 'workArea', 'workAreaLabel', 'jobMatchesBaristaLocation', 'candidateMatchesCafeLocation', 'escapeHtml', 'money', 'cafeImage', 'discoveryState', 'discoveryButton', 'incomingInterestsHtml', 'marketplaceNoticeHtml', 'searchSummaryHtml', 'defaultMarketplaceLocation', 'marketplaceLocationFormHtml', 'marketplaceDistanceHtml', 'baristaWorkAreaHtml', 'applyMarketplaceLocation', 'applicationButton', 'jobCardHtml', 'jobsHtml', 'baristaDiscoveryHtml', 'jobDetailsHtml', 'applicationsHtml'];
 function context(extra = {}, functions = []) {
-  const ctx = { currentRole: 'barista', currentUser: { id: 'barista' }, currentProfile: { id: 'barista', location: 'Miami, FL' }, applications: [], discoveryInterests: [], discoveryMatches: [], discoveryProfiles: {}, candidateProfiles: [], marketJobs: [], marketplaceRefreshMessage: '', editingJobId: null, window: {}, ...extra };
+  const ctx = { currentRole: 'barista', currentUser: { id: 'barista' }, currentProfile: { id: 'barista', location: 'Miami, FL' }, applications: [], discoveryInterests: [], discoveryMatches: [], discoveryProfiles: {}, candidateProfiles: [], marketJobs: [], marketplaceRefreshMessage: '', editingJobId: null, marketplaceLocationSearch: null, marketplaceLocationIndex: null, marketplaceTextQuery: '', marketplaceUnlocatedCount: 0, marketplaceLocationDistances: new Map(), availableMarketJobs: [], availableCandidateProfiles: [], window: {}, ...extra };
   ctx.window.BaristaMatchLocation = locationWindow.BaristaMatchLocation;
   ctx.window.BaristaMatchProfileMediaReview=profileMediaSandbox.BaristaMatchProfileMediaReview;
   vm.createContext(ctx);
@@ -31,7 +31,7 @@ test('incoming interests remain actionable without local active jobs and when se
   const ctx = context({ discoveryInterests: [{ sender_id: 'cafe', target_id: 'barista' }], discoveryProfiles: { cafe: { id: 'cafe', cafe_name: 'Outside search café', location: 'Orlando, FL' } } });
   assert.match(ctx.jobsHtml(), /Interested in you/);
   assert.match(ctx.jobsHtml(), /data-discovery-interest="cafe"[^>]*>Match back/);
-  assert.match(ctx.jobsHtml(), /No jobs in your saved work area/);
+  assert.match(ctx.jobsHtml(), /No jobs in this search area/);
   ctx.currentRole = 'cafe_owner_manager'; ctx.currentUser = { id: 'cafe' };
   ctx.discoveryInterests = [{ sender_id: 'barista', target_id: 'cafe' }];
   ctx.discoveryProfiles = { barista: { id: 'barista', display_name: 'Interested barista' } };
@@ -430,8 +430,13 @@ test('home uses nationwide work-area wording and never assigns the seeker locati
   vm.runInContext(quietFocus, ctx);
   const settings = { role: 'barista', profile: { location: 'Seattle, WA' }, marketJobs: [], applications: [], discoveryInterests: [], discoveryMatches: [], notificationRows: [], profileStrength: 100, workAreaLabel: 'Seattle, WA' };
   const empty = ctx.window.BaristaMatchQuietFocus.render(settings);
-  assert.match(empty, /saved work area/);
+  assert.match(empty, /current search area/);
   assert.doesNotMatch(empty, /Florida/);
+  for (const role of ['barista', 'cafe_owner_manager']) {
+    const relocated = ctx.window.BaristaMatchQuietFocus.render({ ...settings, role, searchAreaLabel: 'Within 25 miles of Austin, TX' });
+    assert.match(relocated, /Within 25 miles of Austin, TX/);
+    assert.doesNotMatch(relocated, /<span>Seattle, WA<\/span>/);
+  }
   const missing = { ...job, location: '', owner: { cafe_name: 'Test Café' } };
   const home = ctx.window.BaristaMatchQuietFocus.render({ ...settings, marketJobs: [missing] });
   assert.match(home, /Location not added/);
