@@ -155,7 +155,7 @@ test('actual auth callback clears switched or signed-out media state without los
   for(const completed of [false,true])for(const event of ['SIGNED_OUT','TOKEN_REFRESHED']){
     const redirects=[],app={hidden:false};let invalidations=0;
     const client={};const context={client,activeClient:client,currentUser:{id:USER},currentProfile:{id:USER},currentDemographics:{date_of_birth:'2000-01-01'},accountDeletionCompleted:completed,
-      invalidateProfileMediaSession:()=>invalidations++,document:{getElementById:()=>app},location:{replace:url=>redirects.push(url)}};
+      clearMarketplaceSearchSession:()=>{},invalidateProfileMediaSession:()=>invalidations++,document:{getElementById:()=>app},location:{replace:url=>redirects.push(url)}};
     const onAuthChange=vm.runInNewContext(callback,context);
     onAuthChange(event,event==='SIGNED_OUT'?null:{user:{id:OTHER}});
     assert.equal(invalidations,1);assert.equal(app.hidden,true);assert.equal(context.currentUser,null);

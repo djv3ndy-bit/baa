@@ -378,7 +378,8 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
 </style>
 <link rel="stylesheet" href="/dashboard-quiet-focus.css">
 <link rel="stylesheet" href="/checkout.css">
-<script defer src="/analytics.js"></script><meta name="robots" content="noindex,follow"></head>
+<script defer src="/analytics.js"></script><meta name="robots" content="noindex,follow"><link rel="stylesheet" href="/marketplace-location-search.css">
+</head>
 <body class="prism-dashboard-page">
 <div class="loading" id="loading" role="status" aria-live="polite"><div><p id="loading-message">Opening your BaristaMatch workspace…</p><div class="loading-actions" id="loading-actions" hidden><a class="primary" href="/login.html">Log in</a><button class="logout" type="button" onclick="location.reload()">Try again</button></div></div></div>
 <div class="shell prism-dashboard-shell" id="app" hidden>
@@ -429,6 +430,7 @@ body{background:linear-gradient(145deg,#fbf7f1 0%,#f8f0e8 55%,#fffaf5 100%)}
 <dialog class="profile-dialog" id="message-dialog"><div class="profile-form"><h2 id="message-title">Messages</h2><p id="message-subtitle">Chat with your match.</p><div class="message-list" id="message-list"></div><form class="message-compose" id="message-form"><input name="body" maxlength="2000" autocomplete="off" placeholder="Write a message…" required><button class="primary" type="submit">Send</button></form><p class="form-status" id="message-status"></p><div class="form-actions"><button class="secondary" type="button" id="message-close">Close</button></div></div></dialog>
 <dialog class="profile-dialog" id="delete-dialog"><form class="profile-form" id="delete-form"><h2>Delete your account?</h2><p>This permanently removes your profile and BaristaMatch activity. This action cannot be undone. Website subscriptions are canceled immediately; deletion does not issue a refund. Deleting your account does not cancel Apple or Google Play subscriptions. Cancel those in your store subscription settings to stop renewal.</p><p>Limited records may be retained as described in our Privacy Policy. If you used Sign in with Apple, we will show how to disconnect Apple after your account is deleted.</p><label class="delete-confirm">Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label><p id="delete-store-management" hidden><a href="https://apps.apple.com/account/subscriptions">Manage Apple subscriptions</a> · <a href="https://play.google.com/store/account/subscriptions?package=com.baristajobmatch.app">Manage Google Play subscriptions</a></p><p class="form-status" id="delete-status" role="status"></p><div class="form-actions"><button class="secondary" type="button" id="delete-cancel">Keep my account</button><button class="danger-button" type="submit">Permanently delete account</button></div></form></dialog>
 <script src="/us-location.js"></script>
+<script src="/marketplace-location-search.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.102.0/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
 <script src="/dashboard-quiet-focus.js"></script>
 <script src="/checkout.js"></script>
@@ -459,6 +461,10 @@ cafe_owner_manager:{
 let accountDeletionInProgress=false,accountDeletionCompleted=false,authStorageKey='';
 let activeClient,currentUser,currentRole,currentView,currentProfile={},currentDemographics={},candidateProfiles=[],profileViews=[],marketJobs=[],applications=[],discoveryInterests=[],discoveryMatches=[],notificationRows=[],notificationRealtimeChannel=null,currentSection='Overview';
 let discoveryProfiles={},marketplaceRefreshMessage='',editingJobId=null,jobEditorVersion=0,pendingJobDraftMemory=null;
+let availableMarketJobs = [], availableCandidateProfiles = [];
+let marketplaceLocationSearch = null, marketplaceLocationIndex = null, marketplaceLocationIndexPromise = null;
+let marketplaceLocationRequest = 0, marketplaceTextQuery = '', marketplaceUnlocatedCount = 0;
+let marketplaceLocationDistances = new Map();
 const profileFields={barista:['display_name','avatar_url','location','bio','skills','availability','experience','pay_expectation'],cafe_owner_manager:['cafe_name','avatar_url','location','bio','cafe_address','open_hours','shop_type','barista_preferences']};
 function normalizeRole(value){return ['barista','cafe_owner_manager'].includes(value)?value:null}
 async function ensureProfileFromMetadata(user,client=activeClient){
@@ -501,7 +507,7 @@ return `<section class="cafe-wow"><div class="cafe-wow-head"><div class="cafe-wo
 const legacyOverviewHtml=overviewHtml;
 overviewHtml=function quietFocusOverviewHtml(view){
   if(!window.BaristaMatchQuietFocus?.render)return legacyOverviewHtml(view);
-  return window.BaristaMatchQuietFocus.render({role:currentRole,profile:currentProfile,profileName:profileName(),profileStrength:profileStrength(),workAreaLabel:workAreaLabel(),marketJobs,applications,discoveryInterests,discoveryMatches,notificationRows});
+  return window.BaristaMatchQuietFocus.render({role:currentRole,profile:currentProfile,profileName:profileName(),profileStrength:profileStrength(),workAreaLabel:workAreaLabel(),searchAreaLabel:marketplaceLocationSearch?.label,marketJobs,applications,discoveryInterests,discoveryMatches,notificationRows});
 };
 function profileHtml(){
   const score=profileStrength();
@@ -532,6 +538,123 @@ function workArea(profile){return window.BaristaMatchLocation.usWorkArea(profile
 function workAreaLabel(){return window.BaristaMatchLocation.usWorkAreaLabel(currentProfile)}
 function jobMatchesBaristaLocation(job){return currentRole!=='barista'||window.BaristaMatchLocation.usJobMatchesWorkArea(currentProfile,job)}
 function candidateMatchesCafeLocation(profile){return window.BaristaMatchLocation.usCandidateMatchesCafe(currentProfile,profile)}
+function defaultMarketplaceLocation() {
+  const area = currentRole === 'barista'
+    ? workArea(currentProfile)
+    : window.BaristaMatchLocation.usPlaceParts(currentProfile.location, 'FL');
+  return { state: area.state.toUpperCase(), place: area.postal || area.city, radius: 'city', sameState: true };
+}
+function marketplaceLocationFormHtml() {
+  const options = marketplaceLocationSearch || defaultMarketplaceLocation();
+  const states = Object.entries(window.BaristaMatchLocation.US_STATES).map(([code, name]) =>
+    `<option value="${code}" ${options.state === code ? 'selected' : ''}>${name}</option>`).join('');
+  const ranges = [['city', 'Exact city or ZIP'], [10, 'Within 10 miles'], [25, 'Within 25 miles'], [50, 'Within 50 miles'], [100, 'Within 100 miles'], ['state', 'Entire state']];
+  const radiusOptions = ranges.map(([value, label]) =>
+    `<option value="${value}" ${String(options.radius) === String(value) ? 'selected' : ''}>${label}</option>`).join('');
+  const numericRadius = Number.isFinite(Number(options.radius));
+  const label = marketplaceLocationSearch?.label || (currentRole === 'barista' ? workAreaLabel() : currentProfile.location || 'Your café city');
+  const noun = currentRole === 'barista' ? 'jobs' : 'baristas';
+  return `<form class="marketplace-location-form" id="marketplace-location-form">
+    <label>State<select name="search_state" required><option value="">Choose a state</option>${states}</select></label>
+    <label>City or ZIP<input name="search_place" value="${escapeHtml(options.place || '')}" maxlength="120" placeholder="Miami or 33101" autocomplete="off" ${options.radius === 'state' ? 'disabled' : 'required'}></label>
+    <label>Search area<select name="search_radius">${radiusOptions}</select></label>
+    <div class="marketplace-location-actions"><button class="primary" type="submit">Search ${noun}</button><button class="secondary" type="button" data-reset-search-area>Reset</button></div>
+    <label class="marketplace-state-boundary"><input type="checkbox" name="search_same_state" ${options.sameState ? 'checked' : ''} ${numericRadius ? '' : 'disabled'}>Stay within the selected state</label>
+    <p class="marketplace-location-status" id="marketplace-location-status" role="status" aria-live="polite"></p>
+  </form><p class="marketplace-location-summary">${escapeHtml(label)}</p>${numericRadius ? `<p class="marketplace-location-note">Distances are approximate straight-line distances between city or ZIP centers. Location data from <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer">GeoNames</a>.</p>` : ''}${marketplaceUnlocatedCount ? `<p class="marketplace-location-note" role="status">${marketplaceUnlocatedCount} ${noun} could not be located for a miles search. Try exact city or ZIP, or the entire state, to include locations without a known center.</p>` : ''}`;
+}
+async function loadMarketplaceLocationIndex() {
+  if (marketplaceLocationIndex) return marketplaceLocationIndex;
+  if (!marketplaceLocationIndexPromise) {
+    marketplaceLocationIndexPromise = (async () => {
+      const response = await fetch('/assets/us-postal-centers.json', { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error('Miles search is temporarily unavailable. Try exact city or ZIP, or the entire state.');
+      marketplaceLocationIndex = window.BaristaMatchSearchLocation.createIndex(await response.json());
+      return marketplaceLocationIndex;
+    })().catch(error => {
+      marketplaceLocationIndexPromise = null;
+      throw new Error('Miles search is temporarily unavailable. Try exact city or ZIP, or the entire state.');
+    });
+  }
+  return marketplaceLocationIndexPromise;
+}
+function applyMarketplaceLocation() {
+  marketplaceLocationDistances = new Map();
+  marketplaceUnlocatedCount = 0;
+  if (marketplaceLocationSearch) {
+    const rows = currentRole === 'barista' ? availableMarketJobs : availableCandidateProfiles;
+    const result = window.BaristaMatchSearchLocation.filterResults(marketplaceLocationIndex, marketplaceLocationSearch, rows, currentRole);
+    marketplaceLocationDistances = result.distances;
+    marketplaceUnlocatedCount = result.unlocatedCount;
+    if (currentRole === 'barista') marketJobs = result.rows;
+    else candidateProfiles = result.rows;
+    return;
+  }
+  if (currentRole === 'barista') marketJobs = availableMarketJobs.filter(jobMatchesBaristaLocation);
+  else candidateProfiles = availableCandidateProfiles.filter(candidateMatchesCafeLocation);
+}
+function resetMarketplaceLocation() {
+  marketplaceLocationRequest++;
+  marketplaceLocationSearch = null;
+  marketplaceTextQuery = '';
+  applyMarketplaceLocation();
+  openSection(currentSection, currentView, currentRole);
+}
+function clearMarketplaceSearchSession() {
+  marketplaceLocationRequest++;
+  marketplaceLocationSearch = null;
+  marketplaceTextQuery = '';
+  availableMarketJobs = [];
+  availableCandidateProfiles = [];
+  marketJobs = [];
+  candidateProfiles = [];
+  marketplaceLocationDistances = new Map();
+  marketplaceUnlocatedCount = 0;
+}
+function marketplaceDistanceHtml(id) {
+  const miles = marketplaceLocationDistances.get(id);
+  return Number.isFinite(miles) ? `<small>About ${miles < 1 ? 'less than 1 mile' : `${Math.round(miles)} miles`} from search center</small>` : '';
+}
+function baristaWorkAreaHtml(profile) {
+  const area = workArea(profile);
+  const label = area.postal ? `ZIP ${area.postal}, ${area.state.toUpperCase()}` : `${area.city}, ${area.state.toUpperCase()}`;
+  return area.state && (area.city || area.postal) ? `<small>Preferred work area · ${escapeHtml(label)}</small>` : '';
+}
+function bindMarketplaceLocationForm(content) {
+  const form = content.querySelector('#marketplace-location-form');
+  if (!form) return;
+  const range = form.elements.search_radius;
+  const updateFields = () => {
+    form.elements.search_place.disabled = range.value === 'state';
+    form.elements.search_place.required = range.value !== 'state';
+    form.elements.search_same_state.disabled = ['city', 'state'].includes(range.value);
+  };
+  range.onchange = updateFields;
+  content.querySelector('[data-reset-search-area]').onclick = resetMarketplaceLocation;
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const request = ++marketplaceLocationRequest, owner = currentUser?.id, role = currentRole;
+    const options = { state: form.elements.search_state.value, place: form.elements.search_place.value,
+      radius: range.value, sameState: form.elements.search_same_state.checked };
+    const button = form.querySelector('[type="submit"]');
+    const status = form.querySelector('#marketplace-location-status');
+    const currentRequest = () => request === marketplaceLocationRequest && owner === currentUser?.id && role === currentRole;
+    button.disabled = true;
+    status.textContent = 'Updating search area…';
+    try {
+      const index = ['city', 'state'].includes(options.radius) ? marketplaceLocationIndex : await loadMarketplaceLocationIndex();
+      const selection = window.BaristaMatchSearchLocation.resolveSearch(index, options);
+      if (!currentRequest() || document.getElementById('marketplace-location-form') !== form) return;
+      marketplaceLocationSearch = selection;
+      applyMarketplaceLocation();
+      if (document.getElementById('marketplace-location-form') === form) openSection(currentSection, currentView, currentRole);
+    } catch (error) {
+      if (currentRequest() && document.getElementById('marketplace-location-form') === form) status.textContent = error.message || 'We could not update the search area. Try again.';
+    } finally {
+      if (currentRequest()) button.disabled = false;
+    }
+  };
+}
 function discoveryState(targetId){
   const matched=discoveryMatches.some(m=>m.barista_id===targetId||m.cafe_id===targetId),sent=discoveryInterests.some(i=>i.sender_id===currentUser.id&&i.target_id===targetId),received=discoveryInterests.some(i=>i.sender_id===targetId&&i.target_id===currentUser.id);
   return matched?{label:'Matched ✓',className:'secondary',disabled:true}:received?{label:sent?'Finish matching':'Match back',className:'primary',disabled:false}:sent?{label:'Interest sent ✓',className:'secondary',disabled:true}:{label:'Show interest',className:'primary',disabled:false};
@@ -548,15 +671,15 @@ function searchSummaryHtml(noun,count){return `<h3 id="marketplace-result-count"
 function applicationButton(job){const existing=applications.find(app=>app.job_id===job.id);return existing?`<button class="secondary" disabled>${existing.status==='matched'?'Matched ✓':'Application sent ✓'}</button>`:`<button class="primary" data-apply-job="${escapeHtml(job.id)}">Apply to this job</button>`}
 function jobCardHtml(job){
   const haystack=[job.title,job.owner?.cafe_name,job.location,job.description,job.schedule,(job.required_skills||[]).join(' ')].join(' ').toLowerCase();
-  return `<div class="item job-item" data-job-row data-search="${escapeHtml(haystack)}"><div class="avatar">${cafeImage(job.owner)}</div><div class="itemtext"><b>${escapeHtml(job.title||'Barista role')}</b><small>${escapeHtml(job.owner?.cafe_name||'Local café')} · ${escapeHtml(job.location||'Location not added')}</small><small>${money(job)} · ${escapeHtml(job.schedule||'Schedule not added')}</small></div><div class="applicant-actions"><button class="secondary" data-view-job="${escapeHtml(job.id)}">View job</button>${applicationButton(job)}</div></div>`;
+  return `<div class="item job-item" data-job-row data-search="${escapeHtml(haystack)}"><div class="avatar">${cafeImage(job.owner)}</div><div class="itemtext"><b>${escapeHtml(job.title||'Barista role')}</b><small>${escapeHtml(job.owner?.cafe_name||'Local café')} · ${escapeHtml(job.location||'Location not added')}</small><small>${money(job)} · ${escapeHtml(job.schedule||'Schedule not added')}</small>${marketplaceDistanceHtml(job.id)}</div><div class="applicant-actions"><button class="secondary" data-view-job="${escapeHtml(job.id)}">View job</button>${applicationButton(job)}</div></div>`;
 }
 function jobsHtml(){
   const rows=marketJobs.map(jobCardHtml).join('');
-  return `<div class="section-head"><div><h2>Find jobs</h2><p>Jobs in ${escapeHtml(workAreaLabel())}. ZIP searches are exact; city searches match the city and state.</p></div><button class="secondary" data-go="My Profile">Change work area</button></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}<input class="search" id="job-search" type="search" aria-label="Search jobs" placeholder="Search cafés, jobs, skills, or locations"><article class="card">${searchSummaryHtml('jobs',marketJobs.length)}${rows||'<div class="empty-state"><div class="avatar">☕</div><h3>No jobs in your saved work area yet</h3><p>Check your preferred city or ZIP in My Profile, or return as cafés publish roles.</p></div>'}</article>`;
+  return `<div class="section-head"><div><h2>Find jobs</h2><p>Explore café jobs in your state or a place you’re considering moving to. Your profile stays saved in its current location.</p></div><button class="secondary" data-go="My Profile">Change work area</button></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<input class="search" id="job-search" type="search" aria-label="Search jobs" placeholder="Search cafés, jobs, skills, or locations"><article class="card">${searchSummaryHtml('jobs',marketJobs.length)}${rows||'<div class="empty-state"><div class="avatar">☕</div><h3>No jobs in this search area yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
 }
 function baristaDiscoveryHtml(){
-  const rows=candidateProfiles.map(person=>{const haystack=[person.display_name,person.location,person.availability,(person.skills||[]).join(' ')].join(' ').toLowerCase();return `<div class="item applicant-item" data-job-row data-search="${escapeHtml(haystack)}"><div class="applicant-main"><div class="avatar">${person.avatar_url?`<img src="${escapeHtml(person.avatar_url)}" alt="${escapeHtml(person.display_name||'Barista')} profile photo">`:'👤'}</div><div class="itemtext"><b>${escapeHtml(person.display_name||'Local barista')}</b><small>${escapeHtml(person.location||'Location not added')} · ${escapeHtml(person.availability||'Availability not added')}</small><small>${escapeHtml((person.skills||[]).slice(0,4).join(' · ')||person.experience||'Profile available')}</small></div></div><div class="applicant-actions"><button class="secondary" data-view-barista="${escapeHtml(person.id)}">View profile</button>${discoveryButton(person.id)}</div></div>`}).join('');
-  return `<div class="section-head"><div><h2>Find baristas</h2><p>Profiles with a work city or ZIP and state matching your café. A private chat opens after both sides match.</p></div></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}<input class="search" id="job-search" type="search" aria-label="Search baristas" placeholder="Search name, skill, or location"><article class="card">${searchSummaryHtml('baristas',candidateProfiles.length)}${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No matching baristas yet</h3><p>Check your café city and address, then return as local baristas complete their profiles.</p></div>'}</article>`;
+  const rows=candidateProfiles.map(person=>{const haystack=[person.display_name,person.location,person.preferred_city,person.preferred_state,person.preferred_postal_code,person.availability,(person.skills||[]).join(' ')].join(' ').toLowerCase();return `<div class="item applicant-item" data-job-row data-search="${escapeHtml(haystack)}"><div class="applicant-main"><div class="avatar">${person.avatar_url?`<img src="${escapeHtml(person.avatar_url)}" alt="${escapeHtml(person.display_name||'Barista')} profile photo">`:'👤'}</div><div class="itemtext"><b>${escapeHtml(person.display_name||'Local barista')}</b><small>${escapeHtml(person.location||'Location not added')} · ${escapeHtml(person.availability||'Availability not added')}</small>${baristaWorkAreaHtml(person)}${marketplaceDistanceHtml(person.id)}<small>${escapeHtml((person.skills||[]).slice(0,4).join(' · ')||person.experience||'Profile available')}</small></div></div><div class="applicant-actions"><button class="secondary" data-view-barista="${escapeHtml(person.id)}">View profile</button>${discoveryButton(person.id)}</div></div>`}).join('');
+  return `<div class="section-head"><div><h2>Find baristas</h2><p>Find baristas by their preferred work area, including people planning a move. A private chat opens after both sides match.</p></div></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}${marketplaceLocationFormHtml()}<input class="search" id="job-search" type="search" aria-label="Search baristas" placeholder="Search name, skill, or location"><article class="card">${searchSummaryHtml('baristas',candidateProfiles.length)}${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No matching baristas yet</h3><p>Try a nearby city, a larger radius, or another state.</p></div>'}</article>`;
 }
 function jobPostsHtml(){const rows=marketJobs.map(job=>`<div class="item job-item job-post-item"><div class="avatar" aria-hidden="true">📋</div><div class="itemtext"><b>${escapeHtml(job.title)}</b><small>${escapeHtml(job.location)} · ${money(job)}</small><span class="job-state ${job.active?'active':''}">${job.active?'Visible to baristas':'Paused and hidden'}</span></div><div class="applicant-actions"><button class="secondary" data-edit-job="${escapeHtml(job.id)}">Edit post</button><button class="secondary job-toggle" data-toggle-job="${escapeHtml(job.id)}" data-next-active="${job.active?'false':'true'}">${job.active?'Pause post':'Resume post'}</button></div></div>`).join('');return `<div class="section-head section-head-actions"><div><p>Edit existing posts without losing applicants. Pause a role when it is filled.</p></div><button class="primary" data-post-job>Post a job</button></div>${marketplaceNoticeHtml()}<article class="card"><h3>Your jobs</h3>${rows||'<div class="empty-state"><div class="avatar">📋</div><h3>Post your first job</h3><p>Add pay, schedule, location, skills, and a friendly description.</p><button class="primary" data-post-job>Create job</button></div>'}</article>`}
 function applicantHtml(){const rows=applications.map(app=>`<div class="item applicant-item"><div class="applicant-main"><div class="avatar">${app.barista?.avatar_url?`<img src="${escapeHtml(app.barista.avatar_url)}" alt="${escapeHtml(app.barista?.display_name||'Barista')} profile photo">`:'👤'}</div><div class="itemtext"><b>${escapeHtml(app.barista?.display_name||'Barista')}</b><small>${escapeHtml(app.job?.title||'Your job')} · ${escapeHtml(app.barista?.location||'Location not added')} · ${escapeHtml(app.status)}</small></div></div><div class="applicant-actions"><button class="secondary" data-view-barista="${app.barista_id}" aria-label="View ${escapeHtml(app.barista?.display_name||'barista')} profile">View profile</button>${app.status==='interested'?`<button class="primary" data-match-app="${app.id}">Match</button>`:''}</div></div>`).join('');return `<div class="section-intro"><p>Review job applications and profile interest.</p></div>${marketplaceNoticeHtml()}${incomingInterestsHtml()}<article class="card"><h3>Job applicants</h3>${rows||'<div class="empty-state"><div class="avatar">👥</div><h3>No applicants yet</h3><p>Publish a job and complete your café profile to attract local baristas.</p><button class="primary" data-go="Job Posts">Post a job</button></div>'}</article>`}
@@ -582,14 +705,14 @@ async function loadLegacyMarketplaceData(){
       loadAllRows(()=>activeClient.from('jobs').select(jobFields+',owner:profiles!jobs_owner_id_fkey(cafe_name,location,avatar_url,bio,cafe_address,open_hours,shop_type,barista_preferences,bar_picture_url)').eq('active',true).order('created_at',{ascending:false}).order('id')),
       loadAllRows(()=>activeClient.from('applications').select('id,job_id,status,created_at,job:jobs!applications_job_id_fkey(id,title,owner:profiles!jobs_owner_id_fkey(cafe_name,avatar_url))').eq('barista_id',currentUser.id).order('created_at',{ascending:false}).order('id'))
     ]);
-    profileViews=views;marketJobs=jobs.filter(job=>job.owner&&jobMatchesBaristaLocation(job));applications=apps;
+    profileViews=views;availableMarketJobs=jobs.filter(job=>job.owner);applications=apps;applyMarketplaceLocation();
   }else{
     const [jobs,profiles,apps]=await Promise.all([
       loadAllRows(()=>activeClient.from('jobs').select(jobFields).eq('owner_id',currentUser.id).order('created_at',{ascending:false}).order('id')),
       loadAllRows(()=>activeClient.from('profiles').select('id,display_name,location,bio,skills,availability,experience,pay_expectation,video_path,avatar_url,preferred_city,preferred_state,preferred_postal_code').eq('role','barista').eq('is_discoverable',true).eq('visible_to_cafes',true).order('updated_at',{ascending:false}).order('id')),
       loadAllRows(()=>activeClient.from('applications').select('id,job_id,barista_id,status,created_at,job:jobs!applications_job_id_fkey!inner(id,title,owner_id),barista:profiles!applications_barista_id_fkey(id,display_name,location,bio,skills,availability,experience,pay_expectation,video_path,avatar_url)').eq('job.owner_id',currentUser.id).order('created_at',{ascending:false}).order('id'))
     ]);
-    marketJobs=jobs;candidateProfiles=profiles.filter(candidateMatchesCafeLocation);applications=apps;
+    marketJobs=jobs;availableCandidateProfiles=profiles;applications=apps;applyMarketplaceLocation();
   }
 }
 async function loadDiscoveryData(){
@@ -603,7 +726,7 @@ async function loadDiscoveryData(){
 async function loadMarketplaceData(){await loadLegacyMarketplaceData();await loadDiscoveryData();marketplaceRefreshMessage=''}
 async function refreshMarketplaceAfterProfileSave(savedItem='Your profile'){
   // Remove cached results immediately so the previous work area is never shown as current.
-  marketJobs=[];candidateProfiles=[];
+  marketJobs=[];candidateProfiles=[];availableMarketJobs=[];availableCandidateProfiles=[];
   try{await loadMarketplaceData();return true}catch(error){marketplaceRefreshMessage=`${savedItem} was saved. Results could not refresh; please try again.`;return false}
 }
 async function refreshMarketplace(button){
@@ -892,7 +1015,7 @@ async function manageAccountSubscription(button){
 function bindMarketplaceSearch(content){
   const search=content.querySelector('#job-search');if(!search)return;
   const update=()=>{const query=normalizePlace(search.value),rows=[...content.querySelectorAll('[data-job-row]')];let visible=0;for(const row of rows){row.hidden=!row.dataset.search.includes(query);if(!row.hidden)visible++}const count=content.querySelector('#marketplace-result-count'),empty=content.querySelector('#marketplace-search-empty');if(count)count.textContent=`${visible} of ${rows.length} ${count.dataset.resultNoun}`;if(empty)empty.hidden=visible>0||!query;};
-  search.oninput=update;const clear=content.querySelector('[data-clear-market-search]');if(clear)clear.onclick=()=>{search.value='';update();search.focus()};update();
+  search.value=marketplaceTextQuery;search.oninput=()=>{marketplaceTextQuery=search.value;update()};const clear=content.querySelector('[data-clear-market-search]');if(clear)clear.onclick=()=>{marketplaceTextQuery='';search.value='';update();search.focus()};update();
 }
 function openJobEditor(id=null){
   if(currentRole!=='cafe_owner_manager')return;
@@ -937,7 +1060,7 @@ async function submitJobForm(event){
   finally{if(ownsEditor()){button.disabled=false;button.textContent=editingJobId?'Save changes':'Publish job'}}
 }
 
-function bindContentActions(){const content=document.getElementById('content');content.querySelectorAll('[data-go]').forEach(button=>{button.onclick=()=>openSection(button.dataset.go,currentView,currentRole);if(button.getAttribute('role')==='button')button.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openSection(button.dataset.go,currentView,currentRole)}}});content.querySelectorAll('[data-billing]').forEach(button=>button.onclick=()=>openBilling(button));content.querySelectorAll('[data-conversation-app]').forEach(button=>button.onclick=()=>selectConversation(button.dataset.conversationApp,button.dataset.conversationName,button.dataset.conversationDetail));content.querySelectorAll('[data-conversation-match]').forEach(button=>button.onclick=()=>selectDiscoveryConversation(button.dataset.conversationMatch,button.dataset.conversationName,button.dataset.conversationDetail));content.querySelectorAll('[data-discovery-interest]').forEach(button=>button.onclick=()=>sendDiscoveryInterest(button.dataset.discoveryInterest,button));content.querySelectorAll('[data-view-cafe]').forEach(button=>button.onclick=()=>openCafeProfile(button.dataset.viewCafe));content.querySelectorAll('[data-edit-profile]').forEach(button=>button.onclick=openProfileEditor);content.querySelectorAll('[data-view-barista]').forEach(button=>button.onclick=()=>openCandidateReliable(button.dataset.viewBarista));content.querySelectorAll('[data-post-job]').forEach(button=>button.onclick=()=>requestNewJobEditor(button));content.querySelectorAll('[data-edit-job]').forEach(button=>button.onclick=()=>openJobEditor(button.dataset.editJob));content.querySelectorAll('[data-view-job]').forEach(button=>button.onclick=()=>openJobDetails(button.dataset.viewJob));content.querySelectorAll('[data-refresh-marketplace]').forEach(button=>button.onclick=()=>refreshMarketplace(button));content.querySelectorAll('[data-apply-job]').forEach(button=>button.onclick=()=>applyToJob(button.dataset.applyJob,button));content.querySelectorAll('[data-toggle-job]').forEach(button=>button.onclick=()=>toggleJob(button.dataset.toggleJob,button.dataset.nextActive==='true',button));content.querySelectorAll('[data-toggle-profile-visibility]').forEach(button=>button.onclick=()=>toggleProfileVisibility(button.dataset.toggleProfileVisibility==='true',button));content.querySelectorAll('[data-match-app]').forEach(button=>button.onclick=()=>matchApplication(button.dataset.matchApp,button));content.querySelectorAll('[data-enable-notifications]').forEach(button=>button.onclick=()=>enableBrowserNotifications(button));const passwordForm=content.querySelector('#password-form');if(passwordForm)passwordForm.onsubmit=changePassword;content.querySelectorAll('[data-account-logout]').forEach(button=>button.onclick=async()=>{button.disabled=true;button.textContent='Logging out…';invalidateProfileMediaSession();await activeClient.auth.signOut();location.replace('/')});bindMarketplaceSearch(content)}
+function bindContentActions(){const content=document.getElementById('content');content.querySelectorAll('[data-go]').forEach(button=>{button.onclick=()=>openSection(button.dataset.go,currentView,currentRole);if(button.getAttribute('role')==='button')button.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openSection(button.dataset.go,currentView,currentRole)}}});content.querySelectorAll('[data-billing]').forEach(button=>button.onclick=()=>openBilling(button));content.querySelectorAll('[data-conversation-app]').forEach(button=>button.onclick=()=>selectConversation(button.dataset.conversationApp,button.dataset.conversationName,button.dataset.conversationDetail));content.querySelectorAll('[data-conversation-match]').forEach(button=>button.onclick=()=>selectDiscoveryConversation(button.dataset.conversationMatch,button.dataset.conversationName,button.dataset.conversationDetail));content.querySelectorAll('[data-discovery-interest]').forEach(button=>button.onclick=()=>sendDiscoveryInterest(button.dataset.discoveryInterest,button));content.querySelectorAll('[data-view-cafe]').forEach(button=>button.onclick=()=>openCafeProfile(button.dataset.viewCafe));content.querySelectorAll('[data-edit-profile]').forEach(button=>button.onclick=openProfileEditor);content.querySelectorAll('[data-view-barista]').forEach(button=>button.onclick=()=>openCandidateReliable(button.dataset.viewBarista));content.querySelectorAll('[data-post-job]').forEach(button=>button.onclick=()=>requestNewJobEditor(button));content.querySelectorAll('[data-edit-job]').forEach(button=>button.onclick=()=>openJobEditor(button.dataset.editJob));content.querySelectorAll('[data-view-job]').forEach(button=>button.onclick=()=>openJobDetails(button.dataset.viewJob));content.querySelectorAll('[data-refresh-marketplace]').forEach(button=>button.onclick=()=>refreshMarketplace(button));content.querySelectorAll('[data-apply-job]').forEach(button=>button.onclick=()=>applyToJob(button.dataset.applyJob,button));content.querySelectorAll('[data-toggle-job]').forEach(button=>button.onclick=()=>toggleJob(button.dataset.toggleJob,button.dataset.nextActive==='true',button));content.querySelectorAll('[data-toggle-profile-visibility]').forEach(button=>button.onclick=()=>toggleProfileVisibility(button.dataset.toggleProfileVisibility==='true',button));content.querySelectorAll('[data-match-app]').forEach(button=>button.onclick=()=>matchApplication(button.dataset.matchApp,button));content.querySelectorAll('[data-enable-notifications]').forEach(button=>button.onclick=()=>enableBrowserNotifications(button));const passwordForm=content.querySelector('#password-form');if(passwordForm)passwordForm.onsubmit=changePassword;content.querySelectorAll('[data-account-logout]').forEach(button=>button.onclick=async()=>{button.disabled=true;button.textContent='Logging out…';invalidateProfileMediaSession();await activeClient.auth.signOut();location.replace('/')});bindMarketplaceSearch(content);bindMarketplaceLocationForm(content)}
 function markSectionNotificationsRead(name){const type=name==='Candidates'?'application':name==='Matches'?'match':null;if(!type||!activeClient||!currentUser)return;const unread=notificationRows.filter(n=>n.type===type&&!n.read_at);if(!unread.length)return;const now=new Date().toISOString();unread.forEach(n=>n.read_at=now);updateUnreadBadges();activeClient.from('notifications').update({read_at:now}).eq('recipient_id',currentUser.id).eq('type',type).is('read_at',null).then(({error})=>{if(error)console.warn('Could not mark notifications read:',error)})}
 async function mountSubscriptionCheckout(){
   const surface=document.getElementById('checkout-surface'),ownerId=currentUser?.id;
@@ -1173,7 +1296,7 @@ window.addEventListener('error',event=>reportClientError(event.message,event.err
 window.addEventListener('unhandledrejection',event=>reportClientError(event.reason?.message||String(event.reason||'Unhandled promise rejection'),event.reason?.stack||'',{kind:'unhandledrejection'}));
 function initialDashboardSection(role,search=location.search){if(role!=='cafe_owner_manager')return 'Overview';const returned=billingReturnState(search);if(returned?.result==='portal')return 'Account Settings';return returned||new URLSearchParams(search).get('section')==='subscription'?'Subscription':'Overview'}
 function resumePendingJobDraftOnStartup(search=location.search){if(currentRole!=='cafe_owner_manager'||billingReturnState(search)||new URLSearchParams(search).get('section')==='subscription')return false;return resumePendingJobDraft('Your saved job draft is ready. Publishing will recheck current Pro access.')}
-async function start(){try{if(!window.supabase?.createClient)throw new Error('The account service did not load. Check your connection and try again.');const config=await fetchConfig();authStorageKey=`sb-${new URL(config.supabaseUrl).hostname.split('.')[0]}-auth-token`;const client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{storageKey:authStorageKey}});const result=await withTimeout(client.auth.getSession(),10000,'Checking your login took too long.');if(result.error){await client.auth.signOut({scope:'local'}).catch(()=>{});location.replace('/login.html?reason=expired');return}const session=result.data.session;if(!session){location.replace('/login.html?reason=required');return}activeClient=client;currentUser=session.user;profileMediaGeneration++;client.auth.onAuthStateChange((event,nextSession)=>{if(client!==activeClient)return;if(event==='SIGNED_OUT'||nextSession?.user?.id&&nextSession.user.id!==currentUser?.id){invalidateProfileMediaSession();document.getElementById('app').hidden=true;currentProfile={};currentDemographics={};currentUser=null;if(!accountDeletionCompleted)location.replace('/login.html?reason=expired');}});const {data:profile,error:profileError}=await withTimeout(client.from('profiles').select('role').eq('id',session.user.id).maybeSingle(),10000,'Checking your account took too long.');if(profileError)throw profileError;let resolvedProfile=profile;if(!resolvedProfile){const adminResponse=await fetch('/api/analytics',{method:'HEAD',headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(adminResponse.ok){location.replace('/owner-dashboard');return}resolvedProfile=await ensureProfileFromMetadata(currentUser,activeClient)}if(!resolvedProfile)return;if(!['barista','cafe_owner_manager'].includes(resolvedProfile.role))throw new Error('Your account profile is incomplete. Please contact support.');const role=resolvedProfile.role;document.getElementById('app').classList.add('role-'+role);const view=views[role];currentRole=role;currentView=view;await withTimeout(loadProfile(),10000,'Loading your profile took too long.');await withTimeout(loadMarketplaceData(),10000,'Loading marketplace activity took too long.');await withTimeout(refreshNotifications(false),10000,'Loading notifications took too long.');subscribeNotifications();document.getElementById('email').textContent=session.user.email||'';document.getElementById('role-badge').textContent=view.label;document.getElementById('menu').innerHTML=view.menu.map((x,i)=>`<button class="${i?'':'active'}" data-section="${x}"><span class="nav-icon" aria-hidden="true">${window.BaristaMatchQuietFocus.menuIcon(x)}</span><span class="nav-label">${window.BaristaMatchQuietFocus.menuLabel(x,role)}</span></button>`).join('');updateUnreadBadges();document.getElementById('menu').onclick=event=>{const button=event.target.closest('button[data-section]');if(button)openSection(button.dataset.section,view,role)};openSection(initialDashboardSection(role),view,role);document.getElementById('app').hidden=false;document.getElementById('loading').hidden=true;resumePendingJobDraftOnStartup();window.scrollTo(0,0);document.getElementById('logout').onclick=async()=>{invalidateProfileMediaSession();await client.auth.signOut();location.replace('/')}}catch(error){console.error('Dashboard startup failed:',error);showStartupError(error.name==='AbortError'?'The account service took too long to respond. Please try again.':error.message||'We could not open your dashboard. Please try again.')}}
+async function start(){try{if(!window.supabase?.createClient)throw new Error('The account service did not load. Check your connection and try again.');const config=await fetchConfig();authStorageKey=`sb-${new URL(config.supabaseUrl).hostname.split('.')[0]}-auth-token`;const client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{storageKey:authStorageKey}});const result=await withTimeout(client.auth.getSession(),10000,'Checking your login took too long.');if(result.error){await client.auth.signOut({scope:'local'}).catch(()=>{});location.replace('/login.html?reason=expired');return}const session=result.data.session;if(!session){location.replace('/login.html?reason=required');return}activeClient=client;currentUser=session.user;profileMediaGeneration++;client.auth.onAuthStateChange((event,nextSession)=>{if(client!==activeClient)return;if(event==='SIGNED_OUT'||nextSession?.user?.id&&nextSession.user.id!==currentUser?.id){clearMarketplaceSearchSession();invalidateProfileMediaSession();document.getElementById('app').hidden=true;currentProfile={};currentDemographics={};currentUser=null;if(!accountDeletionCompleted)location.replace('/login.html?reason=expired');}});const {data:profile,error:profileError}=await withTimeout(client.from('profiles').select('role').eq('id',session.user.id).maybeSingle(),10000,'Checking your account took too long.');if(profileError)throw profileError;let resolvedProfile=profile;if(!resolvedProfile){const adminResponse=await fetch('/api/analytics',{method:'HEAD',headers:{Authorization:'Bearer '+session.access_token},cache:'no-store'});if(adminResponse.ok){location.replace('/owner-dashboard');return}resolvedProfile=await ensureProfileFromMetadata(currentUser,activeClient)}if(!resolvedProfile)return;if(!['barista','cafe_owner_manager'].includes(resolvedProfile.role))throw new Error('Your account profile is incomplete. Please contact support.');const role=resolvedProfile.role;document.getElementById('app').classList.add('role-'+role);const view=views[role];currentRole=role;currentView=view;await withTimeout(loadProfile(),10000,'Loading your profile took too long.');await withTimeout(loadMarketplaceData(),10000,'Loading marketplace activity took too long.');await withTimeout(refreshNotifications(false),10000,'Loading notifications took too long.');subscribeNotifications();document.getElementById('email').textContent=session.user.email||'';document.getElementById('role-badge').textContent=view.label;document.getElementById('menu').innerHTML=view.menu.map((x,i)=>`<button class="${i?'':'active'}" data-section="${x}"><span class="nav-icon" aria-hidden="true">${window.BaristaMatchQuietFocus.menuIcon(x)}</span><span class="nav-label">${window.BaristaMatchQuietFocus.menuLabel(x,role)}</span></button>`).join('');updateUnreadBadges();document.getElementById('menu').onclick=event=>{const button=event.target.closest('button[data-section]');if(button)openSection(button.dataset.section,view,role)};openSection(initialDashboardSection(role),view,role);document.getElementById('app').hidden=false;document.getElementById('loading').hidden=true;resumePendingJobDraftOnStartup();window.scrollTo(0,0);document.getElementById('logout').onclick=async()=>{invalidateProfileMediaSession();await client.auth.signOut();location.replace('/')}}catch(error){console.error('Dashboard startup failed:',error);showStartupError(error.name==='AbortError'?'The account service took too long to respond. Please try again.':error.message||'We could not open your dashboard. Please try again.')}}
 start();
 </script>
 

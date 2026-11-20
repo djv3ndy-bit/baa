@@ -120,7 +120,7 @@
     if (!job) {
       return `<article class="quiet-feature-card quiet-empty-feature">
         ${featureImage(job)}
-        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3><span class="quiet-desktop-copy">Your next café starts here.</span><span class="quiet-mobile-copy">No matching roles yet</span></h3><p>New roles matching your saved work area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
+        <div class="quiet-feature-body"><span class="quiet-card-kicker">LOCAL OPPORTUNITIES</span><h3><span class="quiet-desktop-copy">Your next café starts here.</span><span class="quiet-mobile-copy">No matching roles yet</span></h3><p>New roles matching your current search area will appear here as cafés post them.</p><button class="quiet-primary" type="button" data-go="Discover">Explore jobs <span aria-hidden="true">→</span></button></div>
       </article>`;
     }
     const cafe = job.owner?.cafe_name || 'Local café';
@@ -172,7 +172,7 @@
     const profile = context.profile || {};
     const displayName = context.profileName || (isCafe ? 'Your café' : 'there');
     const firstName = isCafe ? displayName : String(displayName).trim().split(/\s+/)[0] || 'there';
-    const location = isCafe ? (profile.location || 'Add your café location') : (context.workAreaLabel || profile.preferred_city || profile.location || 'Set your work area');
+    const location = context.searchAreaLabel || (isCafe ? (profile.location || 'Add your café location') : (context.workAreaLabel || profile.preferred_city || profile.location || 'Set your work area'));
     const legacyMatches = context.applications.filter((item) => item.status === 'matched').length;
     const matches = legacyMatches + context.discoveryMatches.length;
     const unreadMessages = context.notificationRows.filter((item) => item.type === 'message' && !item.read_at).length;
@@ -189,7 +189,7 @@
           activityTile({ icon: '◌', value: unreadMessages, label: 'Messages', copy: 'Open conversations', section: 'Messages' }),
         ]
       : [
-          activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse your work area', section: 'Discover' }),
+          activityTile({ icon: '▣', value: context.marketJobs.length, label: 'Open jobs', copy: 'Browse your search area', section: 'Discover' }),
           activityTile({ icon: '↗', value: context.applications.length + sentInterests, label: 'Applications & interests', copy: 'Track your progress', section: 'Applications' }),
           activityTile({ icon: '◷', value: `${context.profileStrength}%`, label: 'Profile', copy: 'Profile completeness', section: 'My Profile' }),
         ];
@@ -198,7 +198,7 @@
       ${hero({ name: firstName, location, isCafe })}
       <div class="quiet-layout">
         <div class="quiet-primary-column">
-          <div class="quiet-section-heading"><h3>${isCafe ? 'Your hiring focus' : 'Latest job in your work area'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">${isCafe ? 'Manage jobs' : 'See all jobs'} <span aria-hidden="true">→</span></button></div>
+          <div class="quiet-section-heading"><h3>${isCafe ? 'Your hiring focus' : 'Latest job in your search area'}</h3><button type="button" data-go="${isCafe ? 'Job Posts' : 'Discover'}">${isCafe ? 'Manage jobs' : 'See all jobs'} <span aria-hidden="true">→</span></button></div>
           ${feature}
         </div>
         <aside class="quiet-activity-panel">
