@@ -157,7 +157,18 @@ test('filtering updates a visible count, announces no matches, and clearing rest
   search.value = 'nothing matches'; search.oninput();
   assert.equal(count.textContent, '0 of 2 jobs'); assert.equal(empty.hidden, false);
   clear.onclick();
-  assert.equal(count.textContent, '2 of 2 jobs'); assert.equal(empty.hidden, true);
+  assert.equal(count.textContent, '2 jobs'); assert.equal(empty.hidden, true);
+});
+
+test('an empty search area has one empty state and a clear zero count', () => {
+  const search = { value: '', focus() {} }, count = { dataset: { resultNoun: 'jobs' } }, empty = {}, clear = {};
+  const elements = { '#job-search': search, '#marketplace-result-count': count, '#marketplace-search-empty': empty, '[data-clear-market-search]': clear };
+  const ctx = context({}, ['bindMarketplaceSearch']);
+  ctx.bindMarketplaceSearch({ querySelector: selector => elements[selector], querySelectorAll: () => [] });
+  assert.equal(count.textContent, '0 jobs');
+  search.value = 'espresso'; search.oninput();
+  assert.equal(count.textContent, '0 jobs');
+  assert.equal(empty.hidden, true, 'the existing area empty state provides the recovery guidance');
 });
 
 test('profile-save refresh removes stale geography and exposes retry after failure', async () => {
@@ -344,7 +355,7 @@ test('viewing cached or fetched outside-area interest profiles does not alter fi
     assert.match(content.innerHTML, /Outside city barista/);
     assert.equal(ctx.candidateProfiles.length, 1);
     assert.equal(ctx.candidateProfiles[0].id, 'local');
-    assert.match(ctx.baristaDiscoveryHtml(), />1 baristas<\/h3>/);
+    assert.match(ctx.baristaDiscoveryHtml(), />1 barista<\/h3>/);
     assert.equal(lookups, cached ? 0 : 1);
   }
 });
