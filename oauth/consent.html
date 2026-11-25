@@ -51,7 +51,8 @@ async function initialize(){
     const response=await fetch('/api/config',{cache:'no-store'});
     const config=await response.json().catch(()=>({}));
     if(!response.ok||!config.supabaseUrl||!config.supabasePublishableKey)throw new Error('config');
-    client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
+    const authStorageKey=`sb-${new URL(config.supabaseUrl).hostname.split('.')[0]}-auth-token`;
+    client=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{storageKey:authStorageKey}});
     const {data:{user},error:userError}=await client.auth.getUser();
     if(userError||!user){location.replace(safeLoginRedirect());return}
     const {data:{session}}=await client.auth.getSession();

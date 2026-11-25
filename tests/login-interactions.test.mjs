@@ -18,7 +18,7 @@ async function loginHarness(overrides = {}, session = null) {
   elements.password.value = 'local-test-only';
   const redirects = [];
   const auth = { getSession: async () => ({ data: { session } }), ...overrides };
-  vm.runInNewContext(script, { document: { getElementById: id => elements[id] }, URLSearchParams,
+  vm.runInNewContext(script, { document: { getElementById: id => elements[id] }, URL, URLSearchParams,
     location: { search: '', replace: url => redirects.push(url) },
     fetch: async () => ({ ok: true, json: async () => ({ supabaseUrl: 'https://example.test', supabasePublishableKey: 'public-test' }) }),
     window: { supabase: { createClient: () => ({ auth }) } } });

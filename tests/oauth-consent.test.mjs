@@ -28,3 +28,18 @@ test('login only honors local OAuth consent return targets',()=>{
   assert.match(login,/location\.replace\(returnTo\)/);
   assert.doesNotMatch(login,/location\.replace\(requestedReturnTo\)/);
 });
+
+test('login, dashboard and OAuth consent share the same Supabase auth storage key',()=>{
+  const dashboard=fs.readFileSync(new URL('../dashboard.html',import.meta.url),'utf8');
+  const pages=[login,dashboard,consent];
+  for(const page of pages){
+    assert.match(page,/hostname\.split\('\.'\)\[0\]\}-auth-token/);
+    assert.match(page,/createClient\(config\.supabaseUrl,\s*config\.supabasePublishableKey,\s*\{\s*auth:\s*\{\s*storageKey:\s*authStorageKey\s*\}\s*\}\)/);
+  }
+});
+
+test('OAuth consent still enforces owner gate before reading authorization details',()=>{
+  const ownerGate=consent.indexOf("fetch('/api/oauth-owner'");
+  const authDetails=consent.indexOf('getAuthorizationDetails(authorizationId)');
+  assert.ok(ownerGate>0 && authDetails>ownerGate);
+});
